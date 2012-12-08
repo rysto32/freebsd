@@ -633,8 +633,8 @@ err_late:
 	ixgbe_free_transmit_structures(adapter);
 	ixgbe_free_receive_structures(adapter);
 err_out:
-	if (adapter->ifp != NULL)
-		if_free(adapter->ifp);
+	if (adapter->interface.ifp != NULL)
+		if_free(adapter->interface.ifp);
 	ixgbe_free_pci_resources(adapter);
 	free(adapter->mta, M_DEVBUF);
 	return (error);
@@ -655,14 +655,17 @@ static int
 ixgbe_detach(device_t dev)
 {
 	struct adapter *adapter = device_get_softc(dev);
+	struct ixgbe_interface *interface;
 	struct ix_queue *que = adapter->queues;
 	struct tx_ring *txr = adapter->tx_rings;
 	u32	ctrl_ext;
 
 	INIT_DEBUGOUT("ixgbe_detach: begin");
+	
+	interface = &adapter->interface;
 
 	/* Make sure VLANS are not using driver */
-	if (adapter->ifp->if_vlantrunk != NULL) {
+	if (interface->ifp->if_vlantrunk != NULL) {
 		device_printf(dev,"Vlan in use, detach first\n");
 		return (EBUSY);
 	}
@@ -703,14 +706,14 @@ ixgbe_detach(device_t dev)
 	if (adapter->vlan_detach != NULL)
 		EVENTHANDLER_DEREGISTER(vlan_unconfig, adapter->vlan_detach);
 
-	ether_ifdetach(adapter->ifp);
+	ether_ifdetach(interface->ifp);
 	callout_drain(&adapter->timer);
 #ifdef DEV_NETMAP
-	netmap_detach(adapter->ifp);
+	netmap_detach(interface->ifp);
 #endif /* DEV_NETMAP */
 	ixgbe_free_pci_resources(adapter);
 	bus_generic_detach(dev);
-	if_free(adapter->ifp);
+	if_free(interface->ifp);
 
 	ixgbe_free_transmit_structures(adapter);
 	ixgbe_free_receive_structures(adapter);
@@ -901,7 +904,11 @@ ixgbe_deferred_mq_start(void *arg, int pending)
 {
 	struct tx_ring *txr = arg;
 	struct adapter *adapter = txr->adapter;
-	struct ifnet *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet *ifp;
+
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	IXGBE_TX_LOCK(txr);
 	if (!drbr_empty(ifp, txr->br))
@@ -942,6 +949,7 @@ static int
 ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 {
 	struct adapter	*adapter = ifp->if_softc;
+	struct ixgbe_interface *interface;
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ifreq	*ifr = (struct ifreq *) data;
 #if defined(INET) || defined(INET6)
@@ -949,6 +957,8 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 	bool		avoid_reset = FALSE;
 #endif
 	int             error = 0;
+	
+	interface = &adapter->interface;
 
 	switch (command) {
 
@@ -994,7 +1004,7 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 		IXGBE_CORE_LOCK(adapter);
 		if (ifp->if_flags & IFF_UP) {
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING)) {
-				if ((ifp->if_flags ^ adapter->if_flags) &
+				if ((ifp->if_flags ^ interface->if_flags) &
 				    (IFF_PROMISC | IFF_ALLMULTI)) {
 					ixgbe_set_promisc(adapter);
                                 }
@@ -1003,7 +1013,7 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 		} else
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
 				ixgbe_stop(adapter);
-		adapter->if_flags = ifp->if_flags;
+		interface->if_flags = ifp->if_flags;
 		IXGBE_CORE_UNLOCK(adapter);
 		break;
 	case SIOCADDMULTI:
@@ -1088,11 +1098,15 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 static void
 ixgbe_init_locked(struct adapter *adapter)
 {
-	struct ifnet   *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet   *ifp;
 	device_t 	dev = adapter->dev;
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32		k, txdctl, mhadd, gpie;
 	u32		rxdctl, rxctrl;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 	INIT_DEBUGOUT("ixgbe_init_locked: begin");
@@ -1104,7 +1118,7 @@ ixgbe_init_locked(struct adapter *adapter)
         ixgbe_set_rar(hw, 0, adapter->hw.mac.addr, 0, IXGBE_RAH_AV);
 
 	/* Get the latest mac address, User can use a LAA */
-	bcopy(IF_LLADDR(adapter->ifp), hw->mac.addr,
+	bcopy(IF_LLADDR(ifp), hw->mac.addr,
 	      IXGBE_ETH_LENGTH_OF_ADDRESS);
 	ixgbe_set_rar(hw, 0, hw->mac.addr, 0, 1);
 	hw->addr_ctrl.rar_used_count = 1;
@@ -1243,7 +1257,7 @@ ixgbe_init_locked(struct adapter *adapter)
 		 * so RDT = num_rx_desc - 1 means the whole ring is available.
 		 */
 		if (ifp->if_capenable & IFCAP_NETMAP) {
-			struct netmap_adapter *na = NA(adapter->ifp);
+			struct netmap_adapter *na = NA(ifp);
 			struct netmap_kring *kring = &na->rx_rings[i];
 			int t = na->num_rx_desc - 1 - nm_kr_rxspace(kring);
 
@@ -1411,9 +1425,13 @@ ixgbe_handle_que(void *context, int pending)
 {
 	struct ix_queue *que = context;
 	struct adapter  *adapter = que->adapter;
+	struct ixgbe_interface *interface;
 	struct tx_ring  *txr = que->txr;
-	struct ifnet    *ifp = adapter->ifp;
+	struct ifnet    *ifp;
 	bool		more;
+
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 		more = ixgbe_rxeof(que);
@@ -1450,12 +1468,12 @@ ixgbe_legacy_irq(void *arg)
 	struct ix_queue *que = arg;
 	struct adapter	*adapter = que->adapter;
 	struct ixgbe_hw	*hw = &adapter->hw;
-	struct ifnet    *ifp = adapter->ifp;
+	struct ifnet    *ifp;
 	struct 		tx_ring *txr = adapter->tx_rings;
 	bool		more;
 	u32       	reg_eicr;
 
-
+	ifp = adapter->interface.ifp;
 	reg_eicr = IXGBE_READ_REG(hw, IXGBE_EICR);
 
 	++que->irqs;
@@ -1507,11 +1525,15 @@ ixgbe_msix_que(void *arg)
 {
 	struct ix_queue	*que = arg;
 	struct adapter  *adapter = que->adapter;
-	struct ifnet    *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet    *ifp;
 	struct tx_ring	*txr = que->txr;
 	struct rx_ring	*rxr = que->rxr;
 	bool		more;
 	u32		newitr = 0;
+
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	/* Protect against spurious interrupts */
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
@@ -1902,8 +1924,12 @@ static void
 ixgbe_set_promisc(struct adapter *adapter)
 {
 	u_int32_t       reg_rctl;
-	struct ifnet   *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet   *ifp;
 	int		mcnt = 0;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	reg_rctl = IXGBE_READ_REG(&adapter->hw, IXGBE_FCTRL);
 	reg_rctl &= (~IXGBE_FCTRL_UPE);
@@ -1961,10 +1987,13 @@ ixgbe_set_multi(struct adapter *adapter)
 	u8	*update_ptr;
 	struct	ifmultiaddr *ifma;
 	int	mcnt = 0;
-	struct ifnet   *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet   *ifp;
 
 	IOCTL_DEBUGOUT("ixgbe_set_multi: begin");
 
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 	mta = adapter->mta;
 	bzero(mta, sizeof(u8) * IXGBE_ETH_LENGTH_OF_ADDRESS *
 	    MAX_NUM_MULTICAST_ADDRESSES);
@@ -2042,12 +2071,15 @@ static void
 ixgbe_local_timer(void *arg)
 {
 	struct adapter	*adapter = arg;
+	struct ixgbe_interface *interface;
 	device_t	dev = adapter->dev;
 	struct ix_queue *que = adapter->queues;
 	struct tx_ring	*txr = adapter->tx_rings;
 	int		hung = 0, paused = 0;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
+
+	interface = &adapter->interface;
 
 	/* Check for pluggable optics */
 	if (adapter->sfp_probe)
@@ -2091,7 +2123,7 @@ watchdog:
 	device_printf(dev,"TX(%d) desc avail = %d,"
 	    "Next TX to Clean = %d\n",
 	    txr->me, txr->tx_avail, txr->next_to_clean);
-	adapter->ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+	interface->ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	adapter->watchdog_events++;
 	ixgbe_init_locked(adapter);
 }
@@ -2104,9 +2136,12 @@ watchdog:
 static void
 ixgbe_update_link_status(struct adapter *adapter)
 {
-	struct ifnet	*ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet	*ifp;
 	device_t dev = adapter->dev;
-
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	if (adapter->link_up){ 
 		if (adapter->link_active == FALSE) {
@@ -2144,8 +2179,11 @@ ixgbe_stop(void *arg)
 {
 	struct ifnet   *ifp;
 	struct adapter *adapter = arg;
+	struct ixgbe_interface *interface;
 	struct ixgbe_hw *hw = &adapter->hw;
-	ifp = adapter->ifp;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 
@@ -2618,11 +2656,14 @@ static int
 ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_interface *interface;
 	struct ifnet   *ifp;
 
 	INIT_DEBUGOUT("ixgbe_setup_interface: begin");
+	
+	interface = &adapter->interface;
 
-	ifp = adapter->ifp = if_alloc(IFT_ETHER);
+	ifp = interface->ifp = if_alloc(IFT_ETHER);
 	if (ifp == NULL) {
 		device_printf(dev, "can not allocate ifnet structure\n");
 		return (-1);
@@ -3034,10 +3075,11 @@ static void
 ixgbe_setup_transmit_ring(struct tx_ring *txr)
 {
 	struct adapter *adapter = txr->adapter;
+	
 	struct ixgbe_tx_buf *txbuf;
 	int i;
 #ifdef DEV_NETMAP
-	struct netmap_adapter *na = NA(adapter->ifp);
+	struct netmap_adapter *na = NA(adapter->interface.ifp);
 	struct netmap_slot *slot;
 #endif /* DEV_NETMAP */
 
@@ -3593,7 +3635,8 @@ static void
 ixgbe_txeof(struct tx_ring *txr)
 {
 	struct adapter		*adapter = txr->adapter;
-	struct ifnet		*ifp = adapter->ifp;
+	struct ixgbe_interface	*interface;
+	struct ifnet		*ifp;
 	u32			work, processed = 0;
 	u16			limit = txr->process_limit;
 	struct ixgbe_tx_buf	*buf;
@@ -3602,6 +3645,8 @@ ixgbe_txeof(struct tx_ring *txr)
 	mtx_assert(&txr->tx_mtx, MA_OWNED);
 
 #ifdef DEV_NETMAP
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 	if (ifp->if_capenable & IFCAP_NETMAP) {
 		struct netmap_adapter *na = NA(ifp);
 		struct netmap_kring *kring = &na->tx_rings[txr->me];
@@ -3898,11 +3943,14 @@ static void
 ixgbe_setup_hw_rsc(struct rx_ring *rxr)
 {
 	struct	adapter 	*adapter = rxr->adapter;
+	struct ixgbe_interface	*interface;
 	struct	ixgbe_hw	*hw = &adapter->hw;
 	u32			rscctrl, rdrxctl;
+	
+	interface = &adapter->interface;
 
 	/* If turning LRO/RSC off we need to disable it */
-	if ((adapter->ifp->if_capenable & IFCAP_LRO) == 0) {
+	if ((interface->ifp->if_capenable & IFCAP_LRO) == 0) {
 		rscctrl = IXGBE_READ_REG(hw, IXGBE_RSCCTL(rxr->me));
 		rscctrl &= ~IXGBE_RSCCTL_RSCEN;
 		return;
@@ -3911,7 +3959,7 @@ ixgbe_setup_hw_rsc(struct rx_ring *rxr)
 	rdrxctl = IXGBE_READ_REG(hw, IXGBE_RDRXCTL);
 	rdrxctl &= ~IXGBE_RDRXCTL_RSCFRSTSIZE;
 #ifdef DEV_NETMAP /* crcstrip is optional in netmap */
-	if (adapter->ifp->if_capenable & IFCAP_NETMAP && !ix_crcstrip)
+	if (interface->ifp->if_capenable & IFCAP_NETMAP && !ix_crcstrip)
 #endif /* DEV_NETMAP */
 	rdrxctl |= IXGBE_RDRXCTL_CRCSTRIP;
 	rdrxctl |= IXGBE_RDRXCTL_RSCACKC;
@@ -3977,6 +4025,7 @@ static int
 ixgbe_setup_receive_ring(struct rx_ring *rxr)
 {
 	struct	adapter 	*adapter;
+	struct ixgbe_interface 	*interface;
 	struct ifnet		*ifp;
 	device_t		dev;
 	struct ixgbe_rx_buf	*rxbuf;
@@ -3984,17 +4033,19 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	struct lro_ctrl		*lro = &rxr->lro;
 	int			rsize, nsegs, error = 0;
 #ifdef DEV_NETMAP
-	struct netmap_adapter *na = NA(rxr->adapter->ifp);
+	struct netmap_adapter *na;
 	struct netmap_slot *slot;
 #endif /* DEV_NETMAP */
 
 	adapter = rxr->adapter;
-	ifp = adapter->ifp;
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 	dev = adapter->dev;
 
 	/* Clear the ring contents */
 	IXGBE_RX_LOCK(rxr);
 #ifdef DEV_NETMAP
+	na = NA(ifp);
 	/* same as in ixgbe_setup_transmit_ring() */
 	slot = netmap_reset(na, NR_RX, rxr->me, 0);
 #endif /* DEV_NETMAP */
@@ -4081,7 +4132,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 		}
 		INIT_DEBUGOUT("RX Soft LRO Initialized\n");
 		rxr->lro_enabled = TRUE;
-		lro->ifp = adapter->ifp;
+		lro->ifp = ifp;
 	}
 
 	IXGBE_RX_UNLOCK(rxr);
@@ -4135,12 +4186,15 @@ fail:
 static void
 ixgbe_initialize_receive_units(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	struct	rx_ring	*rxr = adapter->rx_rings;
 	struct ixgbe_hw	*hw = &adapter->hw;
-	struct ifnet   *ifp = adapter->ifp;
+	struct ifnet   *ifp;
 	u32		bufsz, rxctrl, fctrl, srrctl, rxcsum;
 	u32		reta, mrqc = 0, hlreg, random[10];
-
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	/*
 	 * Make sure receives are disabled while
@@ -4407,8 +4461,9 @@ static bool
 ixgbe_rxeof(struct ix_queue *que)
 {
 	struct adapter		*adapter = que->adapter;
+	struct ixgbe_interface	*interface;
 	struct rx_ring		*rxr = que->rxr;
-	struct ifnet		*ifp = adapter->ifp;
+	struct ifnet		*ifp;
 	struct lro_ctrl		*lro = &rxr->lro;
 	struct lro_entry	*queued;
 	int			i, nextp, processed = 0;
@@ -4416,6 +4471,9 @@ ixgbe_rxeof(struct ix_queue *que)
 	u16			count = rxr->process_limit;
 	union ixgbe_adv_rx_desc	*cur;
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	IXGBE_RX_LOCK(rxr);
 
@@ -4726,11 +4784,14 @@ ixgbe_unregister_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 static void
 ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 {
-	struct ifnet 	*ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet 	*ifp;
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct rx_ring	*rxr;
 	u32		ctrl;
 
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	/*
 	** We get here thru init_locked, meaning
@@ -5153,7 +5214,11 @@ static void
 ixgbe_reinit_fdir(void *context, int pending)
 {
 	struct adapter  *adapter = context;
-	struct ifnet   *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet   *ifp;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	if (adapter->fdir_reinit != 1) /* Shouldn't happen */
 		return;
@@ -5175,10 +5240,14 @@ ixgbe_reinit_fdir(void *context, int pending)
 static void
 ixgbe_update_stats_counters(struct adapter *adapter)
 {
-	struct ifnet   *ifp = adapter->ifp;
+	struct ixgbe_interface *interface;
+	struct ifnet   *ifp;
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32  missed_rx = 0, bprc, lxon, lxoff, total;
 	u64  total_missed_rx = 0;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	adapter->stats.crcerrs += IXGBE_READ_REG(hw, IXGBE_CRCERRS);
 	adapter->stats.illerrc += IXGBE_READ_REG(hw, IXGBE_ILLERRC);

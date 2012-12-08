@@ -477,11 +477,14 @@ ring_reset:
 static void
 ixgbe_netmap_attach(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	struct netmap_adapter na;
+
+	interface = &adapter->interface;
 
 	bzero(&na, sizeof(na));
 
-	na.ifp = adapter->ifp;
+	na.ifp = interface->ifp;
 	na.na_flags = NAF_BDG_MAYSLEEP;
 	na.num_tx_desc = adapter->num_tx_desc;
 	na.num_rx_desc = adapter->num_rx_desc;
