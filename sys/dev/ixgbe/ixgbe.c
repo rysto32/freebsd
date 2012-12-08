@@ -406,6 +406,7 @@ static int
 ixgbe_attach(device_t dev)
 {
 	struct adapter *adapter;
+	struct ixgbe_interface *interface;
 	struct ixgbe_hw *hw;
 	int             error = 0;
 	u16		csum;
@@ -417,6 +418,7 @@ ixgbe_attach(device_t dev)
 	adapter = device_get_softc(dev);
 	adapter->dev = adapter->osdep.dev = dev;
 	hw = &adapter->hw;
+	interface = &adapter->interface;
 
 	/* Core Lock Init*/
 	IXGBE_CORE_LOCK_INIT(adapter, device_get_nameunit(dev));
@@ -465,9 +467,9 @@ ixgbe_attach(device_t dev)
 	if (((ixgbe_txd * sizeof(union ixgbe_adv_tx_desc)) % DBA_ALIGN) != 0 ||
 	    ixgbe_txd < MIN_TXD || ixgbe_txd > MAX_TXD) {
 		device_printf(dev, "TXD config issue, using default!\n");
-		adapter->num_tx_desc = DEFAULT_TXD;
+		interface->num_tx_desc = DEFAULT_TXD;
 	} else
-		adapter->num_tx_desc = ixgbe_txd;
+		interface->num_tx_desc = ixgbe_txd;
 
 	/*
 	** With many RX rings it is easy to exceed the
@@ -614,8 +616,8 @@ err_late:
 	ixgbe_free_transmit_structures(adapter);
 	ixgbe_free_receive_structures(adapter);
 err_out:
-	if (adapter->interface.ifp != NULL)
-		if_free(adapter->interface.ifp);
+	if (interface->ifp != NULL)
+		if_free(interface->ifp);
 	ixgbe_free_pci_resources(adapter);
 	free(adapter->mta, M_DEVBUF);
 	return (error);
@@ -638,12 +640,13 @@ ixgbe_detach(device_t dev)
 	struct adapter *adapter = device_get_softc(dev);
 	struct ixgbe_interface *interface;
 	struct ix_queue *que = adapter->queues;
-	struct tx_ring *txr = adapter->tx_rings;
+	struct tx_ring *txr;
 	u32	ctrl_ext;
 
 	INIT_DEBUGOUT("ixgbe_detach: begin");
 	
 	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	/* Make sure VLANS are not using driver */
 	if (interface->ifp->if_vlantrunk != NULL) {
@@ -778,7 +781,11 @@ static void
 ixgbe_start(struct ifnet *ifp)
 {
 	struct adapter *adapter = ifp->if_softc;
-	struct tx_ring	*txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct tx_ring	*txr;
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 		IXGBE_TX_LOCK(txr);
@@ -798,9 +805,12 @@ static int
 ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 {
 	struct adapter	*adapter = ifp->if_softc;
+	struct ixgbe_interface *interface;
 	struct ix_queue	*que;
 	struct tx_ring	*txr;
 	int 		i = 0, err = 0;
+	
+	interface = &adapter->interface;
 
 	/* Which queue to use */
 	if ((m->m_flags & M_FLOWID) != 0)
@@ -808,7 +818,7 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 	else
 		i = curcpu % adapter->num_queues;
 
-	txr = &adapter->tx_rings[i];
+	txr = &interface->tx_rings[i];
 	que = &adapter->queues[i];
 
 	if (IXGBE_TX_TRYLOCK(txr)) {
@@ -826,8 +836,11 @@ static int
 ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr, struct mbuf *m)
 {
 	struct adapter  *adapter = txr->adapter;
+	struct ixgbe_interface *interface;
         struct mbuf     *next;
         int             enqueued, err = 0;
+	
+	interface = &adapter->interface;
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
 	    adapter->link_active == 0) {
@@ -860,7 +873,7 @@ ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr, struct mbuf *m)
 		ETHER_BPF_MTAP(ifp, next);
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 			break;
-		if (txr->tx_avail < IXGBE_TX_OP_THRESHOLD)
+		if (txr->tx_avail < IXGBE_TX_OP_THRESHOLD(interface))
 			ixgbe_txeof(txr);
 	}
 
@@ -870,7 +883,7 @@ ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr, struct mbuf *m)
 		txr->watchdog_time = ticks;
 	}
 
-	if (txr->tx_avail < IXGBE_TX_CLEANUP_THRESHOLD)
+	if (txr->tx_avail < IXGBE_TX_CLEANUP_THRESHOLD(interface))
 		ixgbe_txeof(txr);
 
 	return (err);
@@ -903,8 +916,12 @@ static void
 ixgbe_qflush(struct ifnet *ifp)
 {
 	struct adapter	*adapter = ifp->if_softc;
-	struct tx_ring	*txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct tx_ring	*txr;
 	struct mbuf	*m;
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	for (int i = 0; i < adapter->num_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
@@ -1466,11 +1483,13 @@ ixgbe_legacy_irq(void *arg)
 	struct ix_queue *que = arg;
 	struct adapter	*adapter = que->adapter;
 	struct ixgbe_hw	*hw = &adapter->hw;
-	struct 		tx_ring *txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct 		tx_ring *txr;
 	bool		more_tx, more_rx;
 	u32       	reg_eicr, loop = MAX_LOOP;
 
-
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 	reg_eicr = IXGBE_READ_REG(hw, IXGBE_EICR);
 
 	++que->irqs;
@@ -2062,12 +2081,13 @@ ixgbe_local_timer(void *arg)
 	struct ixgbe_interface *interface;
 	device_t	dev = adapter->dev;
 	struct ix_queue *que = adapter->queues;
-	struct tx_ring	*txr = adapter->tx_rings;
+	struct tx_ring	*txr;
 	int		hung = 0, paused = 0;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 
 	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	/* Check for pluggable optics */
 	if (adapter->sfp_probe)
@@ -2296,9 +2316,16 @@ ixgbe_allocate_legacy(struct adapter *adapter)
 	device_t	dev = adapter->dev;
 	struct		ix_queue *que = adapter->queues;
 #ifndef IXGBE_LEGACY_TX
-	struct tx_ring		*txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct tx_ring		*txr;
 #endif
 	int		error, rid = 0;
+	
+
+#ifndef IXGBE_LEGACY_TX
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
+#endif
 
 	/* MSI RID at 1 */
 	if (adapter->msix == 1)
@@ -2365,9 +2392,13 @@ static int
 ixgbe_allocate_msix(struct adapter *adapter)
 {
 	device_t        dev = adapter->dev;
+	struct 		ixgbe_interface *interface;
 	struct 		ix_queue *que = adapter->queues;
-	struct  	tx_ring *txr = adapter->tx_rings;
+	struct  	tx_ring *txr;
 	int 		error, rid, vector = 0;
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	for (int i = 0; i < adapter->num_queues; i++, vector++, que++, txr++) {
 		rid = vector + 1;
@@ -2653,7 +2684,7 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_qflush = ixgbe_qflush;
 #else
 	ifp->if_start = ixgbe_start;
-	IFQ_SET_MAXLEN(&ifp->if_snd, adapter->num_tx_desc - 2);
+	IFQ_SET_MAXLEN(&ifp->if_snd, interface->num_tx_desc - 2);
 #endif
 
 	ether_ifattach(ifp, adapter->hw.mac.addr);
@@ -2826,11 +2857,14 @@ static int
 ixgbe_allocate_queues(struct adapter *adapter)
 {
 	device_t	dev = adapter->dev;
+	struct ixgbe_interface *interface;
 	struct ix_queue	*que;
 	struct tx_ring	*txr;
 	struct rx_ring	*rxr;
 	int rsize, tsize, error = IXGBE_SUCCESS;
 	int txconf = 0, rxconf = 0;
+	
+	interface = &adapter->interface;
 
         /* First allocate the top level queue structs */
         if (!(adapter->queues =
@@ -2842,7 +2876,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
         }
 
 	/* First allocate the TX ring struct memory */
-	if (!(adapter->tx_rings =
+	if (!(interface->tx_rings =
 	    (struct tx_ring *) malloc(sizeof(struct tx_ring) *
 	    adapter->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
 		device_printf(dev, "Unable to allocate TX ring memory\n");
@@ -2860,7 +2894,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	}
 
 	/* For the ring itself */
-	tsize = roundup2(adapter->num_tx_desc *
+	tsize = roundup2(interface->num_tx_desc *
 	    sizeof(union ixgbe_adv_tx_desc), DBA_ALIGN);
 
 	/*
@@ -2870,10 +2904,10 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	 */ 
 	for (int i = 0; i < adapter->num_queues; i++, txconf++) {
 		/* Set up some basics */
-		txr = &adapter->tx_rings[i];
+		txr = &interface->tx_rings[i];
 		txr->adapter = adapter;
 		txr->me = i;
-		txr->num_desc = adapter->num_tx_desc;
+		txr->num_desc = interface->num_tx_desc;
 
 		/* Initialize the TX side lock */
 		snprintf(txr->mtx_name, sizeof(txr->mtx_name), "%s:tx(%d)",
@@ -2952,7 +2986,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	for (int i = 0; i < adapter->num_queues; i++) {
 		que = &adapter->queues[i];
 		que->adapter = adapter;
-		que->txr = &adapter->tx_rings[i];
+		que->txr = &interface->tx_rings[i];
 		que->rxr = &adapter->rx_rings[i];
 	}
 
@@ -2962,11 +2996,11 @@ err_rx_desc:
 	for (rxr = adapter->rx_rings; rxconf > 0; rxr++, rxconf--)
 		ixgbe_dma_free(adapter, &rxr->rxdma);
 err_tx_desc:
-	for (txr = adapter->tx_rings; txconf > 0; txr++, txconf--)
+	for (txr = interface->tx_rings; txconf > 0; txr++, txconf--)
 		ixgbe_dma_free(adapter, &txr->txdma);
 	free(adapter->rx_rings, M_DEVBUF);
 rx_fail:
-	free(adapter->tx_rings, M_DEVBUF);
+	free(interface->tx_rings, M_DEVBUF);
 tx_fail:
 	free(adapter->queues, M_DEVBUF);
 fail:
@@ -2984,9 +3018,12 @@ static int
 ixgbe_allocate_transmit_buffers(struct tx_ring *txr)
 {
 	struct adapter *adapter = txr->adapter;
+	struct ixgbe_interface *interface;
 	device_t dev = adapter->dev;
 	struct ixgbe_tx_buf *txbuf;
 	int error, i;
+	
+	interface = &adapter->interface;
 
 	/*
 	 * Setup DMA descriptor areas.
@@ -3010,7 +3047,7 @@ ixgbe_allocate_transmit_buffers(struct tx_ring *txr)
 
 	if (!(txr->tx_buffers =
 	    (struct ixgbe_tx_buf *) malloc(sizeof(struct ixgbe_tx_buf) *
-	    adapter->num_tx_desc, M_DEVBUF, M_NOWAIT | M_ZERO))) {
+	    interface->num_tx_desc, M_DEVBUF, M_NOWAIT | M_ZERO))) {
 		device_printf(dev, "Unable to allocate tx_buffer memory\n");
 		error = ENOMEM;
 		goto fail;
@@ -3018,7 +3055,7 @@ ixgbe_allocate_transmit_buffers(struct tx_ring *txr)
 
         /* Create the descriptor buffer dma maps */
 	txbuf = txr->tx_buffers;
-	for (i = 0; i < adapter->num_tx_desc; i++, txbuf++) {
+	for (i = 0; i < interface->num_tx_desc; i++, txbuf++) {
 		error = bus_dmamap_create(txr->txtag, 0, &txbuf->map);
 		if (error != 0) {
 			device_printf(dev, "Unable to create TX DMA map\n");
@@ -3042,6 +3079,7 @@ static void
 ixgbe_setup_transmit_ring(struct tx_ring *txr)
 {
 	struct adapter *adapter = txr->adapter;
+	struct ixgbe_interface *interface;
 	
 	struct ixgbe_tx_buf *txbuf;
 	int i;
@@ -3049,6 +3087,8 @@ ixgbe_setup_transmit_ring(struct tx_ring *txr)
 	struct netmap_adapter *na = NA(adapter->interface.ifp);
 	struct netmap_slot *slot;
 #endif /* DEV_NETMAP */
+	
+	interface = &adapter->interface;
 
 	/* Clear the old ring contents */
 	IXGBE_TX_LOCK(txr);
@@ -3060,7 +3100,7 @@ ixgbe_setup_transmit_ring(struct tx_ring *txr)
 	slot = netmap_reset(na, NR_TX, txr->me, 0);
 #endif /* DEV_NETMAP */
 	bzero((void *)txr->tx_base,
-	      (sizeof(union ixgbe_adv_tx_desc)) * adapter->num_tx_desc);
+	      (sizeof(union ixgbe_adv_tx_desc)) * interface->num_tx_desc);
 	/* Reset indices */
 	txr->next_avail_desc = 0;
 	txr->next_to_clean = 0;
@@ -3102,7 +3142,7 @@ ixgbe_setup_transmit_ring(struct tx_ring *txr)
 #endif
 
 	/* Set number of descriptors available */
-	txr->tx_avail = adapter->num_tx_desc;
+	txr->tx_avail = interface->num_tx_desc;
 
 	bus_dmamap_sync(txr->txdma.dma_tag, txr->txdma.dma_map,
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
@@ -3117,7 +3157,11 @@ ixgbe_setup_transmit_ring(struct tx_ring *txr)
 static int
 ixgbe_setup_transmit_structures(struct adapter *adapter)
 {
-	struct tx_ring *txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct tx_ring *txr;
+
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	for (int i = 0; i < adapter->num_queues; i++, txr++)
 		ixgbe_setup_transmit_ring(txr);
@@ -3133,8 +3177,12 @@ ixgbe_setup_transmit_structures(struct adapter *adapter)
 static void
 ixgbe_initialize_transmit_units(struct adapter *adapter)
 {
-	struct tx_ring	*txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct tx_ring	*txr;
 	struct ixgbe_hw	*hw = &adapter->hw;
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	/* Setup the Base and Length of the Tx Descriptor Ring */
 
@@ -3146,7 +3194,7 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 		       (tdba & 0x00000000ffffffffULL));
 		IXGBE_WRITE_REG(hw, IXGBE_TDBAH(i), (tdba >> 32));
 		IXGBE_WRITE_REG(hw, IXGBE_TDLEN(i),
-		    adapter->num_tx_desc * sizeof(union ixgbe_adv_tx_desc));
+		    interface->num_tx_desc * sizeof(union ixgbe_adv_tx_desc));
 
 		/* Setup the HW Tx Head and Tail descriptor pointers */
 		IXGBE_WRITE_REG(hw, IXGBE_TDH(i), 0);
@@ -3209,7 +3257,11 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 static void
 ixgbe_free_transmit_structures(struct adapter *adapter)
 {
-	struct tx_ring *txr = adapter->tx_rings;
+	struct ixgbe_interface *interface;
+	struct tx_ring *txr;
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	for (int i = 0; i < adapter->num_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
@@ -3218,7 +3270,7 @@ ixgbe_free_transmit_structures(struct adapter *adapter)
 		IXGBE_TX_UNLOCK(txr);
 		IXGBE_TX_LOCK_DESTROY(txr);
 	}
-	free(adapter->tx_rings, M_DEVBUF);
+	free(interface->tx_rings, M_DEVBUF);
 }
 
 /*********************************************************************
@@ -3230,8 +3282,11 @@ static void
 ixgbe_free_transmit_buffers(struct tx_ring *txr)
 {
 	struct adapter *adapter = txr->adapter;
+	struct ixgbe_interface *interface;
 	struct ixgbe_tx_buf *tx_buffer;
 	int             i;
+	
+	interface = &adapter->interface;
 
 	INIT_DEBUGOUT("free_transmit_ring: begin");
 
@@ -3239,7 +3294,7 @@ ixgbe_free_transmit_buffers(struct tx_ring *txr)
 		return;
 
 	tx_buffer = txr->tx_buffers;
-	for (i = 0; i < adapter->num_tx_desc; i++, tx_buffer++) {
+	for (i = 0; i < interface->num_tx_desc; i++, tx_buffer++) {
 		if (tx_buffer->m_head != NULL) {
 			bus_dmamap_sync(txr->txtag, tx_buffer->map,
 			    BUS_DMASYNC_POSTWRITE);
@@ -5354,10 +5409,10 @@ ixgbe_sysctl_interrupt_rate_handler(SYSCTL_HANDLER_ARGS)
 static void
 ixgbe_add_hw_stats(struct adapter *adapter)
 {
-
+	struct ixgbe_interface *interface;
 	device_t dev = adapter->dev;
 
-	struct tx_ring *txr = adapter->tx_rings;
+	struct tx_ring *txr;
 	struct rx_ring *rxr = adapter->rx_rings;
 
 	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
@@ -5370,6 +5425,9 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 
 #define QUEUE_NAME_LEN 32
 	char namebuf[QUEUE_NAME_LEN];
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
 
 	/* Driver Statistics */
 	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "dropped",

@@ -140,8 +140,8 @@
  * This parameters control when the driver calls the routine to reclaim
  * transmit descriptors.
  */
-#define IXGBE_TX_CLEANUP_THRESHOLD	(adapter->num_tx_desc / 8)
-#define IXGBE_TX_OP_THRESHOLD		(adapter->num_tx_desc / 32)
+#define IXGBE_TX_CLEANUP_THRESHOLD(_i)	((_i)->num_tx_desc / 8)
+#define IXGBE_TX_OP_THRESHOLD(_i)	((_i)->num_tx_desc / 32)
 
 #define IXGBE_MAX_FRAME_SIZE	0x3F00
 
@@ -368,6 +368,13 @@ struct rx_ring {
 struct ixgbe_interface {
 	struct ifnet		*ifp;	
 	int			if_flags;
+
+	/*
+	 * Transmit rings:
+	 *	Allocated at run time, an array of rings.
+	 */
+	struct tx_ring		*tx_rings;
+	u32			num_tx_desc;
 };
 
 /* Our adapter structure */
@@ -442,13 +449,6 @@ struct adapter {
 	**   with it.
 	*/
 	struct ix_queue		*queues;
-
-	/*
-	 * Transmit rings:
-	 *	Allocated at run time, an array of rings.
-	 */
-	struct tx_ring		*tx_rings;
-	u32			num_tx_desc;
 
 	/*
 	 * Receive rings:
