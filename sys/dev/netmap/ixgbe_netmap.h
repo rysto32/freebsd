@@ -171,7 +171,8 @@ ixgbe_netmap_txsync(struct netmap_kring *kring, int flags)
 
 	/* device-specific */
 	struct adapter *adapter = ifp->if_softc;
-	struct tx_ring *txr = &adapter->tx_rings[kring->ring_id];
+	struct ixgbe_interface *interface = &adapter->interface;
+	struct tx_ring *txr = &interface->tx_rings[kring->ring_id];
 	int reclaim_tx;
 
 	bus_dmamap_sync(txr->txdma.dma_tag, txr->txdma.dma_map,
@@ -355,7 +356,8 @@ ixgbe_netmap_rxsync(struct netmap_kring *kring, int flags)
 
 	/* device-specific */
 	struct adapter *adapter = ifp->if_softc;
-	struct rx_ring *rxr = &adapter->rx_rings[kring->ring_id];
+	struct ixgbe_interface *interface = &adapter->interface;
+	struct rx_ring *rxr = &interface->rx_rings[kring->ring_id];
 
 	if (head > lim)
 		return netmap_ring_reinit(kring);
@@ -486,8 +488,8 @@ ixgbe_netmap_attach(struct adapter *adapter)
 
 	na.ifp = interface->ifp;
 	na.na_flags = NAF_BDG_MAYSLEEP;
-	na.num_tx_desc = adapter->num_tx_desc;
-	na.num_rx_desc = adapter->num_rx_desc;
+	na.num_tx_desc = interface->num_tx_desc;
+	na.num_rx_desc = interface->num_rx_desc;
 	na.nm_txsync = ixgbe_netmap_txsync;
 	na.nm_rxsync = ixgbe_netmap_rxsync;
 	na.nm_register = ixgbe_netmap_reg;
