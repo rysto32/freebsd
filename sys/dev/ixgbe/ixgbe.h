@@ -365,9 +365,13 @@ struct rx_ring {
 #endif
 };
 
+struct ixgbe_interface {
+	struct ifnet		*ifp;	
+	int			if_flags;
+};
+
 /* Our adapter structure */
 struct adapter {
-	struct ifnet		*ifp;
 	struct ixgbe_hw		hw;
 
 	struct ixgbe_osdep	osdep;
@@ -387,7 +391,6 @@ struct adapter {
 	struct ifmedia		media;
 	struct callout		timer;
 	int			msix;
-	int			if_flags;
 
 	struct mtx		core_mtx;
 
@@ -396,6 +399,8 @@ struct adapter {
 
 	u16			num_vlans;
 	u16			num_queues;
+	
+	struct ixgbe_interface	interface;
 
 	/*
 	** Shadow VFTA table, this is needed because

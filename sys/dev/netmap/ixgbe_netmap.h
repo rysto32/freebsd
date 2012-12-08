@@ -221,8 +221,9 @@ static int
 ixgbe_netmap_txsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 {
 	struct adapter *adapter = ifp->if_softc;
+	struct ixgbe_interface *interface = &adapter->interface;
 	struct tx_ring *txr = &adapter->tx_rings[ring_nr];
-	struct netmap_adapter *na = NA(adapter->ifp);
+	struct netmap_adapter *na = NA(interface->ifp);
 	struct netmap_kring *kring = &na->tx_rings[ring_nr];
 	struct netmap_ring *ring = kring->ring;
 	u_int j, l, n = 0;
@@ -449,7 +450,8 @@ ixgbe_netmap_rxsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 {
 	struct adapter *adapter = ifp->if_softc;
 	struct rx_ring *rxr = &adapter->rx_rings[ring_nr];
-	struct netmap_adapter *na = NA(adapter->ifp);
+	struct ixgbe_interface *interface = &adapter->interface;
+	struct netmap_adapter *na = NA(interface->ifp);
 	struct netmap_kring *kring = &na->rx_rings[ring_nr];
 	struct netmap_ring *ring = kring->ring;
 	u_int j, l, n, lim = kring->nkr_num_slots - 1;
@@ -592,11 +594,14 @@ ring_reset:
 static void
 ixgbe_netmap_attach(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	struct netmap_adapter na;
+
+	interface = &adapter->interface;
 
 	bzero(&na, sizeof(na));
 
-	na.ifp = adapter->ifp;
+	na.ifp = interface->ifp;
 	na.separate_locks = 1;	/* this card has separate rx/tx locks */
 	na.num_tx_desc = adapter->num_tx_desc;
 	na.num_rx_desc = adapter->num_rx_desc;
