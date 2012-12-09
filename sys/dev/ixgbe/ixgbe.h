@@ -369,6 +369,18 @@ struct ixgbe_interface {
 	struct ifnet		*ifp;	
 	int			if_flags;
 
+	eventhandler_tag 	vlan_attach;
+	eventhandler_tag 	vlan_detach;
+
+	/*
+	 * Shadow VFTA table, this is needed because
+	 * the real vlan filter table gets cleared during
+	 * a soft reset and the driver needs to be able
+	 * to repopulate it.
+	 */
+	u32			shadow_vfta[IXGBE_VFTA_SIZE];
+	u16			num_vlans;
+
 	/*
 	 * Queues: 
 	 *   This is the irq holder, it has
@@ -417,21 +429,8 @@ struct adapter {
 	int			msix;
 
 	struct mtx		core_mtx;
-
-	eventhandler_tag 	vlan_attach;
-	eventhandler_tag 	vlan_detach;
-
-	u16			num_vlans;
 	
 	struct ixgbe_interface	interface;
-
-	/*
-	** Shadow VFTA table, this is needed because
-	** the real vlan filter table gets cleared during
-	** a soft reset and the driver needs to be able
-	** to repopulate it.
-	*/
-	u32			shadow_vfta[IXGBE_VFTA_SIZE];
 
 	/* Info about the interface */
 	u32			optics;

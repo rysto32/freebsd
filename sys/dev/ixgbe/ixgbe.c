@@ -573,9 +573,9 @@ ixgbe_attach(device_t dev)
 	ixgbe_update_stats_counters(adapter);
 
 	/* Register for VLAN events */
-	adapter->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
+	interface->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
 	    ixgbe_register_vlan, adapter, EVENTHANDLER_PRI_FIRST);
-	adapter->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
+	interface->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
 	    ixgbe_unregister_vlan, adapter, EVENTHANDLER_PRI_FIRST);
 
         /* Print PCIE bus type/speed/width info */
@@ -686,10 +686,10 @@ ixgbe_detach(device_t dev)
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_CTRL_EXT, ctrl_ext);
 
 	/* Unregister VLAN events */
-	if (adapter->vlan_attach != NULL)
-		EVENTHANDLER_DEREGISTER(vlan_config, adapter->vlan_attach);
-	if (adapter->vlan_detach != NULL)
-		EVENTHANDLER_DEREGISTER(vlan_unconfig, adapter->vlan_detach);
+	if (interface->vlan_attach != NULL)
+		EVENTHANDLER_DEREGISTER(vlan_config, interface->vlan_attach);
+	if (interface->vlan_detach != NULL)
+		EVENTHANDLER_DEREGISTER(vlan_unconfig, interface->vlan_detach);
 
 	ether_ifdetach(interface->ifp);
 	callout_drain(&adapter->timer);
@@ -4784,6 +4784,7 @@ static void
 ixgbe_register_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 {
 	struct adapter	*adapter = ifp->if_softc;
+	struct ixgbe_interface *interface;
 	u16		index, bit;
 
 	if (ifp->if_softc !=  arg)   /* Not our event */
@@ -4791,12 +4792,14 @@ ixgbe_register_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
 		return;
+	
+	interface = &adapter->interface;
 
 	IXGBE_CORE_LOCK(adapter);
 	index = (vtag >> 5) & 0x7F;
 	bit = vtag & 0x1F;
-	adapter->shadow_vfta[index] |= (1 << bit);
-	++adapter->num_vlans;
+	interface->shadow_vfta[index] |= (1 << bit);
+	++interface->num_vlans;
 	ixgbe_init_locked(adapter);
 	IXGBE_CORE_UNLOCK(adapter);
 }
@@ -4810,6 +4813,7 @@ static void
 ixgbe_unregister_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 {
 	struct adapter	*adapter = ifp->if_softc;
+	struct ixgbe_interface *interface;
 	u16		index, bit;
 
 	if (ifp->if_softc !=  arg)
@@ -4817,15 +4821,35 @@ ixgbe_unregister_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
 		return;
+	
+	interface = &adapter->interface;
 
 	IXGBE_CORE_LOCK(adapter);
 	index = (vtag >> 5) & 0x7F;
 	bit = vtag & 0x1F;
-	adapter->shadow_vfta[index] &= ~(1 << bit);
-	--adapter->num_vlans;
+	interface->shadow_vfta[index] &= ~(1 << bit);
+	--interface->num_vlans;
 	/* Re-init to load the changes */
 	ixgbe_init_locked(adapter);
 	IXGBE_CORE_UNLOCK(adapter);
+}
+
+static int
+ixgbe_num_vlans(struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
+	return (interface->num_vlans);
+}
+
+static uint32_t
+ixgbe_get_vfta(struct adapter *adapter, int index)
+{
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
+	return (interface->shadow_vfta[index]);
 }
 
 static void
@@ -4836,6 +4860,7 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct rx_ring	*rxr;
 	u32		ctrl;
+	uint32_t	vfta;
 
 	interface = &adapter->interface;
 	ifp = interface->ifp;
@@ -4846,17 +4871,18 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 	** the VFTA and other state, so if there
 	** have been no vlan's registered do nothing.
 	*/
-	if (adapter->num_vlans == 0)
+	if (ixgbe_num_vlans(adapter) == 0)
 		return;
 
 	/*
 	** A soft reset zero's out the VFTA, so
 	** we need to repopulate it now.
 	*/
-	for (int i = 0; i < IXGBE_VFTA_SIZE; i++)
-		if (adapter->shadow_vfta[i] != 0)
-			IXGBE_WRITE_REG(hw, IXGBE_VFTA(i),
-			    adapter->shadow_vfta[i]);
+	for (int i = 0; i < IXGBE_VFTA_SIZE; i++) {
+		vfta = ixgbe_get_vfta(adapter, i);
+		if (vfta != 0)
+			IXGBE_WRITE_REG(hw, IXGBE_VFTA(i), vfta);
+	}
 
 	ctrl = IXGBE_READ_REG(hw, IXGBE_VLNCTRL);
 	/* Enable the Filter Table if enabled */
