@@ -176,7 +176,9 @@ static u8 *	ixgbe_mc_array_itr(struct ixgbe_hw *, u8 **, u32 *);
 
 static void	ixgbe_setup_vlan_hw_support(struct adapter *);
 static void	ixgbe_register_vlan(void *, struct ifnet *, u16);
+static void	ixgbe_register_vlan_int(struct ixgbe_interface *, u16);
 static void	ixgbe_unregister_vlan(void *, struct ifnet *, u16);
+static void	ixgbe_unregister_vlan_int(struct ixgbe_interface *, u16);
 
 static void     ixgbe_add_hw_stats(struct adapter *adapter);
 
@@ -4817,17 +4819,23 @@ ixgbe_rx_checksum(u32 staterr, struct mbuf * mp, u32 ptype)
 static void
 ixgbe_register_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 {
-	struct adapter	*adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
-	u16		index, bit;
 
-	if (ifp->if_softc !=  arg)   /* Not our event */
+	if (ifp->if_softc != arg)   /* Not our event */
 		return;
+
+	ixgbe_register_vlan_int(ixgbe_phys_get_interface(ifp), vtag);
+}
+
+static void
+ixgbe_register_vlan_int(struct ixgbe_interface *interface, u16 vtag)
+{
+	struct adapter	*adapter;
+	u16		index, bit;
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
 		return;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
 
 	IXGBE_CORE_LOCK(adapter);
 	index = (vtag >> 5) & 0x7F;
@@ -4846,17 +4854,23 @@ ixgbe_register_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 static void
 ixgbe_unregister_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 {
-	struct adapter	*adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
-	u16		index, bit;
 
 	if (ifp->if_softc !=  arg)
 		return;
 
+	ixgbe_unregister_vlan_int(ixgbe_phys_get_interface(ifp), vtag);
+}
+
+static void
+ixgbe_unregister_vlan_int(struct ixgbe_interface *interface, u16 vtag)
+{
+	struct adapter	*adapter;
+	u16		index, bit;
+
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
 		return;
-	
-	interface = &adapter->interface;
+
+	adapter = interface->adapter;
 
 	IXGBE_CORE_LOCK(adapter);
 	index = (vtag >> 5) & 0x7F;
