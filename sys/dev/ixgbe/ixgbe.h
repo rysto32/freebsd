@@ -372,6 +372,15 @@ struct ixgbe_interface {
 	int			if_flags;
 
 	/*
+	 * Queues: 
+	 *   This is the irq holder, it has
+	 *   and RX/TX pair or rings associated
+	 *   with it.
+	 */
+	struct ix_queue		*queues;
+	u16			num_queues;
+
+	/*
 	 * Transmit rings:
 	 *	Allocated at run time, an array of rings.
 	 */
@@ -415,7 +424,6 @@ struct adapter {
 	eventhandler_tag 	vlan_detach;
 
 	u16			num_vlans;
-	u16			num_queues;
 	
 	struct ixgbe_interface	interface;
 
@@ -451,14 +459,6 @@ struct adapter {
 	struct task     	fdir_task;
 #endif
 	struct taskqueue	*tq;
-
-	/*
-	** Queues: 
-	**   This is the irq holder, it has
-	**   and RX/TX pair or rings associated
-	**   with it.
-	*/
-	struct ix_queue		*queues;
 
 	/* Multicast array memory */
 	u8			*mta;
