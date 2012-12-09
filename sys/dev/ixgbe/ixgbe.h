@@ -375,6 +375,14 @@ struct ixgbe_interface {
 	 */
 	struct tx_ring		*tx_rings;
 	u32			num_tx_desc;
+
+	/*
+	 * Receive rings:
+	 *	Allocated at run time, an array of rings.
+	 */
+	struct rx_ring		*rx_rings;
+	u64			que_mask;
+	u32			num_rx_desc;
 };
 
 /* Our adapter structure */
@@ -449,14 +457,6 @@ struct adapter {
 	**   with it.
 	*/
 	struct ix_queue		*queues;
-
-	/*
-	 * Receive rings:
-	 *	Allocated at run time, an array of rings.
-	 */
-	struct rx_ring		*rx_rings;
-	u64			que_mask;
-	u32			num_rx_desc;
 
 	/* Multicast array memory */
 	u8			*mta;

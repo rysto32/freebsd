@@ -98,10 +98,10 @@ ixgbe_netmap_lock_wrapper(struct ifnet *_a, int what, u_int queueid)
 		IXGBE_TX_UNLOCK(&interface->tx_rings[queueid]);
 		break;
 	case NETMAP_RX_LOCK:
-		IXGBE_RX_LOCK(&adapter->rx_rings[queueid]);
+		IXGBE_RX_LOCK(&interface->rx_rings[queueid]);
 		break;
 	case NETMAP_RX_UNLOCK:
-		IXGBE_RX_UNLOCK(&adapter->rx_rings[queueid]);
+		IXGBE_RX_UNLOCK(&interface->rx_rings[queueid]);
 		break;
 	}
 }
@@ -452,8 +452,8 @@ static int
 ixgbe_netmap_rxsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 {
 	struct adapter *adapter = ifp->if_softc;
-	struct rx_ring *rxr = &adapter->rx_rings[ring_nr];
 	struct ixgbe_interface *interface = &adapter->interface;
+	struct rx_ring *rxr = &interface->rx_rings[ring_nr];
 	struct netmap_adapter *na = NA(interface->ifp);
 	struct netmap_kring *kring = &na->rx_rings[ring_nr];
 	struct netmap_ring *ring = kring->ring;
@@ -607,7 +607,7 @@ ixgbe_netmap_attach(struct adapter *adapter)
 	na.ifp = interface->ifp;
 	na.separate_locks = 1;	/* this card has separate rx/tx locks */
 	na.num_tx_desc = interface->num_tx_desc;
-	na.num_rx_desc = adapter->num_rx_desc;
+	na.num_rx_desc = interface->num_rx_desc;
 	na.nm_txsync = ixgbe_netmap_txsync;
 	na.nm_rxsync = ixgbe_netmap_rxsync;
 	na.nm_lock = ixgbe_netmap_lock_wrapper;
