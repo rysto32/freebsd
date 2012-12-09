@@ -288,8 +288,8 @@ struct ix_queue {
  * The transmit ring, one per queue
  */
 struct tx_ring {
-        struct adapter		*adapter;
 	struct mtx		tx_mtx;
+        struct ixgbe_interface	*interface;
 	u32			me;
 	int			watchdog_time;
 	union ixgbe_adv_tx_desc	*tx_base;
