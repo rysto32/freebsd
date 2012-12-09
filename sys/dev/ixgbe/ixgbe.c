@@ -478,7 +478,7 @@ ixgbe_attach(device_t dev)
 	*/
 	if (nmbclusters > 0 ) {
 		int s;
-		s = (ixgbe_rxd * adapter->num_queues) * ixgbe_total_ports;
+		s = (ixgbe_rxd * interface->num_queues) * ixgbe_total_ports;
 		if (s > nmbclusters) {
 			device_printf(dev, "RX Descriptors exceed "
 			    "system mbuf max, using default instead!\n");
@@ -639,13 +639,14 @@ ixgbe_detach(device_t dev)
 {
 	struct adapter *adapter = device_get_softc(dev);
 	struct ixgbe_interface *interface;
-	struct ix_queue *que = adapter->queues;
+	struct ix_queue *que;
 	struct tx_ring *txr;
 	u32	ctrl_ext;
 
 	INIT_DEBUGOUT("ixgbe_detach: begin");
 	
 	interface = &adapter->interface;
+	que = interface->queues;
 	txr = interface->tx_rings;
 
 	/* Make sure VLANS are not using driver */
@@ -658,7 +659,7 @@ ixgbe_detach(device_t dev)
 	ixgbe_stop(adapter);
 	IXGBE_CORE_UNLOCK(adapter);
 
-	for (int i = 0; i < adapter->num_queues; i++, que++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, que++, txr++) {
 		if (que->tq) {
 #ifndef IXGBE_LEGACY_TX
 			taskqueue_drain(que->tq, &txr->txq_task);
@@ -814,12 +815,12 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 
 	/* Which queue to use */
 	if ((m->m_flags & M_FLOWID) != 0)
-		i = m->m_pkthdr.flowid % adapter->num_queues;
+		i = m->m_pkthdr.flowid % interface->num_queues;
 	else
-		i = curcpu % adapter->num_queues;
+		i = curcpu % interface->num_queues;
 
 	txr = &interface->tx_rings[i];
-	que = &adapter->queues[i];
+	que = &interface->queues[i];
 
 	if (IXGBE_TX_TRYLOCK(txr)) {
 		err = ixgbe_mq_start_locked(ifp, txr, m);
@@ -923,7 +924,7 @@ ixgbe_qflush(struct ifnet *ifp)
 	interface = &adapter->interface;
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < adapter->num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
 		while ((m = buf_ring_dequeue_sc(txr->br)) != NULL)
 			m_freem(m);
@@ -1199,7 +1200,7 @@ ixgbe_init_locked(struct adapter *adapter)
 	
 	/* Now enable all the queues */
 
-	for (int i = 0; i < adapter->num_queues; i++) {
+	for (int i = 0; i < interface->num_queues; i++) {
 		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(i));
 		txdctl |= IXGBE_TXDCTL_ENABLE;
 		/* Set WTHRESH to 8, burst writeback */
@@ -1215,7 +1216,7 @@ ixgbe_init_locked(struct adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(i), txdctl);
 	}
 
-	for (int i = 0; i < adapter->num_queues; i++) {
+	for (int i = 0; i < interface->num_queues; i++) {
 		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(i));
 		if (hw->mac.type == ixgbe_mac_82598EB) {
 			/*
@@ -2080,13 +2081,14 @@ ixgbe_local_timer(void *arg)
 	struct adapter	*adapter = arg;
 	struct ixgbe_interface *interface;
 	device_t	dev = adapter->dev;
-	struct ix_queue *que = adapter->queues;
+	struct ix_queue *que;
 	struct tx_ring	*txr;
 	int		hung = 0, paused = 0;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 
 	interface = &adapter->interface;
+	que = interface->queues;
 	txr = interface->tx_rings;
 
 	/* Check for pluggable optics */
@@ -2108,7 +2110,7 @@ ixgbe_local_timer(void *arg)
 	** Check the TX queues status
 	**      - watchdog only if all queues show hung
 	*/          
-	for (int i = 0; i < adapter->num_queues; i++, que++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, que++, txr++) {
 		if ((txr->queue_status == IXGBE_QUEUE_HUNG) &&
 		    (paused == 0))
 			++hung;
@@ -2116,7 +2118,7 @@ ixgbe_local_timer(void *arg)
 			taskqueue_enqueue(que->tq, &que->que_task);
         }
 	/* Only truely watchdog if all queues show hung */
-        if (hung == adapter->num_queues)
+        if (hung == interface->num_queues)
                 goto watchdog;
 
 out:
@@ -2314,16 +2316,17 @@ static int
 ixgbe_allocate_legacy(struct adapter *adapter)
 {
 	device_t	dev = adapter->dev;
-	struct		ix_queue *que = adapter->queues;
-#ifndef IXGBE_LEGACY_TX
 	struct ixgbe_interface *interface;
+	struct		ix_queue *que;
+#ifndef IXGBE_LEGACY_TX
 	struct tx_ring		*txr;
 #endif
 	int		error, rid = 0;
 	
+	interface = &adapter->interface;
+	que = interface->queues;
 
 #ifndef IXGBE_LEGACY_TX
-	interface = &adapter->interface;
 	txr = interface->tx_rings;
 #endif
 
@@ -2393,14 +2396,15 @@ ixgbe_allocate_msix(struct adapter *adapter)
 {
 	device_t        dev = adapter->dev;
 	struct 		ixgbe_interface *interface;
-	struct 		ix_queue *que = adapter->queues;
+	struct 		ix_queue *que;
 	struct  	tx_ring *txr;
 	int 		error, rid, vector = 0;
 	
 	interface = &adapter->interface;
+	que = interface->queues;
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < adapter->num_queues; i++, vector++, que++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, vector++, que++, txr++) {
 		rid = vector + 1;
 		que->res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 		    RF_SHAREABLE | RF_ACTIVE);
@@ -2427,7 +2431,7 @@ ixgbe_allocate_msix(struct adapter *adapter)
 		** Bind the msix vector, and thus the
 		** ring to the corresponding cpu.
 		*/
-		if (adapter->num_queues > 1)
+		if (interface->num_queues > 1)
 			bus_bind_intr(dev, que->res, i);
 
 #ifndef IXGBE_LEGACY_TX
@@ -2483,8 +2487,11 @@ ixgbe_allocate_msix(struct adapter *adapter)
 static int
 ixgbe_setup_msix(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	device_t dev = adapter->dev;
 	int rid, want, queues, msgs;
+	
+	interface = &adapter->interface;
 
 	/* Override by tuneable */
 	if (ixgbe_enable_msix == 0)
@@ -2540,7 +2547,7 @@ ixgbe_setup_msix(struct adapter *adapter)
 	if ((msgs) && pci_alloc_msix(dev, &msgs) == 0) {
                	device_printf(adapter->dev,
 		    "Using MSIX interrupts with %d vectors\n", msgs);
-		adapter->num_queues = queues;
+		interface->num_queues = queues;
 		return (msgs);
 	}
 msi:
@@ -2556,8 +2563,11 @@ msi:
 static int
 ixgbe_allocate_pci_resources(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	int             rid;
 	device_t        dev = adapter->dev;
+	
+	interface = &adapter->interface;
 
 	rid = PCIR_BAR(0);
 	adapter->pci_mem = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
@@ -2575,7 +2585,7 @@ ixgbe_allocate_pci_resources(struct adapter *adapter)
 	adapter->hw.hw_addr = (u8 *) &adapter->osdep.mem_bus_space_handle;
 
 	/* Legacy defaults */
-	adapter->num_queues = 1;
+	interface->num_queues = 1;
 	adapter->hw.back = &adapter->osdep;
 
 	/*
@@ -2590,9 +2600,13 @@ ixgbe_allocate_pci_resources(struct adapter *adapter)
 static void
 ixgbe_free_pci_resources(struct adapter * adapter)
 {
-	struct 		ix_queue *que = adapter->queues;
+	struct ixgbe_interface *interface;
+	struct 		ix_queue *que;
 	device_t	dev = adapter->dev;
 	int		rid, memrid;
+	
+	interface = &adapter->interface;
+	que = interface->queues;
 
 	if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 		memrid = PCIR_BAR(MSIX_82598_BAR);
@@ -2613,7 +2627,7 @@ ixgbe_free_pci_resources(struct adapter * adapter)
 	/*
 	**  Release all msix queue resources:
 	*/
-	for (int i = 0; i < adapter->num_queues; i++, que++) {
+	for (int i = 0; i < interface->num_queues; i++, que++) {
 		rid = que->msix + 1;
 		if (que->tag != NULL) {
 			bus_teardown_intr(dev, que->res, que->tag);
@@ -2867,9 +2881,9 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	interface = &adapter->interface;
 
         /* First allocate the top level queue structs */
-        if (!(adapter->queues =
+        if (!(interface->queues =
             (struct ix_queue *) malloc(sizeof(struct ix_queue) *
-            adapter->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
+            interface->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
                 device_printf(dev, "Unable to allocate queue memory\n");
                 error = ENOMEM;
                 goto fail;
@@ -2878,7 +2892,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	/* First allocate the TX ring struct memory */
 	if (!(interface->tx_rings =
 	    (struct tx_ring *) malloc(sizeof(struct tx_ring) *
-	    adapter->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
+	    interface->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
 		device_printf(dev, "Unable to allocate TX ring memory\n");
 		error = ENOMEM;
 		goto tx_fail;
@@ -2887,7 +2901,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	/* Next allocate the RX */
 	if (!(interface->rx_rings =
 	    (struct rx_ring *) malloc(sizeof(struct rx_ring) *
-	    adapter->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
+	    interface->num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
 		device_printf(dev, "Unable to allocate RX ring memory\n");
 		error = ENOMEM;
 		goto rx_fail;
@@ -2902,7 +2916,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	 * possibility that things fail midcourse and we need to
 	 * undo memory gracefully
 	 */ 
-	for (int i = 0; i < adapter->num_queues; i++, txconf++) {
+	for (int i = 0; i < interface->num_queues; i++, txconf++) {
 		/* Set up some basics */
 		txr = &interface->tx_rings[i];
 		txr->adapter = adapter;
@@ -2949,7 +2963,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	 */ 
 	rsize = roundup2(interface->num_rx_desc *
 	    sizeof(union ixgbe_adv_rx_desc), DBA_ALIGN);
-	for (int i = 0; i < adapter->num_queues; i++, rxconf++) {
+	for (int i = 0; i < interface->num_queues; i++, rxconf++) {
 		rxr = &interface->rx_rings[i];
 		/* Set up some basics */
 		rxr->adapter = adapter;
@@ -2983,8 +2997,8 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	/*
 	** Finally set up the queue holding structs
 	*/
-	for (int i = 0; i < adapter->num_queues; i++) {
-		que = &adapter->queues[i];
+	for (int i = 0; i < interface->num_queues; i++) {
+		que = &interface->queues[i];
 		que->adapter = adapter;
 		que->txr = &interface->tx_rings[i];
 		que->rxr = &interface->rx_rings[i];
@@ -3002,7 +3016,7 @@ err_tx_desc:
 rx_fail:
 	free(interface->tx_rings, M_DEVBUF);
 tx_fail:
-	free(adapter->queues, M_DEVBUF);
+	free(interface->queues, M_DEVBUF);
 fail:
 	return (error);
 }
@@ -3163,7 +3177,7 @@ ixgbe_setup_transmit_structures(struct adapter *adapter)
 	interface = &adapter->interface;
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < adapter->num_queues; i++, txr++)
+	for (int i = 0; i < interface->num_queues; i++, txr++)
 		ixgbe_setup_transmit_ring(txr);
 
 	return (0);
@@ -3186,7 +3200,7 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 
 	/* Setup the Base and Length of the Tx Descriptor Ring */
 
-	for (int i = 0; i < adapter->num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, txr++) {
 		u64	tdba = txr->txdma.dma_paddr;
 		u32	txctrl;
 
@@ -3263,7 +3277,7 @@ ixgbe_free_transmit_structures(struct adapter *adapter)
 	interface = &adapter->interface;
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < adapter->num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
 		ixgbe_free_transmit_buffers(txr);
 		ixgbe_dma_free(adapter, &txr->txdma);
@@ -3583,6 +3597,7 @@ static void
 ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 {
 	struct adapter			*adapter = txr->adapter;
+	struct ixgbe_interface		*interface;
 	struct ix_queue			*que;
 	struct ip			*ip;
 	struct tcphdr			*th;
@@ -3592,6 +3607,8 @@ ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 	union ixgbe_atr_hash_dword	common = {.dword = 0}; 
 	int  				ehdrlen, ip_hlen;
 	u16				etype;
+	
+	interface = &adapter->interface;
 
 	eh = mtod(mp, struct ether_vlan_header *);
 	if (eh->evl_encap_proto == htons(ETHERTYPE_VLAN)) {
@@ -3636,7 +3653,7 @@ ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 		common.flex_bytes ^= etype;
 	common.ip ^= ip->ip_src.s_addr ^ ip->ip_dst.s_addr;
 
-	que = &adapter->queues[txr->me];
+	que = &interface->queues[txr->me];
 	/*
 	** This assumes the Rx queue and Tx
 	** queue are bound to the same CPU
@@ -4181,7 +4198,7 @@ ixgbe_setup_receive_structures(struct adapter *adapter)
 	interface = &adapter->interface;
 	rxr = interface->rx_rings;
 
-	for (j = 0; j < adapter->num_queues; j++, rxr++)
+	for (j = 0; j < interface->num_queues; j++, rxr++)
 		if (ixgbe_setup_receive_ring(rxr))
 			goto fail;
 
@@ -4256,7 +4273,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 	bufsz = (adapter->rx_mbuf_sz +
 	    BSIZEPKT_ROUNDUP) >> IXGBE_SRRCTL_BSIZEPKT_SHIFT;
 
-	for (int i = 0; i < adapter->num_queues; i++, rxr++) {
+	for (int i = 0; i < interface->num_queues; i++, rxr++) {
 		u64 rdba = rxr->rxdma.dma_paddr;
 
 		/* Setup the Base and Length of the Rx Descriptor Ring */
@@ -4293,7 +4310,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 	rxcsum = IXGBE_READ_REG(hw, IXGBE_RXCSUM);
 
 	/* Setup RSS */
-	if (adapter->num_queues > 1) {
+	if (interface->num_queues > 1) {
 		int i, j;
 		reta = 0;
 
@@ -4302,7 +4319,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 
 		/* Set up the redirection table */
 		for (i = 0, j = 0; i < 128; i++, j++) {
-			if (j == adapter->num_queues) j = 0;
+			if (j == interface->num_queues) j = 0;
 			reta = (reta << 8) | (j * 0x11);
 			if ((i & 3) == 3)
 				IXGBE_WRITE_REG(hw, IXGBE_RETA(i >> 2), reta);
@@ -4354,7 +4371,7 @@ ixgbe_free_receive_structures(struct adapter *adapter)
 	interface = &adapter->interface;
 	rxr = interface->rx_rings;
 
-	for (int i = 0; i < adapter->num_queues; i++, rxr++) {
+	for (int i = 0; i < interface->num_queues; i++, rxr++) {
 		struct lro_ctrl		*lro = &rxr->lro;
 		ixgbe_free_receive_buffers(rxr);
 		/* Free LRO memory */
@@ -4852,7 +4869,7 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 	IXGBE_WRITE_REG(hw, IXGBE_VLNCTRL, ctrl);
 
 	/* Setup the queues for vlans */
-	for (int i = 0; i < adapter->num_queues; i++) {
+	for (int i = 0; i < interface->num_queues; i++) {
 		rxr = &interface->rx_rings[i];
 		/* On 82599 the VLAN enable is per/queue in RXDCTL */
 		if (hw->mac.type != ixgbe_mac_82598EB) {
@@ -4867,11 +4884,14 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 static void
 ixgbe_enable_intr(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	struct ixgbe_hw	*hw = &adapter->hw;
-	struct ix_queue	*que = adapter->queues;
+	struct ix_queue *que;
 	u32		mask, fwsm;
 
 	mask = (IXGBE_EIMS_ENABLE_MASK & ~IXGBE_EIMS_RTX_QUEUE);
+	interface = &adapter->interface;
+	que = interface->queues;
 	/* Enable Fan Failure detection */
 	if (hw->device_id == IXGBE_DEV_ID_82598AT)
 		    mask |= IXGBE_EIMS_GPI_SDP1;
@@ -4916,7 +4936,7 @@ ixgbe_enable_intr(struct adapter *adapter)
 	** allow for handling the extended (beyond 32) MSIX
 	** vectors that can be used by 82599
 	*/
-        for (int i = 0; i < adapter->num_queues; i++, que++)
+        for (int i = 0; i < interface->num_queues; i++, que++)
                 ixgbe_enable_queue(adapter, que->msix);
 
 	IXGBE_WRITE_FLUSH(hw);
@@ -5013,15 +5033,19 @@ ixgbe_set_ivar(struct adapter *adapter, u8 entry, u8 vector, s8 type)
 static void
 ixgbe_configure_ivars(struct adapter *adapter)
 {
-	struct  ix_queue *que = adapter->queues;
+	struct ixgbe_interface *interface;
+	struct  ix_queue *que;
 	u32 newitr;
+	
+	interface = &adapter->interface;
+	que = interface->queues;
 
 	if (ixgbe_max_interrupt_rate > 0)
 		newitr = (4000000 / ixgbe_max_interrupt_rate) & 0x0FF8;
 	else
 		newitr = 0;
 
-        for (int i = 0; i < adapter->num_queues; i++, que++) {
+        for (int i = 0; i < interface->num_queues; i++, que++) {
 		/* First the RX queue entry */
                 ixgbe_set_ivar(adapter, i, que->msix, 0);
 		/* ... and the TX */
@@ -5456,19 +5480,19 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 			CTLFLAG_RD, &adapter->link_irq,
 			"Link MSIX IRQ Handled");
 
-	for (int i = 0; i < adapter->num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_queues; i++, txr++) {
 		snprintf(namebuf, QUEUE_NAME_LEN, "queue%d", i);
 		queue_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, namebuf,
 					    CTLFLAG_RD, NULL, "Queue Name");
 		queue_list = SYSCTL_CHILDREN(queue_node);
 
 		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "interrupt_rate",
-				CTLTYPE_UINT | CTLFLAG_RW, &adapter->queues[i],
-				sizeof(&adapter->queues[i]),
+				CTLTYPE_UINT | CTLFLAG_RW, &interface->queues[i],
+				sizeof(&interface->queues[i]),
 				ixgbe_sysctl_interrupt_rate_handler, "IU",
 				"Interrupt Rate");
 		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "irqs",
-				CTLFLAG_RD, &(adapter->queues[i].irqs),
+				CTLFLAG_RD, &(interface->queues[i].irqs),
 				"irqs on this queue");
 		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "txd_head", 
 				CTLTYPE_UINT | CTLFLAG_RD, txr, sizeof(txr),
@@ -5492,7 +5516,7 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 				"Queue Packets Transmitted");
 	}
 
-	for (int i = 0; i < adapter->num_queues; i++, rxr++) {
+	for (int i = 0; i < interface->num_queues; i++, rxr++) {
 		snprintf(namebuf, QUEUE_NAME_LEN, "queue%d", i);
 		queue_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, namebuf, 
 					    CTLFLAG_RD, NULL, "Queue Name");
@@ -5683,6 +5707,9 @@ ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS)
 {
 	int error, last;
 	struct adapter *adapter = (struct adapter *) arg1;
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
 
 	last = adapter->fc;
 	error = sysctl_handle_int(oidp, &adapter->fc, 0, req);
@@ -5698,12 +5725,12 @@ ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS)
 		case ixgbe_fc_tx_pause:
 		case ixgbe_fc_full:
 			adapter->hw.fc.requested_mode = adapter->fc;
-			if (adapter->num_queues > 1)
+			if (interface->num_queues > 1)
 				ixgbe_disable_rx_drop(adapter);
 			break;
 		case ixgbe_fc_none:
 			adapter->hw.fc.requested_mode = ixgbe_fc_none;
-			if (adapter->num_queues > 1)
+			if (interface->num_queues > 1)
 				ixgbe_enable_rx_drop(adapter);
 			break;
 		default:
@@ -5808,9 +5835,12 @@ ixgbe_set_thermal_test(SYSCTL_HANDLER_ARGS)
 static void
 ixgbe_enable_rx_drop(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
         struct ixgbe_hw *hw = &adapter->hw;
+	
+	interface = &adapter->interface;
 
-	for (int i = 0; i < adapter->num_queues; i++) {
+	for (int i = 0; i < interface->num_queues; i++) {
         	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
         	srrctl |= IXGBE_SRRCTL_DROP_EN;
         	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
@@ -5820,9 +5850,12 @@ ixgbe_enable_rx_drop(struct adapter *adapter)
 static void
 ixgbe_disable_rx_drop(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
         struct ixgbe_hw *hw = &adapter->hw;
+	
+	interface = &adapter->interface;
 
-	for (int i = 0; i < adapter->num_queues; i++) {
+	for (int i = 0; i < interface->num_queues; i++) {
         	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
         	srrctl &= ~IXGBE_SRRCTL_DROP_EN;
         	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);

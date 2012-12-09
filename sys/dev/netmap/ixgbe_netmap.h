@@ -83,7 +83,7 @@ ixgbe_netmap_lock_wrapper(struct ifnet *_a, int what, u_int queueid)
 	
 	interface = &adapter->interface;
 
-	ASSERT(queueid < adapter->num_queues);
+	ASSERT(queueid < interface->num_queues);
 	switch (what) {
 	case NETMAP_CORE_LOCK:
 		IXGBE_CORE_LOCK(adapter);
@@ -612,7 +612,7 @@ ixgbe_netmap_attach(struct adapter *adapter)
 	na.nm_rxsync = ixgbe_netmap_rxsync;
 	na.nm_lock = ixgbe_netmap_lock_wrapper;
 	na.nm_register = ixgbe_netmap_reg;
-	netmap_attach(&na, adapter->num_queues);
+	netmap_attach(&na, interface->num_queues);
 }	
 
 /* end of file */
