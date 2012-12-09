@@ -109,12 +109,15 @@ static void     ixgbe_start(struct ifnet *);
 static void     ixgbe_start_locked(struct tx_ring *, struct ifnet *);
 #else /* ! IXGBE_LEGACY_TX */
 static int	ixgbe_mq_start(struct ifnet *, struct mbuf *);
-static int	ixgbe_mq_start_locked(struct ifnet *,
+static int	ixgbe_mq_start_int(struct ixgbe_interface *, struct mbuf *);
+static int	ixgbe_mq_start_locked(struct ixgbe_interface *,
                     struct tx_ring *, struct mbuf *);
 static void	ixgbe_qflush(struct ifnet *);
+static void	ixgbe_qflush_int(struct ixgbe_interface *);
 static void	ixgbe_deferred_mq_start(void *, int);
 #endif /* IXGBE_LEGACY_TX */
 static int      ixgbe_ioctl(struct ifnet *, u_long, caddr_t);
+static int	ixgbe_ioctl_int(struct ixgbe_interface *, u_long, caddr_t);
 static void	ixgbe_init(void *);
 static void	ixgbe_init_locked(struct adapter *);
 static void     ixgbe_stop(void *);
@@ -725,6 +728,14 @@ ixgbe_shutdown(device_t dev)
 	return (0);
 }
 
+static __inline struct ixgbe_interface *
+ixgbe_phys_get_interface(struct ifnet *ifp)
+{
+	struct adapter *adapter;
+
+	adapter = ifp->if_softc;
+	return (&adapter->interface);
+}
 
 #ifdef IXGBE_LEGACY_TX
 /*********************************************************************
@@ -781,11 +792,10 @@ ixgbe_start_locked(struct tx_ring *txr, struct ifnet * ifp)
 static void
 ixgbe_start(struct ifnet *ifp)
 {
-	struct adapter *adapter = ifp->if_softc;
 	struct ixgbe_interface *interface;
 	struct tx_ring	*txr;
 	
-	interface = &adapter->interface;
+	interface = ixgbe_phys_get_interface(ifp);
 	txr = interface->tx_rings;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
@@ -805,13 +815,19 @@ ixgbe_start(struct ifnet *ifp)
 static int
 ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 {
-	struct adapter	*adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
+
+	return (ixgbe_mq_start_int(ixgbe_phys_get_interface(ifp), m));
+}
+
+static int
+ixgbe_mq_start_int(struct ixgbe_interface *interface, struct mbuf *m)
+{
+	struct ifnet *ifp;
 	struct ix_queue	*que;
 	struct tx_ring	*txr;
 	int 		i = 0, err = 0;
 	
-	interface = &adapter->interface;
+	ifp = interface->ifp;
 
 	/* Which queue to use */
 	if ((m->m_flags & M_FLOWID) != 0)
@@ -823,7 +839,7 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 	que = &interface->queues[i];
 
 	if (IXGBE_TX_TRYLOCK(txr)) {
-		err = ixgbe_mq_start_locked(ifp, txr, m);
+		err = ixgbe_mq_start_locked(interface, txr, m);
 		IXGBE_TX_UNLOCK(txr);
 	} else {
 		err = drbr_enqueue(ifp, txr->br, m);
@@ -834,13 +850,13 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 }
 
 static int
-ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr, struct mbuf *m)
+ixgbe_mq_start_locked(struct ixgbe_interface *interface, struct tx_ring *txr, struct mbuf *m)
 {
-	struct ixgbe_interface *interface;
+	struct ifnet *ifp;
         struct mbuf     *next;
         int             enqueued, err = 0;
 	
-	interface = txr->interface;
+	ifp = interface->ifp;
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
 	    interface->adapter->link_active == 0) {
@@ -904,7 +920,7 @@ ixgbe_deferred_mq_start(void *arg, int pending)
 
 	IXGBE_TX_LOCK(txr);
 	if (!drbr_empty(ifp, txr->br))
-		ixgbe_mq_start_locked(ifp, txr, NULL);
+		ixgbe_mq_start_locked(interface, txr, NULL);
 	IXGBE_TX_UNLOCK(txr);
 }
 
@@ -914,12 +930,18 @@ ixgbe_deferred_mq_start(void *arg, int pending)
 static void
 ixgbe_qflush(struct ifnet *ifp)
 {
-	struct adapter	*adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
+
+	return (ixgbe_qflush_int(ixgbe_phys_get_interface(ifp)));
+}
+
+static void
+ixgbe_qflush_int(struct ixgbe_interface *interface)
+{
+	struct ifnet *ifp;
 	struct tx_ring	*txr;
 	struct mbuf	*m;
 	
-	interface = &adapter->interface;
+	ifp = interface->ifp;
 	txr = interface->tx_rings;
 
 	for (int i = 0; i < interface->num_queues; i++, txr++) {
@@ -944,9 +966,16 @@ ixgbe_qflush(struct ifnet *ifp)
 static int
 ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 {
-	struct adapter	*adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
-	struct ixgbe_hw *hw = &adapter->hw;
+
+	return (ixgbe_ioctl_int(ixgbe_phys_get_interface(ifp), command, data));
+}
+
+static int
+ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
+{
+	struct adapter	*adapter;
+	struct ifnet *ifp;
+	struct ixgbe_hw *hw;
 	struct ifreq	*ifr = (struct ifreq *) data;
 #if defined(INET) || defined(INET6)
 	struct ifaddr *ifa = (struct ifaddr *)data;
@@ -954,7 +983,9 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 #endif
 	int             error = 0;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
+	hw = &adapter->hw;
+	ifp = interface->ifp;
 
 	switch (command) {
 
@@ -1452,7 +1483,7 @@ ixgbe_handle_que(void *context, int pending)
 		ixgbe_txeof(txr);
 #ifndef IXGBE_LEGACY_TX
 		if (!drbr_empty(ifp, txr->br))
-			ixgbe_mq_start_locked(ifp, txr, NULL);
+			ixgbe_mq_start_locked(interface, txr, NULL);
 #else
 		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
 			ixgbe_start_locked(txr, ifp);
