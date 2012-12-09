@@ -404,6 +404,8 @@ struct ixgbe_interface {
 	struct rx_ring		*rx_rings;
 	u64			que_mask;
 	u32			num_rx_desc;
+
+	struct ifmedia		media;
 };
 
 /* Our adapter structure */
@@ -424,7 +426,6 @@ struct adapter {
 	void			*tag;
 	struct resource 	*res;
 
-	struct ifmedia		media;
 	struct callout		timer;
 	int			msix;
 

@@ -1028,7 +1028,7 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
 		IOCTL_DEBUGOUT("ioctl: SIOCxIFMEDIA (Get/Set Interface Media)");
-		error = ifmedia_ioctl(ifp, ifr, &adapter->media, command);
+		error = ifmedia_ioctl(ifp, ifr, &interface->media, command);
 		break;
 	case SIOCSIFCAP:
 	{
@@ -1747,7 +1747,11 @@ static int
 ixgbe_media_change(struct ifnet * ifp)
 {
 	struct adapter *adapter = ifp->if_softc;
-	struct ifmedia *ifm = &adapter->media;
+	struct ixgbe_interface *interface;
+	struct ifmedia *ifm;
+	
+	interface = &adapter->interface;
+	ifm = &interface->media;
 
 	INIT_DEBUGOUT("ixgbe_media_change: begin");
 
@@ -2733,18 +2737,18 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	 * Specify the media types supported by this adapter and register
 	 * callbacks to update media and link information
 	 */
-	ifmedia_init(&adapter->media, IFM_IMASK, ixgbe_media_change,
+	ifmedia_init(&interface->media, IFM_IMASK, ixgbe_media_change,
 		     ixgbe_media_status);
-	ifmedia_add(&adapter->media, IFM_ETHER | adapter->optics, 0, NULL);
-	ifmedia_set(&adapter->media, IFM_ETHER | adapter->optics);
+	ifmedia_add(&interface->media, IFM_ETHER | adapter->optics, 0, NULL);
+	ifmedia_set(&interface->media, IFM_ETHER | adapter->optics);
 	if (hw->device_id == IXGBE_DEV_ID_82598AT) {
-		ifmedia_add(&adapter->media,
+		ifmedia_add(&interface->media,
 		    IFM_ETHER | IFM_1000_T | IFM_FDX, 0, NULL);
-		ifmedia_add(&adapter->media,
+		ifmedia_add(&interface->media,
 		    IFM_ETHER | IFM_1000_T, 0, NULL);
 	}
-	ifmedia_add(&adapter->media, IFM_ETHER | IFM_AUTO, 0, NULL);
-	ifmedia_set(&adapter->media, IFM_ETHER | IFM_AUTO);
+	ifmedia_add(&interface->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+	ifmedia_set(&interface->media, IFM_ETHER | IFM_AUTO);
 
 	return (0);
 }
