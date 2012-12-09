@@ -1485,13 +1485,12 @@ static void
 ixgbe_handle_que(void *context, int pending)
 {
 	struct ix_queue *que = context;
-	struct adapter  *adapter = que->adapter;
 	struct ixgbe_interface *interface;
 	struct tx_ring  *txr = que->txr;
 	struct ifnet    *ifp;
 	bool		more;
 
-	interface = &adapter->interface;
+	interface = que->interface;
 	ifp = interface->ifp;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
@@ -1510,9 +1509,9 @@ ixgbe_handle_que(void *context, int pending)
 
 	/* Reenable this interrupt */
 	if (que->res != NULL)
-		ixgbe_enable_queue(adapter, que->msix);
+		ixgbe_enable_queue(interface->adapter, que->msix);
 	else
-		ixgbe_enable_intr(adapter);
+		ixgbe_enable_intr(interface->adapter);
 	return;
 }
 
@@ -1527,16 +1526,18 @@ static void
 ixgbe_legacy_irq(void *arg)
 {
 	struct ix_queue *que = arg;
-	struct adapter	*adapter = que->adapter;
-	struct ixgbe_hw	*hw = &adapter->hw;
+	struct adapter	*adapter;
+	struct ixgbe_hw	*hw;
 	struct ixgbe_interface *interface;
 	struct ifnet    *ifp;
 	struct 		tx_ring *txr;
 	bool		more;
 	u32       	reg_eicr;
 
-	interface = &adapter->interface;
+	interface = que->interface;
+	adapter = interface->adapter;
 	ifp = interface->ifp;
+	hw = &adapter->hw;
 	txr = interface->tx_rings;
 	reg_eicr = IXGBE_READ_REG(hw, IXGBE_EICR);
 
@@ -1588,7 +1589,7 @@ void
 ixgbe_msix_que(void *arg)
 {
 	struct ix_queue	*que = arg;
-	struct adapter  *adapter = que->adapter;
+	struct adapter  *adapter;
 	struct ixgbe_interface *interface;
 	struct ifnet    *ifp;
 	struct tx_ring	*txr = que->txr;
@@ -1596,7 +1597,8 @@ ixgbe_msix_que(void *arg)
 	bool		more;
 	u32		newitr = 0;
 
-	interface = &adapter->interface;
+	interface = que->interface;
+	adapter = interface->adapter;
 	ifp = interface->ifp;
 
 	/* Protect against spurious interrupts */
@@ -3093,7 +3095,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	*/
 	for (int i = 0; i < interface->num_queues; i++) {
 		que = &interface->queues[i];
-		que->adapter = adapter;
+		que->interface = interface;
 		que->txr = &interface->tx_rings[i];
 		que->rxr = &interface->rx_rings[i];
 	}
@@ -4606,7 +4608,6 @@ ixgbe_rx_discard(struct rx_ring *rxr, int i)
 static bool
 ixgbe_rxeof(struct ix_queue *que)
 {
-	struct adapter		*adapter = que->adapter;
 	struct ixgbe_interface	*interface;
 	struct rx_ring		*rxr = que->rxr;
 	struct ifnet		*ifp;
@@ -4618,7 +4619,7 @@ ixgbe_rxeof(struct ix_queue *que)
 	union ixgbe_adv_rx_desc	*cur;
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
 	
-	interface = &adapter->interface;
+	interface = que->interface;
 	ifp = interface->ifp;
 
 	IXGBE_RX_LOCK(rxr);
@@ -5669,10 +5670,13 @@ static int
 ixgbe_sysctl_interrupt_rate_handler(SYSCTL_HANDLER_ARGS)
 {
 	int error;
+	struct ixgbe_hw *hw;
 	struct ix_queue *que = ((struct ix_queue *)oidp->oid_arg1);
 	unsigned int reg, usec, rate;
+	
+	hw = &que->interface->adapter->hw;
 
-	reg = IXGBE_READ_REG(&que->adapter->hw, IXGBE_EITR(que->msix));
+	reg = IXGBE_READ_REG(hw, IXGBE_EITR(que->msix));
 	usec = ((reg & 0x0FF8) >> 3);
 	if (usec > 0)
 		rate = 500000 / usec;
@@ -5689,7 +5693,7 @@ ixgbe_sysctl_interrupt_rate_handler(SYSCTL_HANDLER_ARGS)
 		ixgbe_max_interrupt_rate = rate;
 		reg |= ((4000000/rate) & 0xff8 );
 	}
-	IXGBE_WRITE_REG(&que->adapter->hw, IXGBE_EITR(que->msix), reg);
+	IXGBE_WRITE_REG(hw, IXGBE_EITR(que->msix), reg);
 	return 0;
 }
 
