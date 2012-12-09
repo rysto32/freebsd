@@ -130,7 +130,7 @@ static void     ixgbe_identify_hardware(struct adapter *);
 static int      ixgbe_allocate_pci_resources(struct adapter *);
 static int      ixgbe_allocate_msix(struct adapter *);
 static int      ixgbe_allocate_legacy(struct adapter *);
-static int	ixgbe_allocate_queues(struct adapter *);
+static int	ixgbe_allocate_queues(struct ixgbe_interface *);
 static int	ixgbe_setup_msix(struct adapter *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
@@ -503,7 +503,7 @@ ixgbe_attach(device_t dev)
 		interface->num_rx_desc = ixgbe_rxd;
 
 	/* Allocate our TX/RX Queues */
-	if (ixgbe_allocate_queues(adapter)) {
+	if (ixgbe_allocate_queues(interface)) {
 		error = ENOMEM;
 		goto err_out;
 	}
@@ -2929,17 +2929,16 @@ ixgbe_dma_free(struct ixgbe_dma_alloc *dma)
  *
  **********************************************************************/
 static int
-ixgbe_allocate_queues(struct adapter *adapter)
+ixgbe_allocate_queues(struct ixgbe_interface *interface)
 {
-	device_t	dev = adapter->dev;
-	struct ixgbe_interface *interface;
+	device_t	dev;
 	struct ix_queue	*que;
 	struct tx_ring	*txr;
 	struct rx_ring	*rxr;
 	int rsize, tsize, error = IXGBE_SUCCESS;
 	int txconf = 0, rxconf = 0;
 	
-	interface = &adapter->interface;
+	dev = interface->adapter->dev;
 
         /* First allocate the top level queue structs */
         if (!(interface->queues =
