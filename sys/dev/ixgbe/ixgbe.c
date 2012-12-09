@@ -419,6 +419,7 @@ ixgbe_attach(device_t dev)
 	adapter->dev = adapter->osdep.dev = dev;
 	hw = &adapter->hw;
 	interface = &adapter->interface;
+	interface->adapter = adapter;
 
 	/* Core Lock Init*/
 	IXGBE_CORE_LOCK_INIT(adapter, device_get_nameunit(dev));
@@ -2970,7 +2971,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	for (int i = 0; i < interface->num_queues; i++, rxconf++) {
 		rxr = &interface->rx_rings[i];
 		/* Set up some basics */
-		rxr->adapter = adapter;
+		rxr->interface = interface;
 		rxr->me = i;
 		rxr->num_desc = interface->num_rx_desc;
 
@@ -3841,13 +3842,14 @@ ixgbe_txeof(struct tx_ring *txr)
 static void
 ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 {
-	struct adapter		*adapter = rxr->adapter;
+	struct ixgbe_hw		*hw;
 	bus_dma_segment_t	seg[1];
 	struct ixgbe_rx_buf	*rxbuf;
 	struct mbuf		*mp;
 	int			i, j, nsegs, error;
 	bool			refreshed = FALSE;
 
+	hw = &rxr->interface->adapter->hw;
 	i = j = rxr->next_to_refresh;
 	/* Control the loop with one beyond */
 	if (++j == rxr->num_desc)
@@ -3900,7 +3902,7 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 	}
 update:
 	if (refreshed) /* Update hardware tail index */
-		IXGBE_WRITE_REG(&adapter->hw,
+		IXGBE_WRITE_REG(hw,
 		    IXGBE_RDT(rxr->me), rxr->next_to_refresh);
 	return;
 }
@@ -3916,10 +3918,13 @@ update:
 static int
 ixgbe_allocate_receive_buffers(struct rx_ring *rxr)
 {
-	struct	adapter 	*adapter = rxr->adapter;
-	device_t 		dev = adapter->dev;
+	device_t 		dev;
+	struct ixgbe_interface	*interface;
 	struct ixgbe_rx_buf 	*rxbuf;
 	int             	i, bsize, error;
+
+	interface = rxr->interface;
+	dev = interface->adapter->dev;
 
 	bsize = sizeof(struct ixgbe_rx_buf) * rxr->num_desc;
 	if (!(rxr->rx_buffers =
@@ -3960,7 +3965,7 @@ ixgbe_allocate_receive_buffers(struct rx_ring *rxr)
 
 fail:
 	/* Frees all, but can handle partial completion */
-	ixgbe_free_receive_structures(adapter);
+	ixgbe_free_receive_structures(interface->adapter);
 	return (error);
 }
 
@@ -3989,12 +3994,12 @@ ixgbe_rsc_count(union ixgbe_adv_rx_desc *rx)
 static void
 ixgbe_setup_hw_rsc(struct rx_ring *rxr)
 {
-	struct	adapter 	*adapter = rxr->adapter;
 	struct ixgbe_interface	*interface;
-	struct	ixgbe_hw	*hw = &adapter->hw;
+	struct	ixgbe_hw	*hw;
 	u32			rscctrl, rdrxctl;
 	
-	interface = &adapter->interface;
+	interface = rxr->interface;
+	hw = &interface->adapter->hw;
 
 	/* If turning LRO/RSC off we need to disable it */
 	if ((interface->ifp->if_capenable & IFCAP_LRO) == 0) {
@@ -4083,9 +4088,9 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	struct netmap_slot *slot;
 #endif /* DEV_NETMAP */
 
-	adapter = rxr->adapter;
-	interface = &adapter->interface;
+	interface = rxr->interface;
 	ifp = interface->ifp;
+	adapter = interface->adapter;
 	dev = adapter->dev;
 
 	/* Clear the ring contents */
@@ -4396,13 +4401,12 @@ ixgbe_free_receive_structures(struct adapter *adapter)
 static void
 ixgbe_free_receive_buffers(struct rx_ring *rxr)
 {
-	struct adapter		*adapter = rxr->adapter;
 	struct ixgbe_interface	*interface;
 	struct ixgbe_rx_buf	*rxbuf;
 
 	INIT_DEBUGOUT("free_receive_structures: begin");
 	
-	interface = &adapter->interface;
+	interface = rxr->interface;
 
 	/* Cleanup any existing buffers */
 	if (rxr->rx_buffers != NULL) {
@@ -5411,12 +5415,14 @@ ixgbe_sysctl_tdt_handler(SYSCTL_HANDLER_ARGS)
 static int 
 ixgbe_sysctl_rdh_handler(SYSCTL_HANDLER_ARGS)
 {
+	struct ixgbe_hw *hw;
 	int error;
 
 	struct rx_ring *rxr = ((struct rx_ring *)oidp->oid_arg1);
+	hw = &rxr->interface->adapter->hw;
 	if (!rxr) return 0;
 
-	unsigned val = IXGBE_READ_REG(&rxr->adapter->hw, IXGBE_RDH(rxr->me));
+	unsigned val = IXGBE_READ_REG(hw, IXGBE_RDH(rxr->me));
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error || !req->newptr)
 		return error;
@@ -5429,12 +5435,14 @@ ixgbe_sysctl_rdh_handler(SYSCTL_HANDLER_ARGS)
 static int 
 ixgbe_sysctl_rdt_handler(SYSCTL_HANDLER_ARGS)
 {
+	struct ixgbe_hw *hw;
 	int error;
 
 	struct rx_ring *rxr = ((struct rx_ring *)oidp->oid_arg1);
+	hw = &rxr->interface->adapter->hw;
 	if (!rxr) return 0;
 
-	unsigned val = IXGBE_READ_REG(&rxr->adapter->hw, IXGBE_RDT(rxr->me));
+	unsigned val = IXGBE_READ_REG(hw, IXGBE_RDT(rxr->me));
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error || !req->newptr)
 		return error;

@@ -331,8 +331,8 @@ struct tx_ring {
  * The Receive ring, one per rx queue
  */
 struct rx_ring {
-        struct adapter		*adapter;
 	struct mtx		rx_mtx;
+        struct ixgbe_interface	*interface;
 	u32			me;
 	union ixgbe_adv_rx_desc	*rx_base;
 	struct ixgbe_dma_alloc	rxdma;
@@ -366,6 +366,7 @@ struct rx_ring {
 };
 
 struct ixgbe_interface {
+	struct adapter		*adapter;
 	struct ifnet		*ifp;	
 	int			if_flags;
 
