@@ -118,6 +118,7 @@ static void	ixgbe_deferred_mq_start(void *, int);
 #endif /* IXGBE_LEGACY_TX */
 static int      ixgbe_ioctl(struct ifnet *, u_long, caddr_t);
 static int	ixgbe_ioctl_int(struct ixgbe_interface *, u_long, caddr_t);
+static void	ixgbe_calc_max_frame_size(struct adapter *);
 static void	ixgbe_init(void *);
 static void	ixgbe_init_locked(struct adapter *);
 static void     ixgbe_stop(void *);
@@ -133,7 +134,7 @@ static int	ixgbe_allocate_queues(struct adapter *);
 static int	ixgbe_setup_msix(struct adapter *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
-static int	ixgbe_setup_interface(device_t, struct adapter *);
+static int	ixgbe_setup_interface(device_t, struct ixgbe_interface *);
 static void	ixgbe_config_link(struct adapter *);
 
 static int      ixgbe_allocate_transmit_buffers(struct tx_ring *);
@@ -574,7 +575,7 @@ ixgbe_attach(device_t dev)
 		goto err_late;
 
 	/* Setup OS specific network interface */
-	if (ixgbe_setup_interface(dev, adapter) != 0)
+	if (ixgbe_setup_interface(dev, interface) != 0)
 		goto err_late;
 
 	/* Initialize statistics */
@@ -1024,8 +1025,7 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 		} else {
 			IXGBE_CORE_LOCK(adapter);
 			ifp->if_mtu = ifr->ifr_mtu;
-			adapter->max_frame_size =
-				ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
+			ixgbe_calc_max_frame_size(adapter);
 			ixgbe_init_locked(adapter);
 			IXGBE_CORE_UNLOCK(adapter);
 		}
@@ -1112,6 +1112,15 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 	}
 
 	return (error);
+}
+
+static void
+ixgbe_calc_max_frame_size(struct adapter *adapter)
+{
+	struct ifnet *ifp;
+	
+	ifp = adapter->interface.ifp;
+	adapter->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
 }
 
 /*********************************************************************
@@ -2723,15 +2732,16 @@ mem:
  *
  **********************************************************************/
 static int
-ixgbe_setup_interface(device_t dev, struct adapter *adapter)
+ixgbe_setup_interface(device_t dev, struct ixgbe_interface *interface)
 {
-	struct ixgbe_hw *hw = &adapter->hw;
-	struct ixgbe_interface *interface;
+	struct adapter *adapter;
+	struct ixgbe_hw *hw;
 	struct ifnet   *ifp;
 
 	INIT_DEBUGOUT("ixgbe_setup_interface: begin");
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
+	hw = &adapter->hw;
 
 	ifp = interface->ifp = if_alloc(IFT_ETHER);
 	if (ifp == NULL) {
@@ -2752,10 +2762,9 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	IFQ_SET_MAXLEN(&ifp->if_snd, interface->num_tx_desc - 2);
 #endif
 
-	ether_ifattach(ifp, adapter->hw.mac.addr);
+	ether_ifattach(ifp, hw->mac.addr);
 
-	adapter->max_frame_size =
-	    ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
+	ixgbe_calc_max_frame_size(adapter);
 
 	/*
 	 * Tell the upper layer(s) we support long frames.
