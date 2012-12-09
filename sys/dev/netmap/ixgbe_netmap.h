@@ -493,7 +493,7 @@ ixgbe_netmap_attach(struct adapter *adapter)
 	na.nm_txsync = ixgbe_netmap_txsync;
 	na.nm_rxsync = ixgbe_netmap_rxsync;
 	na.nm_register = ixgbe_netmap_reg;
-	na.num_tx_rings = na.num_rx_rings = adapter->num_queues;
+	na.num_tx_rings = na.num_rx_rings = interface->num_queues;
 	netmap_attach(&na);
 }
 
