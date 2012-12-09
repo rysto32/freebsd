@@ -760,13 +760,12 @@ static void
 ixgbe_start_locked(struct tx_ring *txr, struct ifnet * ifp)
 {
 	struct mbuf    *m_head;
-	struct adapter *adapter = txr->adapter;
 
 	IXGBE_TX_LOCK_ASSERT(txr);
 
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 		return;
-	if (!adapter->link_active)
+	if (!txr->interface->adapter->link_active)
 		return;
 
 	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
@@ -857,15 +856,14 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 static int
 ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 {
-	struct adapter  *adapter = txr->adapter;
 	struct ixgbe_interface *interface;
         struct mbuf     *next;
         int             enqueued = 0, err = 0;
 	
-	interface = &adapter->interface;
+	interface = txr->interface;
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
-	    adapter->link_active == 0)
+	    interface->adapter->link_active == 0)
 		return (ENETDOWN);
 
 	/* Process the queue */
@@ -918,11 +916,10 @@ static void
 ixgbe_deferred_mq_start(void *arg, int pending)
 {
 	struct tx_ring *txr = arg;
-	struct adapter *adapter = txr->adapter;
 	struct ixgbe_interface *interface;
 	struct ifnet *ifp;
 
-	interface = &adapter->interface;
+	interface = txr->interface;
 	ifp = interface->ifp;
 
 	IXGBE_TX_LOCK(txr);
@@ -1798,7 +1795,7 @@ ixgbe_media_change(struct ifnet * ifp)
 static int
 ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 {
-	struct adapter  *adapter = txr->adapter;
+	struct adapter  *adapter = txr->interface->adapter;
 	u32		olinfo_status = 0, cmd_type_len;
 	int             i, j, error, nsegs;
 	int		first;
@@ -2958,7 +2955,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	for (int i = 0; i < interface->num_queues; i++, txconf++) {
 		/* Set up some basics */
 		txr = &interface->tx_rings[i];
-		txr->adapter = adapter;
+		txr->interface = interface;
 		txr->me = i;
 		txr->num_desc = interface->num_tx_desc;
 
@@ -3070,25 +3067,25 @@ fail:
 static int
 ixgbe_allocate_transmit_buffers(struct tx_ring *txr)
 {
-	struct adapter *adapter = txr->adapter;
 	struct ixgbe_interface *interface;
-	device_t dev = adapter->dev;
+	device_t dev;
 	struct ixgbe_tx_buf *txbuf;
 	int error, i;
 	
-	interface = &adapter->interface;
+	interface = txr->interface;
+	dev = interface->adapter->dev;
 
 	/*
 	 * Setup DMA descriptor areas.
 	 */
 	if ((error = bus_dma_tag_create(
-			       bus_get_dma_tag(adapter->dev),	/* parent */
+			       bus_get_dma_tag(dev),	/* parent */
 			       1, 0,		/* alignment, bounds */
 			       BUS_SPACE_MAXADDR,	/* lowaddr */
 			       BUS_SPACE_MAXADDR,	/* highaddr */
 			       NULL, NULL,		/* filter, filterarg */
 			       IXGBE_TSO_SIZE,		/* maxsize */
-			       adapter->num_segs,	/* nsegments */
+			       interface->adapter->num_segs,	/* nsegments */
 			       PAGE_SIZE,		/* maxsegsize */
 			       0,			/* flags */
 			       NULL,			/* lockfunc */
@@ -3119,7 +3116,7 @@ ixgbe_allocate_transmit_buffers(struct tx_ring *txr)
 	return 0;
 fail:
 	/* We free all, it handles case where we are in the middle */
-	ixgbe_free_transmit_structures(adapter);
+	ixgbe_free_transmit_structures(interface->adapter);
 	return (error);
 }
 
@@ -3131,21 +3128,21 @@ fail:
 static void
 ixgbe_setup_transmit_ring(struct tx_ring *txr)
 {
-	struct adapter *adapter = txr->adapter;
 	struct ixgbe_interface *interface;
-	
 	struct ixgbe_tx_buf *txbuf;
 	int i;
 #ifdef DEV_NETMAP
-	struct netmap_adapter *na = NA(adapter->interface.ifp);
+	struct netmap_adapter *na;
 	struct netmap_slot *slot;
 #endif /* DEV_NETMAP */
 	
-	interface = &adapter->interface;
+	interface = txr->interface;
 
 	/* Clear the old ring contents */
 	IXGBE_TX_LOCK(txr);
 #ifdef DEV_NETMAP
+	na = NA(interface->ifp);
+
 	/*
 	 * (under lock): if in netmap mode, do some consistency
 	 * checks and set slot to entry 0 of the netmap ring.
@@ -3190,7 +3187,7 @@ ixgbe_setup_transmit_ring(struct tx_ring *txr)
 
 #ifdef IXGBE_FDIR
 	/* Set the rate at which we sample packets */
-	if (adapter->hw.mac.type != ixgbe_mac_82598EB)
+	if (interface->adapter->hw.mac.type != ixgbe_mac_82598EB)
 		txr->atr_sample = atr_sample_rate;
 #endif
 
@@ -3334,12 +3331,11 @@ ixgbe_free_transmit_structures(struct adapter *adapter)
 static void
 ixgbe_free_transmit_buffers(struct tx_ring *txr)
 {
-	struct adapter *adapter = txr->adapter;
 	struct ixgbe_interface *interface;
 	struct ixgbe_tx_buf *tx_buffer;
 	int             i;
 	
-	interface = &adapter->interface;
+	interface = txr->interface;
 
 	INIT_DEBUGOUT("ixgbe_free_transmit_ring: begin");
 
@@ -3635,7 +3631,6 @@ ixgbe_tso_setup(struct tx_ring *txr, struct mbuf *mp,
 static void
 ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 {
-	struct adapter			*adapter = txr->adapter;
 	struct ixgbe_interface		*interface;
 	struct ix_queue			*que;
 	struct ip			*ip;
@@ -3647,7 +3642,7 @@ ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 	int  				ehdrlen, ip_hlen;
 	u16				etype;
 	
-	interface = &adapter->interface;
+	interface = txr->interface;
 
 	eh = mtod(mp, struct ether_vlan_header *);
 	if (eh->evl_encap_proto == htons(ETHERTYPE_VLAN)) {
@@ -3697,7 +3692,7 @@ ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 	** This assumes the Rx queue and Tx
 	** queue are bound to the same CPU
 	*/
-	ixgbe_fdir_add_signature_filter_82599(&adapter->hw,
+	ixgbe_fdir_add_signature_filter_82599(&interface->adapter->hw,
 	    input, common, que->msix);
 }
 #endif /* IXGBE_FDIR */
@@ -3712,7 +3707,6 @@ ixgbe_atr(struct tx_ring *txr, struct mbuf *mp)
 static void
 ixgbe_txeof(struct tx_ring *txr)
 {
-	struct adapter		*adapter = txr->adapter;
 	struct ixgbe_interface	*interface;
 	struct ifnet		*ifp;
 	u32			work, processed = 0;
@@ -3723,7 +3717,7 @@ ixgbe_txeof(struct tx_ring *txr)
 	mtx_assert(&txr->tx_mtx, MA_OWNED);
 
 #ifdef DEV_NETMAP
-	interface = &adapter->interface;
+	interface = txr->interface;
 	ifp = interface->ifp;
 	if (ifp->if_capenable & IFCAP_NETMAP) {
 		struct netmap_adapter *na = NA(ifp);
@@ -5525,12 +5519,15 @@ ixgbe_update_stats_counters(struct adapter *adapter)
 static int 
 ixgbe_sysctl_tdh_handler(SYSCTL_HANDLER_ARGS)
 {
+	struct ixgbe_hw *hw;
 	int error;
 
 	struct tx_ring *txr = ((struct tx_ring *)oidp->oid_arg1);
 	if (!txr) return 0;
+	
+	hw = &txr->interface->adapter->hw;
 
-	unsigned val = IXGBE_READ_REG(&txr->adapter->hw, IXGBE_TDH(txr->me));
+	unsigned val = IXGBE_READ_REG(hw, IXGBE_TDH(txr->me));
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error || !req->newptr)
 		return error;
@@ -5543,12 +5540,15 @@ ixgbe_sysctl_tdh_handler(SYSCTL_HANDLER_ARGS)
 static int 
 ixgbe_sysctl_tdt_handler(SYSCTL_HANDLER_ARGS)
 {
+	struct ixgbe_hw *hw;
 	int error;
 
 	struct tx_ring *txr = ((struct tx_ring *)oidp->oid_arg1);
 	if (!txr) return 0;
 
-	unsigned val = IXGBE_READ_REG(&txr->adapter->hw, IXGBE_TDT(txr->me));
+	hw = &txr->interface->adapter->hw;
+
+	unsigned val = IXGBE_READ_REG(hw, IXGBE_TDT(txr->me));
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error || !req->newptr)
 		return error;
