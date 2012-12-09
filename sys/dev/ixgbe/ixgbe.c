@@ -122,7 +122,9 @@ static void	ixgbe_init(void *);
 static void	ixgbe_init_locked(struct adapter *);
 static void     ixgbe_stop(void *);
 static void     ixgbe_media_status(struct ifnet *, struct ifmediareq *);
+static void	ixgbe_media_status_int(struct adapter *, struct ifmediareq *);
 static int      ixgbe_media_change(struct ifnet *);
+static int      ixgbe_media_change_int(struct ixgbe_interface *);
 static void     ixgbe_identify_hardware(struct adapter *);
 static int      ixgbe_allocate_pci_resources(struct adapter *);
 static int      ixgbe_allocate_msix(struct adapter *);
@@ -1733,7 +1735,15 @@ ixgbe_msix_link(void *arg)
 static void
 ixgbe_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 {
-	struct adapter *adapter = ifp->if_softc;
+	struct ixgbe_interface *interface;
+
+	interface = ixgbe_phys_get_interface(ifp);
+	return (ixgbe_media_status_int(interface->adapter, ifmr));
+}
+
+static void
+ixgbe_media_status_int(struct adapter *adapter, struct ifmediareq * ifmr)
+{
 
 	INIT_DEBUGOUT("ixgbe_media_status: begin");
 	IXGBE_CORE_LOCK(adapter);
@@ -1777,11 +1787,17 @@ ixgbe_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 static int
 ixgbe_media_change(struct ifnet * ifp)
 {
-	struct adapter *adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
+
+	return ixgbe_media_change_int(ixgbe_phys_get_interface(ifp));
+}
+
+static int
+ixgbe_media_change_int(struct ixgbe_interface *interface)
+{
+	struct adapter *adapter;
 	struct ifmedia *ifm;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
 	ifm = &interface->media;
 
 	INIT_DEBUGOUT("ixgbe_media_change: begin");
