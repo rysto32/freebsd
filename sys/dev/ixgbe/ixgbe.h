@@ -271,7 +271,7 @@ struct ixgbe_dma_alloc {
 **  for the associated tx and rx ring.
 */
 struct ix_queue {
-	struct adapter		*adapter;
+	struct ixgbe_interface	*interface;
 	u32			msix;           /* This queue's MSIX vector */
 	u32			eims;           /* This queue's EIMS bit */
 	u32			eitr_setting;
