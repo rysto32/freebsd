@@ -166,9 +166,9 @@ static int      ixgbe_xmit(struct tx_ring *, struct mbuf **);
 static int	ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS);
 static int	ixgbe_set_advertise(SYSCTL_HANDLER_ARGS);
 static int	ixgbe_set_thermal_test(SYSCTL_HANDLER_ARGS);
-static int	ixgbe_dma_malloc(struct adapter *, bus_size_t,
+static int	ixgbe_dma_malloc(device_t, bus_size_t,
 		    struct ixgbe_dma_alloc *, int);
-static void     ixgbe_dma_free(struct adapter *, struct ixgbe_dma_alloc *);
+static void     ixgbe_dma_free(struct ixgbe_dma_alloc *);
 static int	ixgbe_tx_ctx_setup(struct tx_ring *,
 		    struct mbuf *, u32 *, u32 *);
 static int	ixgbe_tso_setup(struct tx_ring *,
@@ -2858,13 +2858,12 @@ ixgbe_dmamap_cb(void *arg, bus_dma_segment_t * segs, int nseg, int error)
 }
 
 static int
-ixgbe_dma_malloc(struct adapter *adapter, bus_size_t size,
+ixgbe_dma_malloc(device_t dev, bus_size_t size,
 		struct ixgbe_dma_alloc *dma, int mapflags)
 {
-	device_t dev = adapter->dev;
 	int             r;
 
-	r = bus_dma_tag_create(bus_get_dma_tag(adapter->dev),	/* parent */
+	r = bus_dma_tag_create(bus_get_dma_tag(dev),	/* parent */
 			       DBA_ALIGN, 0,	/* alignment, bounds */
 			       BUS_SPACE_MAXADDR,	/* lowaddr */
 			       BUS_SPACE_MAXADDR,	/* highaddr */
@@ -2911,7 +2910,7 @@ fail_0:
 }
 
 static void
-ixgbe_dma_free(struct adapter *adapter, struct ixgbe_dma_alloc *dma)
+ixgbe_dma_free(struct ixgbe_dma_alloc *dma)
 {
 	bus_dmamap_sync(dma->dma_tag, dma->dma_map,
 	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
@@ -2988,7 +2987,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 		    device_get_nameunit(dev), txr->me);
 		mtx_init(&txr->tx_mtx, txr->mtx_name, NULL, MTX_DEF);
 
-		if (ixgbe_dma_malloc(adapter, tsize,
+		if (ixgbe_dma_malloc(dev, tsize,
 			&txr->txdma, BUS_DMA_NOWAIT)) {
 			device_printf(dev,
 			    "Unable to allocate TX Descriptor memory\n");
@@ -3035,7 +3034,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 		    device_get_nameunit(dev), rxr->me);
 		mtx_init(&rxr->rx_mtx, rxr->mtx_name, NULL, MTX_DEF);
 
-		if (ixgbe_dma_malloc(adapter, rsize,
+		if (ixgbe_dma_malloc(dev, rsize,
 			&rxr->rxdma, BUS_DMA_NOWAIT)) {
 			device_printf(dev,
 			    "Unable to allocate RxDescriptor memory\n");
@@ -3068,10 +3067,10 @@ ixgbe_allocate_queues(struct adapter *adapter)
 
 err_rx_desc:
 	for (rxr = interface->rx_rings; rxconf > 0; rxr++, rxconf--)
-		ixgbe_dma_free(adapter, &rxr->rxdma);
+		ixgbe_dma_free(&rxr->rxdma);
 err_tx_desc:
 	for (txr = interface->tx_rings; txconf > 0; txr++, txconf--)
-		ixgbe_dma_free(adapter, &txr->txdma);
+		ixgbe_dma_free(&txr->txdma);
 	free(interface->rx_rings, M_DEVBUF);
 rx_fail:
 	free(interface->tx_rings, M_DEVBUF);
@@ -3340,7 +3339,7 @@ ixgbe_free_transmit_structures(struct adapter *adapter)
 	for (int i = 0; i < interface->num_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
 		ixgbe_free_transmit_buffers(txr);
-		ixgbe_dma_free(adapter, &txr->txdma);
+		ixgbe_dma_free(&txr->txdma);
 		IXGBE_TX_UNLOCK(txr);
 		IXGBE_TX_LOCK_DESTROY(txr);
 	}
@@ -4439,7 +4438,7 @@ ixgbe_free_receive_structures(struct adapter *adapter)
 		/* Free LRO memory */
 		tcp_lro_free(lro);
 		/* Free the ring memory as well */
-		ixgbe_dma_free(adapter, &rxr->rxdma);
+		ixgbe_dma_free(&rxr->rxdma);
 	}
 
 	free(interface->rx_rings, M_DEVBUF);
