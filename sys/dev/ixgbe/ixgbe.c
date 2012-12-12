@@ -141,7 +141,7 @@ static int	ixgbe_setup_transmit_structures(struct ixgbe_interface *);
 static void	ixgbe_setup_transmit_ring(struct tx_ring *);
 static void	ixgbe_initialize_transmit_units(struct ixgbe_interface *);
 static void	ixgbe_enable_transmitter(struct adapter *);
-static void     ixgbe_free_transmit_structures(struct adapter *);
+static void     ixgbe_free_transmit_structures(struct ixgbe_interface *);
 static void     ixgbe_free_transmit_buffers(struct tx_ring *);
 
 static int      ixgbe_allocate_receive_buffers(struct rx_ring *);
@@ -643,7 +643,7 @@ ixgbe_attach(device_t dev)
 	INIT_DEBUGOUT("ixgbe_attach: end");
 	return (0);
 err_late:
-	ixgbe_free_transmit_structures(adapter);
+	ixgbe_free_transmit_structures(interface);
 	ixgbe_free_receive_structures(adapter);
 err_out:
 	if (interface->ifp != NULL)
@@ -730,7 +730,7 @@ ixgbe_detach(device_t dev)
 	bus_generic_detach(dev);
 	if_free(interface->ifp);
 
-	ixgbe_free_transmit_structures(adapter);
+	ixgbe_free_transmit_structures(interface);
 	ixgbe_free_receive_structures(adapter);
 	free(adapter->mta, M_DEVBUF);
 
@@ -3177,7 +3177,7 @@ ixgbe_allocate_transmit_buffers(struct tx_ring *txr)
 	return 0;
 fail:
 	/* We free all, it handles case where we are in the middle */
-	ixgbe_free_transmit_structures(interface->adapter);
+	ixgbe_free_transmit_structures(interface);
 	return (error);
 }
 
@@ -3370,12 +3370,10 @@ ixgbe_enable_transmitter(struct adapter *adapter)
  *
  **********************************************************************/
 static void
-ixgbe_free_transmit_structures(struct adapter *adapter)
+ixgbe_free_transmit_structures(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
 	struct tx_ring *txr;
 	
-	interface = &adapter->interface;
 	txr = interface->tx_rings;
 
 	for (int i = 0; i < interface->num_queues; i++, txr++) {
