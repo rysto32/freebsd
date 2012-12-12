@@ -138,9 +138,10 @@ static int	ixgbe_setup_interface(device_t, struct ixgbe_interface *);
 static void	ixgbe_config_link(struct adapter *);
 
 static int      ixgbe_allocate_transmit_buffers(struct tx_ring *);
-static int	ixgbe_setup_transmit_structures(struct adapter *);
+static int	ixgbe_setup_transmit_structures(struct ixgbe_interface *);
 static void	ixgbe_setup_transmit_ring(struct tx_ring *);
-static void     ixgbe_initialize_transmit_units(struct adapter *);
+static void	ixgbe_initialize_transmit_units(struct ixgbe_interface *);
+static void	ixgbe_enable_transmitter(struct adapter *);
 static void     ixgbe_free_transmit_structures(struct adapter *);
 static void     ixgbe_free_transmit_buffers(struct tx_ring *);
 
@@ -1176,14 +1177,15 @@ ixgbe_init_locked(struct adapter *adapter)
 	}
 
 	/* Prepare transmit descriptors and buffers */
-	if (ixgbe_setup_transmit_structures(adapter)) {
+	if (ixgbe_setup_transmit_structures(interface)) {
 		device_printf(dev,"Could not setup transmit structures\n");
 		ixgbe_stop(adapter);
 		return;
 	}
 
 	ixgbe_init_hw(hw);
-	ixgbe_initialize_transmit_units(adapter);
+	ixgbe_initialize_transmit_units(interface);
+	ixgbe_enable_transmitter(adapter);
 
 	/* Setup Multicast table */
 	ixgbe_set_multi(adapter);
@@ -3229,12 +3231,10 @@ ixgbe_setup_transmit_ring(struct tx_ring *txr)
  *
  **********************************************************************/
 static int
-ixgbe_setup_transmit_structures(struct adapter *adapter)
+ixgbe_setup_transmit_structures(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
 	struct tx_ring *txr;
 
-	interface = &adapter->interface;
 	txr = interface->tx_rings;
 
 	for (int i = 0; i < interface->num_queues; i++, txr++)
@@ -3249,13 +3249,12 @@ ixgbe_setup_transmit_structures(struct adapter *adapter)
  *
  **********************************************************************/
 static void
-ixgbe_initialize_transmit_units(struct adapter *adapter)
+ixgbe_initialize_transmit_units(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
 	struct tx_ring	*txr;
-	struct ixgbe_hw	*hw = &adapter->hw;
+	struct ixgbe_hw	*hw;
 	
-	interface = &adapter->interface;
+	hw = &interface->adapter->hw;
 	txr = interface->tx_rings;
 
 	/* Setup the Base and Length of the Tx Descriptor Ring */
@@ -3303,8 +3302,15 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), txctrl);
 			break;
 		}
-
 	}
+}
+
+static void
+ixgbe_enable_transmitter(struct adapter *adapter)
+{
+	struct ixgbe_hw *hw;
+
+	hw = &adapter->hw;
 
 	if (hw->mac.type != ixgbe_mac_82598EB) {
 		u32 dmatxctl, rttdcs;
