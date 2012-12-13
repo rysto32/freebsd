@@ -406,6 +406,10 @@ struct ixgbe_interface {
 	u64			que_mask;
 	u32			num_rx_desc;
 
+	/* Mbuf cluster size */
+	u32			rx_mbuf_sz;
+	u16			max_frame_size;
+
 	struct ifmedia		media;
 };
 
@@ -444,9 +448,6 @@ struct adapter {
 	u32			link_speed;
 	bool			link_up;
 	u32 			linkvec;
-
-	/* Mbuf cluster size */
-	u32			rx_mbuf_sz;
 
 	/* Support for pluggable optics */
 	bool			sfp_probe;

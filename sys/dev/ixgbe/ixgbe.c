@@ -1118,10 +1118,13 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 static void
 ixgbe_calc_max_frame_size(struct adapter *adapter)
 {
+	struct ixgbe_interface *interface;
 	struct ifnet *ifp;
 	
-	ifp = adapter->interface.ifp;
-	adapter->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
+	interface = &adapter->interface;
+	ifp = interface->ifp;
+	interface->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
+	adapter->max_frame_size = interface->max_frame_size;
 }
 
 /*********************************************************************
@@ -1194,14 +1197,14 @@ ixgbe_init_locked(struct adapter *adapter)
 	** Determine the correct mbuf pool
 	** for doing jumbo frames
 	*/
-	if (adapter->max_frame_size <= 2048)
-		adapter->rx_mbuf_sz = MCLBYTES;
-	else if (adapter->max_frame_size <= 4096)
-		adapter->rx_mbuf_sz = MJUMPAGESIZE;
-	else if (adapter->max_frame_size <= 9216)
-		adapter->rx_mbuf_sz = MJUM9BYTES;
+	if (interface->max_frame_size <= 2048)
+		interface->rx_mbuf_sz = MCLBYTES;
+	else if (interface->max_frame_size <= 4096)
+		interface->rx_mbuf_sz = MJUMPAGESIZE;
+	else if (interface->max_frame_size <= 9216)
+		interface->rx_mbuf_sz = MJUM9BYTES;
 	else
-		adapter->rx_mbuf_sz = MJUM16BYTES;
+		interface->rx_mbuf_sz = MJUM16BYTES;
 
 	/* Prepare receive descriptors and buffers */
 	if (ixgbe_setup_receive_structures(adapter)) {
@@ -4161,7 +4164,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	    sizeof(union ixgbe_adv_rx_desc), DBA_ALIGN);
 	bzero((void *)rxr->rx_base, rsize);
 	/* Cache the size */
-	rxr->mbuf_sz = adapter->rx_mbuf_sz;
+	rxr->mbuf_sz = interface->rx_mbuf_sz;
 
 	/* Free current RX buffer structs and their mbufs */
 	ixgbe_free_receive_ring(rxr);
@@ -4192,7 +4195,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 		}
 #endif /* DEV_NETMAP */
 		rxbuf->buf = m_getjcl(M_NOWAIT, MT_DATA,
-		    M_PKTHDR, adapter->rx_mbuf_sz);
+		    M_PKTHDR, rxr->mbuf_sz);
 		if (rxbuf->buf == NULL) {
 			error = ENOBUFS;
                         goto fail;
@@ -4336,7 +4339,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 #endif /* DEV_NETMAP */
 	IXGBE_WRITE_REG(hw, IXGBE_HLREG0, hlreg);
 
-	bufsz = (adapter->rx_mbuf_sz +
+	bufsz = (interface->rx_mbuf_sz +
 	    BSIZEPKT_ROUNDUP) >> IXGBE_SRRCTL_BSIZEPKT_SHIFT;
 
 	for (int i = 0; i < interface->num_queues; i++, rxr++) {
