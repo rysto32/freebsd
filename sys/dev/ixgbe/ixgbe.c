@@ -146,10 +146,11 @@ static void     ixgbe_free_transmit_structures(struct ixgbe_interface *);
 static void     ixgbe_free_transmit_buffers(struct tx_ring *);
 
 static int      ixgbe_allocate_receive_buffers(struct rx_ring *);
-static int      ixgbe_setup_receive_structures(struct adapter *);
+static int      ixgbe_setup_receive_structures(struct ixgbe_interface *);
 static int	ixgbe_setup_receive_ring(struct rx_ring *);
 static void     ixgbe_initialize_receive_units(struct adapter *);
-static void     ixgbe_free_receive_structures(struct adapter *);
+static void     ixgbe_initialize_receive_rings(struct ixgbe_interface *);
+static void     ixgbe_free_receive_structures(struct ixgbe_interface *);
 static void     ixgbe_free_receive_buffers(struct rx_ring *);
 static void	ixgbe_setup_hw_rsc(struct rx_ring *);
 
@@ -624,7 +625,7 @@ ixgbe_attach(device_t dev)
 	return (0);
 err_late:
 	ixgbe_free_transmit_structures(interface);
-	ixgbe_free_receive_structures(adapter);
+	ixgbe_free_receive_structures(interface);
 err_out:
 	if (interface->ifp != NULL)
 		if_free(interface->ifp);
@@ -711,7 +712,7 @@ ixgbe_detach(device_t dev)
 	if_free(interface->ifp);
 
 	ixgbe_free_transmit_structures(interface);
-	ixgbe_free_receive_structures(adapter);
+	ixgbe_free_receive_structures(interface);
 	free(adapter->mta, M_DEVBUF);
 
 	IXGBE_CORE_LOCK_DESTROY(adapter);
@@ -1207,13 +1208,14 @@ ixgbe_init_locked(struct adapter *adapter)
 		interface->rx_mbuf_sz = MJUM16BYTES;
 
 	/* Prepare receive descriptors and buffers */
-	if (ixgbe_setup_receive_structures(adapter)) {
+	if (ixgbe_setup_receive_structures(interface)) {
 		device_printf(dev,"Could not setup receive structures\n");
 		ixgbe_stop(adapter);
 		return;
 	}
 
 	/* Configure RX settings */
+	ixgbe_initialize_receive_rings(interface);
 	ixgbe_initialize_receive_units(adapter);
 
 	gpie = IXGBE_READ_REG(&adapter->hw, IXGBE_GPIE);
@@ -4025,7 +4027,7 @@ ixgbe_allocate_receive_buffers(struct rx_ring *rxr)
 
 fail:
 	/* Frees all, but can handle partial completion */
-	ixgbe_free_receive_structures(interface->adapter);
+	ixgbe_free_receive_structures(interface);
 	return (error);
 }
 
@@ -4258,13 +4260,11 @@ fail:
  *
  **********************************************************************/
 static int
-ixgbe_setup_receive_structures(struct adapter *adapter)
+ixgbe_setup_receive_structures(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
 	struct rx_ring *rxr;
 	int j;
 	
-	interface = &adapter->interface;
 	rxr = interface->rx_rings;
 
 	for (j = 0; j < interface->num_queues; j++, rxr++)
@@ -4298,16 +4298,9 @@ fail:
 static void
 ixgbe_initialize_receive_units(struct adapter *adapter)
 {
-	struct ixgbe_interface *interface;
-	struct	rx_ring	*rxr;
 	struct ixgbe_hw	*hw = &adapter->hw;
-	struct ifnet   *ifp;
-	u32		bufsz, rxctrl, fctrl, srrctl, rxcsum;
-	u32		reta, mrqc = 0, hlreg, random[10];
-	
-	interface = &adapter->interface;
-	ifp = interface->ifp;
-	rxr = interface->rx_rings;
+	u32		rxctrl, fctrl, rxcsum;
+	u32		mrqc = 0, hlreg;
 
 	/*
 	 * Make sure receives are disabled while
@@ -4326,23 +4319,69 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 
 	/* Set for Jumbo Frames? */
 	hlreg = IXGBE_READ_REG(hw, IXGBE_HLREG0);
-	if (ifp->if_mtu > ETHERMTU)
+	if (adapter->max_frame_size > ETHER_MAX_LEN)
 		hlreg |= IXGBE_HLREG0_JUMBOEN;
 	else
 		hlreg &= ~IXGBE_HLREG0_JUMBOEN;
 #ifdef DEV_NETMAP
-	/* crcstrip is conditional in netmap (in RDRXCTL too ?) */
-	if (ifp->if_capenable & IFCAP_NETMAP && !ix_crcstrip)
+	/*
+	 * crcstrip is conditional in netmap (in RDRXCTL too ?) 
+	 * 
+	 * XXX Only disable CRC strip when netmap enabled.
+	 */
+	if (!ix_crcstrip)
 		hlreg &= ~IXGBE_HLREG0_RXCRCSTRP;
 	else
 		hlreg |= IXGBE_HLREG0_RXCRCSTRP;
 #endif /* DEV_NETMAP */
 	IXGBE_WRITE_REG(hw, IXGBE_HLREG0, hlreg);
 
+	if (adapter->hw.mac.type != ixgbe_mac_82598EB) {
+		u32 psrtype = IXGBE_PSRTYPE_TCPHDR |
+			      IXGBE_PSRTYPE_UDPHDR |
+			      IXGBE_PSRTYPE_IPV4HDR |
+			      IXGBE_PSRTYPE_IPV6HDR;
+		IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(0), psrtype);
+	}
+
+	rxcsum = IXGBE_READ_REG(hw, IXGBE_RXCSUM);
+
+	/* Perform hash on these packet types */
+	mrqc = IXGBE_MRQC_RSSEN
+		| IXGBE_MRQC_RSS_FIELD_IPV4
+		| IXGBE_MRQC_RSS_FIELD_IPV4_TCP
+		| IXGBE_MRQC_RSS_FIELD_IPV4_UDP
+		| IXGBE_MRQC_RSS_FIELD_IPV6_EX_TCP
+		| IXGBE_MRQC_RSS_FIELD_IPV6_EX
+		| IXGBE_MRQC_RSS_FIELD_IPV6
+		| IXGBE_MRQC_RSS_FIELD_IPV6_TCP
+		| IXGBE_MRQC_RSS_FIELD_IPV6_UDP
+		| IXGBE_MRQC_RSS_FIELD_IPV6_EX_UDP;
+	IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
+
+	/* RSS and RX IPP Checksum are mutually exclusive */
+	rxcsum |= IXGBE_RXCSUM_PCSD;
+
+	IXGBE_WRITE_REG(hw, IXGBE_RXCSUM, rxcsum);
+
+	return;
+}
+
+static void
+ixgbe_initialize_receive_rings(struct ixgbe_interface *interface)
+{
+	struct ixgbe_hw *hw;
+	struct rx_ring *rxr;
+	u32 bufsz, srrctl;
+	u32 reta, random[10];
+	int i, j;
+
+	hw = &interface->adapter->hw;
+	rxr = interface->rx_rings;
 	bufsz = (interface->rx_mbuf_sz +
 	    BSIZEPKT_ROUNDUP) >> IXGBE_SRRCTL_BSIZEPKT_SHIFT;
 
-	for (int i = 0; i < interface->num_queues; i++, rxr++) {
+	for (i = 0; i < interface->num_queues; i++, rxr++) {
 		u64 rdba = rxr->rxdma.dma_paddr;
 
 		/* Setup the Base and Length of the Rx Descriptor Ring */
@@ -4367,22 +4406,9 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		/* Set the processing limit */
 		rxr->process_limit = ixgbe_rx_process_limit;
 	}
-
-	if (adapter->hw.mac.type != ixgbe_mac_82598EB) {
-		u32 psrtype = IXGBE_PSRTYPE_TCPHDR |
-			      IXGBE_PSRTYPE_UDPHDR |
-			      IXGBE_PSRTYPE_IPV4HDR |
-			      IXGBE_PSRTYPE_IPV6HDR;
-		IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(0), psrtype);
-	}
-
-	rxcsum = IXGBE_READ_REG(hw, IXGBE_RXCSUM);
-
 	/* Setup RSS */
 	if (interface->num_queues > 1) {
-		int i, j;
 		reta = 0;
-
 		/* set up random bits */
 		arc4rand(&random, sizeof(random), 0);
 
@@ -4395,35 +4421,9 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		}
 
 		/* Now fill our hash function seeds */
-		for (int i = 0; i < 10; i++)
+		for (i = 0; i < 10; i++)
 			IXGBE_WRITE_REG(hw, IXGBE_RSSRK(i), random[i]);
-
-		/* Perform hash on these packet types */
-		mrqc = IXGBE_MRQC_RSSEN
-		     | IXGBE_MRQC_RSS_FIELD_IPV4
-		     | IXGBE_MRQC_RSS_FIELD_IPV4_TCP
-		     | IXGBE_MRQC_RSS_FIELD_IPV4_UDP
-		     | IXGBE_MRQC_RSS_FIELD_IPV6_EX_TCP
-		     | IXGBE_MRQC_RSS_FIELD_IPV6_EX
-		     | IXGBE_MRQC_RSS_FIELD_IPV6
-		     | IXGBE_MRQC_RSS_FIELD_IPV6_TCP
-		     | IXGBE_MRQC_RSS_FIELD_IPV6_UDP
-		     | IXGBE_MRQC_RSS_FIELD_IPV6_EX_UDP;
-		IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
-
-		/* RSS and RX IPP Checksum are mutually exclusive */
-		rxcsum |= IXGBE_RXCSUM_PCSD;
 	}
-
-	if (ifp->if_capenable & IFCAP_RXCSUM)
-		rxcsum |= IXGBE_RXCSUM_PCSD;
-
-	if (!(rxcsum & IXGBE_RXCSUM_PCSD))
-		rxcsum |= IXGBE_RXCSUM_IPPCSE;
-
-	IXGBE_WRITE_REG(hw, IXGBE_RXCSUM, rxcsum);
-
-	return;
 }
 
 /*********************************************************************
@@ -4432,12 +4432,10 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
  *
  **********************************************************************/
 static void
-ixgbe_free_receive_structures(struct adapter *adapter)
+ixgbe_free_receive_structures(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
 	struct rx_ring *rxr;
-	
-	interface = &adapter->interface;
+
 	rxr = interface->rx_rings;
 
 	for (int i = 0; i < interface->num_queues; i++, rxr++) {
