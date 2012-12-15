@@ -117,9 +117,12 @@ ixgbe_netmap_reg(struct netmap_adapter *na, int onoff)
 {
 	struct ifnet *ifp = na->ifp;
 	struct adapter *adapter = ifp->if_softc;
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
 
 	IXGBE_CORE_LOCK(adapter);
-	ixgbe_disable_intr(adapter); // XXX maybe ixgbe_stop ?
+	ixgbe_disable_intr(interface);
 
 	/* Tell the stack that the interface is no longer active */
 	ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);

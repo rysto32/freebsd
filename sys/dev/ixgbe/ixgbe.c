@@ -153,8 +153,8 @@ static void     ixgbe_free_receive_structures(struct ixgbe_interface *);
 static void     ixgbe_free_receive_buffers(struct rx_ring *);
 static void	ixgbe_setup_hw_rsc(struct rx_ring *);
 
-static void     ixgbe_enable_intr(struct adapter *);
-static void     ixgbe_disable_intr(struct adapter *);
+static void     ixgbe_enable_intr(struct ixgbe_interface *);
+static void     ixgbe_disable_intr(struct ixgbe_interface *);
 static void     ixgbe_update_stats_counters(struct adapter *);
 static void	ixgbe_txeof(struct tx_ring *);
 static bool	ixgbe_rxeof(struct ix_queue *);
@@ -1075,9 +1075,9 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 		IOCTL_DEBUGOUT("ioctl: SIOC(ADD|DEL)MULTI");
 		if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 			IXGBE_CORE_LOCK(adapter);
-			ixgbe_disable_intr(adapter);
+			ixgbe_disable_intr(interface);
 			ixgbe_set_multi(adapter);
-			ixgbe_enable_intr(adapter);
+			ixgbe_enable_intr(interface);
 			IXGBE_CORE_UNLOCK(adapter);
 		}
 		break;
@@ -1422,7 +1422,7 @@ ixgbe_init_locked(struct adapter *adapter)
 	ixgbe_setup_vlan_hw_support(adapter);
 
 	/* And now turn on interrupts */
-	ixgbe_enable_intr(adapter);
+	ixgbe_enable_intr(interface);
 
 	/* Now inform the stack we're ready */
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
@@ -1518,7 +1518,7 @@ ixgbe_handle_que(void *context, int pending)
 	if (que->res != NULL)
 		ixgbe_enable_queue(interface->adapter, que->msix);
 	else
-		ixgbe_enable_intr(interface->adapter);
+		ixgbe_enable_intr(interface);
 	return;
 }
 
@@ -1550,7 +1550,7 @@ ixgbe_legacy_irq(void *arg)
 
 	++que->irqs;
 	if (reg_eicr == 0) {
-		ixgbe_enable_intr(adapter);
+		ixgbe_enable_intr(interface);
 		return;
 	}
 
@@ -1582,7 +1582,7 @@ ixgbe_legacy_irq(void *arg)
 	if (more)
 		taskqueue_enqueue(que->tq, &que->que_task);
 	else
-		ixgbe_enable_intr(adapter);
+		ixgbe_enable_intr(interface);
 	return;
 }
 
@@ -2281,7 +2281,7 @@ ixgbe_stop(void *arg)
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 
 	INIT_DEBUGOUT("ixgbe_stop: begin\n");
-	ixgbe_disable_intr(adapter);
+	ixgbe_disable_intr(interface);
 	callout_stop(&adapter->timer);
 
 	/* Let the stack know...*/
@@ -5026,15 +5026,16 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 }
 
 static void
-ixgbe_enable_intr(struct adapter *adapter)
+ixgbe_enable_intr(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
-	struct ixgbe_hw	*hw = &adapter->hw;
+	struct adapter *adapter;
+	struct ixgbe_hw *hw;
 	struct ix_queue *que;
 	u32		mask, fwsm;
 
 	mask = (IXGBE_EIMS_ENABLE_MASK & ~IXGBE_EIMS_RTX_QUEUE);
-	interface = &adapter->interface;
+	adapter = interface->adapter;
+	hw = &adapter->hw;
 	que = interface->queues;
 	/* Enable Fan Failure detection */
 	if (hw->device_id == IXGBE_DEV_ID_82598AT)
@@ -5089,8 +5090,12 @@ ixgbe_enable_intr(struct adapter *adapter)
 }
 
 static void
-ixgbe_disable_intr(struct adapter *adapter)
+ixgbe_disable_intr(struct ixgbe_interface *interface)
 {
+	struct adapter *adapter;
+	
+	adapter = interface->adapter;
+	
 	if (adapter->msix_mem)
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIAC, 0);
 	if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
