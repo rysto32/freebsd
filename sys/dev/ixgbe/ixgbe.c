@@ -176,7 +176,7 @@ static int	ixgbe_tx_ctx_setup(struct tx_ring *,
 static int	ixgbe_tso_setup(struct tx_ring *,
 		    struct mbuf *, u32 *, u32 *);
 static void	ixgbe_set_ivar(struct adapter *, u8, u8, s8);
-static void	ixgbe_configure_ivars(struct adapter *);
+static void	ixgbe_configure_ivars(struct ixgbe_interface *);
 static u8 *	ixgbe_mc_array_itr(struct ixgbe_hw *, u8 **, u32 *);
 
 static void	ixgbe_setup_vlan_hw_support(struct adapter *);
@@ -1328,7 +1328,7 @@ ixgbe_init_locked(struct adapter *adapter)
 
 	/* Set up MSI/X routing */
 	if (ixgbe_enable_msix)  {
-		ixgbe_configure_ivars(adapter);
+		ixgbe_configure_ivars(interface);
 		/* Set up auto-mask */
 		if (hw->mac.type == ixgbe_mac_82598EB)
 			IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
@@ -5139,13 +5139,13 @@ ixgbe_set_ivar(struct adapter *adapter, u8 entry, u8 vector, s8 type)
 }
 
 static void
-ixgbe_configure_ivars(struct adapter *adapter)
+ixgbe_configure_ivars(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
+	struct	adapter *adapter;
 	struct  ix_queue *que;
 	u32 newitr;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
 	que = interface->queues;
 
 	if (ixgbe_max_interrupt_rate > 0)
