@@ -190,8 +190,8 @@ static __inline void ixgbe_rx_discard(struct rx_ring *, int);
 static __inline void ixgbe_rx_input(struct rx_ring *, struct ifnet *,
 		    struct mbuf *, u32);
 
-static void	ixgbe_enable_rx_drop(struct adapter *);
-static void	ixgbe_disable_rx_drop(struct adapter *);
+static void	ixgbe_enable_rx_drop(struct ixgbe_interface *);
+static void	ixgbe_disable_rx_drop(struct ixgbe_interface *);
 
 /* Support for pluggable optic modules */
 static bool	ixgbe_sfp_probe(struct adapter *);
@@ -5993,12 +5993,12 @@ ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS)
 		case ixgbe_fc_full:
 			adapter->hw.fc.requested_mode = adapter->fc;
 			if (interface->num_queues > 1)
-				ixgbe_disable_rx_drop(adapter);
+				ixgbe_disable_rx_drop(interface);
 			break;
 		case ixgbe_fc_none:
 			adapter->hw.fc.requested_mode = ixgbe_fc_none;
 			if (interface->num_queues > 1)
-				ixgbe_enable_rx_drop(adapter);
+				ixgbe_enable_rx_drop(interface);
 			break;
 		default:
 			adapter->fc = last;
@@ -6101,12 +6101,11 @@ ixgbe_set_thermal_test(SYSCTL_HANDLER_ARGS)
 ** disabled.
 */
 static void
-ixgbe_enable_rx_drop(struct adapter *adapter)
+ixgbe_enable_rx_drop(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
-        struct ixgbe_hw *hw = &adapter->hw;
-	
-	interface = &adapter->interface;
+        struct ixgbe_hw *hw;
+
+	hw = &interface->adapter->hw;
 
 	for (int i = 0; i < interface->num_queues; i++) {
         	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
@@ -6116,12 +6115,11 @@ ixgbe_enable_rx_drop(struct adapter *adapter)
 }
 
 static void
-ixgbe_disable_rx_drop(struct adapter *adapter)
+ixgbe_disable_rx_drop(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
-        struct ixgbe_hw *hw = &adapter->hw;
-	
-	interface = &adapter->interface;
+        struct ixgbe_hw *hw;
+
+	hw = &interface->adapter->hw;
 
 	for (int i = 0; i < interface->num_queues; i++) {
         	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
