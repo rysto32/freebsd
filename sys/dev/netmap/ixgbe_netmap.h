@@ -150,7 +150,7 @@ ixgbe_netmap_reg_int(struct ixgbe_interface *interface, int onoff)
 	} else {
 		nm_clear_native_flags(na);
 	}
-	ixgbe_init_locked(adapter);	/* also enables intr */
+	ixgbe_init_locked(interface);	/* also enables intr */
 	set_crcstrip(&adapter->hw, onoff); // XXX why twice ?
 	IXGBE_CORE_UNLOCK(adapter);
 	return (ifp->if_drv_flags & IFF_DRV_RUNNING ? 0 : 1);
