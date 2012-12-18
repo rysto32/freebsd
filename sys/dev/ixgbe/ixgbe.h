@@ -369,6 +369,7 @@ struct ixgbe_interface {
 	struct adapter		*adapter;
 	struct ifnet		*ifp;	
 	int			if_flags;
+	int			me;
 
 	eventhandler_tag 	vlan_attach;
 	eventhandler_tag 	vlan_detach;
@@ -462,6 +463,9 @@ struct adapter {
 
 	/* Multicast array memory */
 	u8			*mta;
+	
+	u32			num_tx_desc;
+	u32			num_rx_desc;
 
 	/* Misc stats maintained by the driver */
 	unsigned long   	dropped_pkts;

@@ -130,6 +130,9 @@ static void     ixgbe_identify_hardware(struct adapter *);
 static int      ixgbe_allocate_pci_resources(struct adapter *);
 static int      ixgbe_allocate_msix(struct adapter *);
 static int      ixgbe_allocate_legacy(struct adapter *);
+static int	ixgbe_allocate_phys_interface(struct adapter *);
+static int	ixgbe_init_interface(struct adapter *, int, 
+		    struct ixgbe_interface **);
 static int	ixgbe_allocate_queues(struct ixgbe_interface *);
 static int	ixgbe_setup_msix(struct adapter *);
 static void	ixgbe_free_pci_resources(struct adapter *);
@@ -478,9 +481,9 @@ ixgbe_attach(device_t dev)
 	if (((ixgbe_txd * sizeof(union ixgbe_adv_tx_desc)) % DBA_ALIGN) != 0 ||
 	    ixgbe_txd < MIN_TXD || ixgbe_txd > MAX_TXD) {
 		device_printf(dev, "TXD config issue, using default!\n");
-		interface->num_tx_desc = DEFAULT_TXD;
+		adapter->num_tx_desc = DEFAULT_TXD;
 	} else
-		interface->num_tx_desc = ixgbe_txd;
+		adapter->num_tx_desc = ixgbe_txd;
 
 	/*
 	** With many RX rings it is easy to exceed the
@@ -500,15 +503,14 @@ ixgbe_attach(device_t dev)
 	if (((ixgbe_rxd * sizeof(union ixgbe_adv_rx_desc)) % DBA_ALIGN) != 0 ||
 	    ixgbe_rxd < MIN_TXD || ixgbe_rxd > MAX_TXD) {
 		device_printf(dev, "RXD config issue, using default!\n");
-		interface->num_rx_desc = DEFAULT_RXD;
+		adapter->num_rx_desc = DEFAULT_RXD;
 	} else
-		interface->num_rx_desc = ixgbe_rxd;
-
-	/* Allocate our TX/RX Queues */
-	if (ixgbe_allocate_queues(interface)) {
-		error = ENOMEM;
+		adapter->num_rx_desc = ixgbe_rxd;
+	
+	error = ixgbe_allocate_phys_interface(adapter);
+	
+	if (error)
 		goto err_out;
-	}
 
 	/* Allocate multicast array memory. */
 	adapter->mta = malloc(sizeof(u8) * IXGBE_ETH_LENGTH_OF_ADDRESS *
@@ -2928,6 +2930,40 @@ ixgbe_dma_free(struct ixgbe_dma_alloc *dma)
 	bus_dma_tag_destroy(dma->dma_tag);
 }
 
+static int
+ixgbe_allocate_phys_interface(struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	int error;
+	
+	error = ixgbe_init_interface(adapter, 0, &interface);
+	
+	if (error)
+		return (error);
+	
+	return (0);
+}
+
+static int
+ixgbe_init_interface(struct adapter *adapter, int index, 
+    struct ixgbe_interface **ifxpp)
+{
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
+	
+	interface->me = index;
+	interface->adapter = adapter;
+	interface->num_rx_desc = adapter->num_rx_desc;
+	interface->num_tx_desc = adapter->num_tx_desc;
+	
+	/* Allocate our TX/RX Queues */
+	if (ixgbe_allocate_queues(interface))
+		return (ENOMEM);
+	
+	*ifxpp = interface;
+	return (0);
+}
 
 /*********************************************************************
  *
