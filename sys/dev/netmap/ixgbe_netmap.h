@@ -69,6 +69,13 @@ SYSCTL_INT(_dev_netmap, OID_AUTO, ix_rx_miss,
 SYSCTL_INT(_dev_netmap, OID_AUTO, ix_rx_miss_bufs,
     CTLFLAG_RW, &ix_rx_miss_bufs, 0, "potentially missed rx intr bufs");
 
+static void	ixgbe_netmap_lock_wrapper_int(struct ixgbe_interface *, int, 
+		    u_int);
+static int	ixgbe_netmap_reg_int(struct ixgbe_interface *, int);
+static int	ixgbe_netmap_txsync_int(struct netmap_adapter *,
+		    struct ixgbe_interface *, u_int, int);
+static int	ixgbe_netmap_rxsync_int(struct netmap_adapter *,
+		    struct ixgbe_interface *, u_int, int);
 
 static void
 set_crcstrip(struct ixgbe_hw *hw, int onoff)
@@ -115,11 +122,20 @@ set_crcstrip(struct ixgbe_hw *hw, int onoff)
 static int
 ixgbe_netmap_reg(struct netmap_adapter *na, int onoff)
 {
-	struct ifnet *ifp = na->ifp;
-	struct adapter *adapter = ifp->if_softc;
-	struct ixgbe_interface *interface;
 	
-	interface = &adapter->interface;
+	return (ixgbe_netmap_reg_int(ixgbe_phys_get_interface(na->ifp), onoff));
+}
+
+static int
+ixgbe_netmap_reg_int(struct ixgbe_interface *interface, int onoff)
+{
+	struct adapter *adapter;
+	struct netmap_adapter *na;
+	struct ifnet *ifp;
+	
+	adapter = interface->adapter;
+	ifp = interface->ifp;
+	na = NA(ifp);
 
 	IXGBE_CORE_LOCK(adapter);
 	ixgbe_disable_intr(interface);
@@ -159,7 +175,17 @@ static int
 ixgbe_netmap_txsync(struct netmap_kring *kring, int flags)
 {
 	struct netmap_adapter *na = kring->na;
-	struct ifnet *ifp = na->ifp;
+	struct ixgbe_interface *interface;
+
+	interface = ixgbe_phys_get_interface(na->ifp);
+	return (ixgbe_netmap_txsync_int(na, interface, ring_nr, flags));
+}
+
+static int
+ixgbe_netmap_txsync_int(struct netmap_adapter *na,
+    struct ixgbe_interface *interface, u_int ring_nr, int flags)
+{
+	struct ixgbe_hw *hw;
 	struct netmap_ring *ring = kring->ring;
 	u_int nm_i;	/* index into the netmap ring */
 	u_int nic_i;	/* index into the NIC ring */
@@ -171,10 +197,10 @@ ixgbe_netmap_txsync(struct netmap_kring *kring, int flags)
 	 * them every half ring, or where NS_REPORT is set
 	 */
 	u_int report_frequency = kring->nkr_num_slots >> 1;
+	
+	hw = &interface->adapter->hw;
 
-	/* device-specific */
-	struct adapter *adapter = ifp->if_softc;
-	struct ixgbe_interface *interface = &adapter->interface;
+	/* device-specific */;
 	struct tx_ring *txr = &interface->tx_rings[kring->ring_id];
 	int reclaim_tx;
 
@@ -269,7 +295,7 @@ ixgbe_netmap_txsync(struct netmap_kring *kring, int flags)
 			BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 		/* (re)start the tx unit up to slot nic_i (excluded) */
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_TDT(txr->me), nic_i);
+		IXGBE_WRITE_REG(hw, IXGBE_TDT(txr->me), nic_i);
 	}
 
 	/*
@@ -313,7 +339,7 @@ ixgbe_netmap_txsync(struct netmap_kring *kring, int flags)
 		 * REPORT_STATUS in a few slots so TDH is the only
 		 * good way.
 		 */
-		nic_i = IXGBE_READ_REG(&adapter->hw, IXGBE_TDH(kring->ring_id));
+		nic_i = IXGBE_READ_REG(hw, IXGBE_TDH(ring_nr));
 		if (nic_i >= kring->nkr_num_slots) { /* XXX can it happen ? */
 			D("TDH wrap %d", nic_i);
 			nic_i -= kring->nkr_num_slots;
@@ -329,7 +355,6 @@ ixgbe_netmap_txsync(struct netmap_kring *kring, int flags)
 
 	return 0;
 }
-
 
 /*
  * Reconcile kernel and user view of the receive ring.
@@ -348,7 +373,17 @@ static int
 ixgbe_netmap_rxsync(struct netmap_kring *kring, int flags)
 {
 	struct netmap_adapter *na = kring->na;
-	struct ifnet *ifp = na->ifp;
+	struct ixgbe_interface *interface;
+	
+	interface = ixgbe_phys_get_interface(na->ifp);
+	return (ixgbe_netmap_rxsync_int(na, interface, ring_nr, flags));
+}
+
+static int
+ixgbe_netmap_rxsync_int(struct netmap_adapter *na,
+    struct ixgbe_interface *interface, u_int ring_nr, int flags)
+{
+	struct ixgbe_hw *hw;
 	struct netmap_ring *ring = kring->ring;
 	u_int nm_i;	/* index into the netmap ring */
 	u_int nic_i;	/* index into the NIC ring */
@@ -357,9 +392,8 @@ ixgbe_netmap_rxsync(struct netmap_kring *kring, int flags)
 	u_int const head = nm_rxsync_prologue(kring);
 	int force_update = (flags & NAF_FORCE_READ) || kring->nr_kflags & NKR_PENDINTR;
 
-	/* device-specific */
-	struct adapter *adapter = ifp->if_softc;
-	struct ixgbe_interface *interface = &adapter->interface;
+	hw = &interface->adapter->hw;
+
 	struct rx_ring *rxr = &interface->rx_rings[kring->ring_id];
 
 	if (head > lim)
@@ -459,7 +493,7 @@ ixgbe_netmap_rxsync(struct netmap_kring *kring, int flags)
 		 * so move nic_i back by one unit
 		 */
 		nic_i = nm_prev(nic_i, lim);
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_RDT(rxr->me), nic_i);
+		IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), nic_i);
 	}
 
 	/* tell userspace that there might be new packets */
