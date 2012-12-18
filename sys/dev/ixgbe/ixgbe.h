@@ -468,6 +468,7 @@ struct adapter {
 	
 	u32			num_tx_desc;
 	u32			num_rx_desc;
+	u32			num_queues;
 
 
 	/* Misc stats maintained by the driver */
