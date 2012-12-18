@@ -118,7 +118,7 @@ static int      ixgbe_ioctl(struct ifnet *, u_long, caddr_t);
 static int	ixgbe_ioctl_int(struct ixgbe_interface *, u_long, caddr_t);
 static void	ixgbe_calc_max_frame_size(struct adapter *);
 static void	ixgbe_init(void *);
-static void	ixgbe_init_locked(struct adapter *);
+static void	ixgbe_init_locked(struct ixgbe_interface *);
 static void     ixgbe_stop(void *);
 static void     ixgbe_media_status(struct ifnet *, struct ifmediareq *);
 static void	ixgbe_media_status_int(struct adapter *, struct ifmediareq *);
@@ -1041,7 +1041,7 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 			IXGBE_CORE_LOCK(adapter);
 			ifp->if_mtu = ifr->ifr_mtu;
 			ixgbe_calc_max_frame_size(adapter);
-			ixgbe_init_locked(adapter);
+			ixgbe_init_locked(interface);
 			IXGBE_CORE_UNLOCK(adapter);
 		}
 		break;
@@ -1055,7 +1055,7 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 					ixgbe_set_promisc(adapter);
                                 }
 			} else
-				ixgbe_init_locked(adapter);
+				ixgbe_init_locked(interface);
 		} else
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
 				ixgbe_stop(adapter);
@@ -1098,7 +1098,7 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 			ifp->if_capenable ^= IFCAP_VLAN_HWTSO;
 		if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 			IXGBE_CORE_LOCK(adapter);
-			ixgbe_init_locked(adapter);
+			ixgbe_init_locked(interface);
 			IXGBE_CORE_UNLOCK(adapter);
 		}
 		VLAN_CAPABILITIES(ifp);
@@ -1154,17 +1154,19 @@ ixgbe_calc_max_frame_size(struct adapter *adapter)
 #define IXGBE_MHADD_MFS_SHIFT 16
 
 static void
-ixgbe_init_locked(struct adapter *adapter)
+ixgbe_init_locked(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
+	struct adapter *adapter;
 	struct ifnet   *ifp;
-	device_t 	dev = adapter->dev;
-	struct ixgbe_hw *hw = &adapter->hw;
+	device_t 	dev;
+	struct ixgbe_hw *hw;
 	u32		k, txdctl, mhadd, gpie;
 	u32		rxdctl, rxctrl;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
 	ifp = interface->ifp;
+	dev = adapter->dev;
+	hw = &adapter->hw;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 	INIT_DEBUGOUT("ixgbe_init_locked: begin");
@@ -1432,7 +1434,7 @@ ixgbe_init(void *arg)
 	adapter = interface->adapter;
 
 	IXGBE_CORE_LOCK(adapter);
-	ixgbe_init_locked(adapter);
+	ixgbe_init_locked(interface);
 	IXGBE_CORE_UNLOCK(adapter);
 	return;
 }
@@ -2214,7 +2216,7 @@ watchdog:
 	    txr->me, txr->tx_avail, txr->next_to_clean);
 	interface->ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	adapter->watchdog_events++;
-	ixgbe_init_locked(adapter);
+	ixgbe_init_locked(interface);
 }
 
 /*
