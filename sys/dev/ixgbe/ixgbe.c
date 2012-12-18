@@ -133,11 +133,12 @@ static int      ixgbe_allocate_legacy(struct adapter *);
 static int	ixgbe_allocate_phys_interface(struct adapter *);
 static int	ixgbe_init_interface(struct adapter *, int, 
 		    struct ixgbe_interface **);
+static void	ixgbe_free_interfaces(struct adapter *);
 static int	ixgbe_allocate_queues(struct ixgbe_interface *);
 static int	ixgbe_setup_msix(struct adapter *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
-static int	ixgbe_setup_interface(device_t, struct ixgbe_interface *);
+static int	ixgbe_setup_interface(device_t, struct adapter *);
 static void	ixgbe_config_link(struct adapter *);
 
 static int      ixgbe_allocate_transmit_buffers(struct tx_ring *);
@@ -419,7 +420,6 @@ static int
 ixgbe_attach(device_t dev)
 {
 	struct adapter *adapter;
-	struct ixgbe_interface *interface;
 	struct ixgbe_hw *hw;
 	int             error = 0;
 	u16		csum;
@@ -431,8 +431,6 @@ ixgbe_attach(device_t dev)
 	adapter = device_get_softc(dev);
 	adapter->dev = adapter->osdep.dev = dev;
 	hw = &adapter->hw;
-	interface = &adapter->interface;
-	interface->adapter = adapter;
 
 	/* Core Lock Init*/
 	IXGBE_CORE_LOCK_INIT(adapter, device_get_nameunit(dev));
@@ -492,7 +490,7 @@ ixgbe_attach(device_t dev)
 	*/
 	if (nmbclusters > 0 ) {
 		int s;
-		s = (ixgbe_rxd * interface->num_queues) * ixgbe_total_ports;
+		s = (ixgbe_rxd * adapter->num_queues) * ixgbe_total_ports;
 		if (s > nmbclusters) {
 			device_printf(dev, "RX Descriptors exceed "
 			    "system mbuf max, using default instead!\n");
@@ -579,17 +577,11 @@ ixgbe_attach(device_t dev)
 		goto err_late;
 
 	/* Setup OS specific network interface */
-	if (ixgbe_setup_interface(dev, interface) != 0)
+	if (ixgbe_setup_interface(dev, adapter) != 0)
 		goto err_late;
 
 	/* Initialize statistics */
 	ixgbe_update_stats_counters(adapter);
-
-	/* Register for VLAN events */
-	interface->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
-	    ixgbe_register_vlan, adapter, EVENTHANDLER_PRI_FIRST);
-	interface->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
-	    ixgbe_unregister_vlan, adapter, EVENTHANDLER_PRI_FIRST);
 
         /* Print PCIE bus type/speed/width info */
 	ixgbe_get_bus_info(hw);
@@ -626,11 +618,8 @@ ixgbe_attach(device_t dev)
 	INIT_DEBUGOUT("ixgbe_attach: end");
 	return (0);
 err_late:
-	ixgbe_free_transmit_structures(interface);
-	ixgbe_free_receive_structures(interface);
+	ixgbe_free_interfaces(adapter);
 err_out:
-	if (interface->ifp != NULL)
-		if_free(interface->ifp);
 	ixgbe_free_pci_resources(adapter);
 	free(adapter->mta, M_DEVBUF);
 	return (error);
@@ -2618,7 +2607,7 @@ ixgbe_setup_msix(struct adapter *adapter)
 	if ((msgs) && pci_alloc_msix(dev, &msgs) == 0) {
                	device_printf(adapter->dev,
 		    "Using MSIX interrupts with %d vectors\n", msgs);
-		interface->num_queues = queues;
+		adapter->num_queues = queues;
 		return (msgs);
 	}
 msi:
@@ -2743,15 +2732,15 @@ mem:
  *
  **********************************************************************/
 static int
-ixgbe_setup_interface(device_t dev, struct ixgbe_interface *interface)
+ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 {
-	struct adapter *adapter;
+	struct ixgbe_interface *interface;
 	struct ixgbe_hw *hw;
 	struct ifnet   *ifp;
 
 	INIT_DEBUGOUT("ixgbe_setup_interface: begin");
 	
-	adapter = interface->adapter;
+	interface = &adapter->interface;
 	hw = &adapter->hw;
 
 	ifp = interface->ifp = if_alloc(IFT_ETHER);
@@ -2816,6 +2805,12 @@ ixgbe_setup_interface(device_t dev, struct ixgbe_interface *interface)
 	}
 	ifmedia_add(&interface->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(&interface->media, IFM_ETHER | IFM_AUTO);
+
+	/* Register for VLAN events */
+	interface->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
+	    ixgbe_register_vlan, adapter, EVENTHANDLER_PRI_FIRST);
+	interface->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
+	    ixgbe_unregister_vlan, adapter, EVENTHANDLER_PRI_FIRST);
 
 	return (0);
 }
@@ -2956,6 +2951,7 @@ ixgbe_init_interface(struct adapter *adapter, int index,
 	interface->adapter = adapter;
 	interface->num_rx_desc = adapter->num_rx_desc;
 	interface->num_tx_desc = adapter->num_tx_desc;
+	interface->num_queues = adapter->num_queues;
 	
 	/* Allocate our TX/RX Queues */
 	if (ixgbe_allocate_queues(interface))
@@ -2963,6 +2959,17 @@ ixgbe_init_interface(struct adapter *adapter, int index,
 	
 	*ifxpp = interface;
 	return (0);
+}
+
+static void
+ixgbe_free_interfaces(struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
+
+	ixgbe_free_transmit_structures(interface);
+	ixgbe_free_receive_structures(interface);
 }
 
 /*********************************************************************
