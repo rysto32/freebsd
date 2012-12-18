@@ -203,7 +203,7 @@ ixgbe_netmap_reg_int(struct ixgbe_interface *interface, int onoff)
 		 * reinitialize the adapter, now with netmap flag set,
 		 * so the rings will be set accordingly.
 		 */
-		ixgbe_init_locked(adapter);
+		ixgbe_init_locked(interface);
 		if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) == 0) {
 			error = ENOMEM;
 			goto fail;
@@ -214,7 +214,7 @@ fail:
 		ifp->if_transmit = na->if_transmit;
 		ifp->if_capenable &= ~IFCAP_NETMAP;
 		/* initialize the card, this time in standard mode */
-		ixgbe_init_locked(adapter);	/* also enables intr */
+		ixgbe_init_locked(interface);	/* also enables intr */
 	}
 	set_crcstrip(&adapter->hw, onoff);
 	return (error);
