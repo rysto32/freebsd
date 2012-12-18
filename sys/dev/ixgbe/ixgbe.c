@@ -220,6 +220,9 @@ static void	ixgbe_atr(struct tx_ring *, struct mbuf *);
 static void	ixgbe_reinit_fdir(void *, int);
 #endif
 
+static __inline struct ixgbe_interface * 
+		ixgbe_phys_get_interface(struct ifnet *);
+
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
  *********************************************************************/
