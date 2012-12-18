@@ -219,6 +219,9 @@ static void	ixgbe_atr(struct tx_ring *, struct mbuf *);
 static void	ixgbe_reinit_fdir(void *, int);
 #endif
 
+static __inline struct ixgbe_interface * 
+		ixgbe_phys_get_interface(struct ifnet *);
+		
 /* Missing shared code prototype */
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
