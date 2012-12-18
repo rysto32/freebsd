@@ -119,7 +119,7 @@ static int	ixgbe_ioctl_int(struct ixgbe_interface *, u_long, caddr_t);
 static void	ixgbe_calc_max_frame_size(struct adapter *);
 static void	ixgbe_init(void *);
 static void	ixgbe_init_locked(struct ixgbe_interface *);
-static void     ixgbe_stop(void *);
+static void     ixgbe_stop(struct ixgbe_interface *interface);
 static void     ixgbe_media_status(struct ifnet *, struct ifmediareq *);
 static void	ixgbe_media_status_int(struct adapter *, struct ifmediareq *);
 static int      ixgbe_media_change(struct ifnet *);
@@ -681,7 +681,7 @@ ixgbe_detach(device_t dev)
 	}
 
 	IXGBE_CORE_LOCK(adapter);
-	ixgbe_stop(adapter);
+	ixgbe_stop(interface);
 	IXGBE_CORE_UNLOCK(adapter);
 
 	for (int i = 0; i < interface->num_queues; i++, que++, txr++) {
@@ -743,8 +743,11 @@ static int
 ixgbe_shutdown(device_t dev)
 {
 	struct adapter *adapter = device_get_softc(dev);
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
 	IXGBE_CORE_LOCK(adapter);
-	ixgbe_stop(adapter);
+	ixgbe_stop(interface);
 	IXGBE_CORE_UNLOCK(adapter);
 	return (0);
 }
@@ -1058,7 +1061,7 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 				ixgbe_init_locked(interface);
 		} else
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				ixgbe_stop(adapter);
+				ixgbe_stop(interface);
 		interface->if_flags = ifp->if_flags;
 		IXGBE_CORE_UNLOCK(adapter);
 		break;
@@ -1198,7 +1201,7 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	/* Prepare transmit descriptors and buffers */
 	if (ixgbe_setup_transmit_structures(interface)) {
 		device_printf(dev,"Could not setup transmit structures\n");
-		ixgbe_stop(adapter);
+		ixgbe_stop(interface);
 		return;
 	}
 
@@ -1225,7 +1228,7 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	/* Prepare receive descriptors and buffers */
 	if (ixgbe_setup_receive_structures(interface)) {
 		device_printf(dev,"Could not setup receive structures\n");
-		ixgbe_stop(adapter);
+		ixgbe_stop(interface);
 		return;
 	}
 
@@ -2266,14 +2269,14 @@ ixgbe_update_link_status(struct adapter *adapter)
  **********************************************************************/
 
 static void
-ixgbe_stop(void *arg)
+ixgbe_stop(struct ixgbe_interface *interface)
 {
 	struct ifnet   *ifp;
-	struct adapter *adapter = arg;
-	struct ixgbe_interface *interface;
-	struct ixgbe_hw *hw = &adapter->hw;
+	struct adapter *adapter;
+	struct ixgbe_hw *hw;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
+	hw = &adapter->hw;
 	ifp = interface->ifp;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
