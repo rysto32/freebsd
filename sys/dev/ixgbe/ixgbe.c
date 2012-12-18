@@ -732,10 +732,8 @@ ixgbe_shutdown(device_t dev)
 static __inline struct ixgbe_interface *
 ixgbe_phys_get_interface(struct ifnet *ifp)
 {
-	struct adapter *adapter;
-
-	adapter = ifp->if_softc;
-	return (&adapter->interface);
+	
+	return (ifp->if_softc);
 }
 
 #ifdef IXGBE_LEGACY_TX
@@ -1406,7 +1404,11 @@ ixgbe_init_locked(struct adapter *adapter)
 static void
 ixgbe_init(void *arg)
 {
-	struct adapter *adapter = arg;
+	struct adapter *adapter;
+	struct ixgbe_interface *interface;
+	
+	interface = arg;
+	adapter = interface->adapter;
 
 	IXGBE_CORE_LOCK(adapter);
 	ixgbe_init_locked(adapter);
@@ -2754,7 +2756,7 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
 	if_initbaudrate(ifp, IF_Gbps(10));
 	ifp->if_init = ixgbe_init;
-	ifp->if_softc = adapter;
+	ifp->if_softc = interface;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = ixgbe_ioctl;
 #ifndef IXGBE_LEGACY_TX
@@ -2811,9 +2813,9 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 
 	/* Register for VLAN events */
 	interface->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
-	    ixgbe_register_vlan, adapter, EVENTHANDLER_PRI_FIRST);
+	    ixgbe_register_vlan, interface, EVENTHANDLER_PRI_FIRST);
 	interface->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
-	    ixgbe_unregister_vlan, adapter, EVENTHANDLER_PRI_FIRST);
+	    ixgbe_unregister_vlan, interface, EVENTHANDLER_PRI_FIRST);
 
 	return (0);
 }
