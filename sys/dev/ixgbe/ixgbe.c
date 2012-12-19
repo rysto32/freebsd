@@ -5680,9 +5680,6 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 	rxr = interface->rx_rings;
 
 	/* Driver Statistics */
-	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "dropped",
-			CTLFLAG_RD, &adapter->dropped_pkts,
-			"Driver dropped packets");
 	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "mbuf_defrag_failed",
 			CTLFLAG_RD, &adapter->mbuf_defrag_failed,
 			"m_defrag() failed");
