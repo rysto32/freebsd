@@ -100,6 +100,8 @@ static char    *ixgbe_strings[] = {
 /*********************************************************************
  *  Function prototypes
  *********************************************************************/
+enum ixgbe_promisc { IXGBE_NORMAL, IXGBE_PROMISCUOUS, IXGBE_ALLMULTI };
+
 static int      ixgbe_probe(device_t);
 static int      ixgbe_attach(device_t);
 static int      ixgbe_detach(device_t);
@@ -1998,19 +2000,46 @@ retry:
 
 }
 
+static enum ixgbe_promisc
+ixgbe_get_promisc_state(struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	struct ifnet *ifp;
+	enum ixgbe_promisc state;
+	
+	interface = &adapter->interface;
+	ifp = interface->ifp;
+	state = IXGBE_NORMAL;
+	
+	if (ifp->if_flags & IFF_PROMISC)
+		state = IXGBE_PROMISCUOUS;
+	else if (ifp->if_flags & IFF_ALLMULTI)
+		state = IXGBE_ALLMULTI;
+	
+	return (state);
+}
+
 static void
 ixgbe_set_promisc(struct adapter *adapter)
 {
 	u_int32_t       reg_rctl;
-	struct ixgbe_interface *interface;
-	struct ifnet   *ifp;
-	int		mcnt = 0;
+	enum ixgbe_promisc state;
+	uint32_t vml2flt;
 	
-	interface = &adapter->interface;
-	ifp = interface->ifp;
+	vml2flt = 0;
+	
+	IXGBE_CORE_LOCK_ASSERT(adapter);
+	
+	state = ixgbe_get_promisc_state(adapter);
 
 	reg_rctl = IXGBE_READ_REG(&adapter->hw, IXGBE_FCTRL);
-	reg_rctl &= (~IXGBE_FCTRL_UPE);
+	if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+		/* XXX use broadcast queue pool index. */
+		vml2flt = IXGBE_READ_REG(&adapter->hw, IXGBE_VMOLR(0));
+	
+	switch (state) {
+	case IXGBE_NORMAL:
+		reg_rctl &= (~IXGBE_FCTRL_UPE);
 	if (ifp->if_flags & IFF_ALLMULTI)
 		mcnt = MAX_NUM_MULTICAST_ADDRESSES;
 	else {
@@ -2035,16 +2064,23 @@ ixgbe_set_promisc(struct adapter *adapter)
 	}
 	if (mcnt < MAX_NUM_MULTICAST_ADDRESSES)
 		reg_rctl &= (~IXGBE_FCTRL_MPE);
-	IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, reg_rctl);
-
-	if (ifp->if_flags & IFF_PROMISC) {
+		vml2flt &= ~IXGBE_VMOLR_MPE;
+		break;
+	case IXGBE_PROMISCUOUS:
 		reg_rctl |= (IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, reg_rctl);
-	} else if (ifp->if_flags & IFF_ALLMULTI) {
+		vml2flt |= IXGBE_VMOLR_MPE;
+		break;
+	case IXGBE_ALLMULTI:
 		reg_rctl |= IXGBE_FCTRL_MPE;
 		reg_rctl &= ~IXGBE_FCTRL_UPE;
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, reg_rctl);
+		vml2flt |= IXGBE_VMOLR_MPE;
+		break;
 	}
+	IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, reg_rctl);
+	if (adapter->hw.mac.type == ixgbe_mac_82599EB)
+		/* XXX broadcast pool index */
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_VMOLR(0), vml2flt);
+	
 	return;
 }
 
