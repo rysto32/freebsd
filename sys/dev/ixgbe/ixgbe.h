@@ -415,6 +415,8 @@ struct ixgbe_interface {
 	u16			max_frame_size;
 
 	struct ifmedia		media;
+	
+	unsigned long   	mbuf_defrag_failed;
 };
 
 /* Our adapter structure */
@@ -472,7 +474,6 @@ struct adapter {
 
 
 	/* Misc stats maintained by the driver */
-	unsigned long   	mbuf_defrag_failed;
 	unsigned long   	watchdog_events;
 	unsigned long		link_irq;
 
