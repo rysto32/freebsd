@@ -2661,11 +2661,8 @@ msi:
 static int
 ixgbe_allocate_pci_resources(struct adapter *adapter)
 {
-	struct ixgbe_interface *interface;
 	int             rid;
 	device_t        dev = adapter->dev;
-	
-	interface = &adapter->interface;
 
 	rid = PCIR_BAR(0);
 	adapter->pci_mem = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
@@ -2683,7 +2680,7 @@ ixgbe_allocate_pci_resources(struct adapter *adapter)
 	adapter->hw.hw_addr = (u8 *) &adapter->osdep.mem_bus_space_handle;
 
 	/* Legacy defaults */
-	interface->num_queues = 1;
+	adapter->num_queues = 1;
 	adapter->hw.back = &adapter->osdep;
 
 	/*
