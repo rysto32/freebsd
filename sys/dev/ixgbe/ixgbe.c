@@ -3001,6 +3001,8 @@ ixgbe_init_interface(struct adapter *adapter, int index,
 	interface->num_tx_desc = adapter->num_tx_desc;
 	interface->num_queues = adapter->num_queues;
 	
+	sysctl_ctx_init(&interface->sysctl_ctx);
+	
 	/* Allocate our TX/RX Queues */
 	if (ixgbe_allocate_queues(interface))
 		return (ENOMEM);
@@ -3016,6 +3018,7 @@ ixgbe_free_interfaces(struct adapter *adapter)
 	
 	interface = &adapter->interface;
 
+	sysctl_ctx_free(&interface->sysctl_ctx);
 	ixgbe_free_transmit_structures(interface);
 	ixgbe_free_receive_structures(interface);
 }
@@ -5654,47 +5657,40 @@ ixgbe_sysctl_interrupt_rate_handler(SYSCTL_HANDLER_ARGS)
 	return 0;
 }
 
-/*
- * Add sysctl variables, one per statistic, to the system.
- */
 static void
-ixgbe_add_hw_stats(struct adapter *adapter)
+ixgbe_add_if_sysctls(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
-	device_t dev = adapter->dev;
-
+	struct sysctl_ctx_list *ctx;
+	struct sysctl_oid *tree;
+	struct sysctl_oid *ifx_oid;
+	struct sysctl_oid *queue_node;
+	struct sysctl_oid_list *ifx_list;
+	struct sysctl_oid_list *queue_list;
+	struct lro_ctrl *lro;
 	struct tx_ring *txr;
 	struct rx_ring *rxr;
-
-	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
-	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
-	struct sysctl_oid_list *child = SYSCTL_CHILDREN(tree);
-	struct ixgbe_hw_stats *stats = &adapter->stats;
-
-	struct sysctl_oid *stat_node, *queue_node;
-	struct sysctl_oid_list *stat_list, *queue_list;
+	int i;
 
 #define QUEUE_NAME_LEN 32
 	char namebuf[QUEUE_NAME_LEN];
 	
-	interface = &adapter->interface;
+	ctx = &interface->sysctl_ctx;
+	tree = device_get_sysctl_tree(interface->adapter->dev);
 	txr = interface->tx_rings;
 	rxr = interface->rx_rings;
+	
+	ifx_oid = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+	    interface->ifp->if_xname, CTLFLAG_RD, NULL,
+	    "Virtual interface stats");
+	ifx_list = SYSCTL_CHILDREN(ifx_oid);
 
-	/* Driver Statistics */
-	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "mbuf_defrag_failed",
+	SYSCTL_ADD_ULONG(ctx, ifx_list, OID_AUTO, "mbuf_defrag_failed",
 			CTLFLAG_RD, &interface->mbuf_defrag_failed,
 			"m_defrag() failed");
-	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "watchdog_events",
-			CTLFLAG_RD, &adapter->watchdog_events,
-			"Watchdog timeouts");
-	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "link_irq",
-			CTLFLAG_RD, &adapter->link_irq,
-			"Link MSIX IRQ Handled");
-
-	for (int i = 0; i < interface->num_queues; i++, txr++) {
+	
+	for (i = 0; i < interface->num_queues; i++, txr++) {
 		snprintf(namebuf, QUEUE_NAME_LEN, "queue%d", i);
-		queue_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, namebuf,
+		queue_node = SYSCTL_ADD_NODE(ctx, ifx_list, OID_AUTO, namebuf,
 					    CTLFLAG_RD, NULL, "Queue Name");
 		queue_list = SYSCTL_CHILDREN(queue_node);
 
@@ -5728,18 +5724,13 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 				"Queue Packets Transmitted");
 	}
 
-	for (int i = 0; i < interface->num_queues; i++, rxr++) {
+	for (i = 0; i < interface->num_queues; i++, rxr++) {
 		snprintf(namebuf, QUEUE_NAME_LEN, "queue%d", i);
-		queue_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, namebuf, 
+		queue_node = SYSCTL_ADD_NODE(ctx, ifx_list, OID_AUTO, namebuf, 
 					    CTLFLAG_RD, NULL, "Queue Name");
 		queue_list = SYSCTL_CHILDREN(queue_node);
 
-		struct lro_ctrl *lro = &rxr->lro;
-
-		snprintf(namebuf, QUEUE_NAME_LEN, "queue%d", i);
-		queue_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, namebuf, 
-					    CTLFLAG_RD, NULL, "Queue Name");
-		queue_list = SYSCTL_CHILDREN(queue_node);
+		lro = &rxr->lro;
 
 		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "rxd_head", 
 				CTLTYPE_UINT | CTLFLAG_RD, rxr, sizeof(rxr),
@@ -5765,6 +5756,33 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 				CTLFLAG_RD, &lro->lro_flushed, 0,
 				"LRO Flushed");
 	}
+}
+
+/*
+ * Add sysctl variables, one per statistic, to the system.
+ */
+static void
+ixgbe_add_hw_stats(struct adapter *adapter)
+{
+	device_t dev = adapter->dev;
+
+	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
+	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
+	struct sysctl_oid_list *child = SYSCTL_CHILDREN(tree);
+	struct ixgbe_hw_stats *stats = &adapter->stats;
+
+	struct sysctl_oid *stat_node;
+	struct sysctl_oid_list *stat_list;
+
+	/* Driver Statistics */
+	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "watchdog_events",
+			CTLFLAG_RD, &adapter->watchdog_events,
+			"Watchdog timeouts");
+	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "link_irq",
+			CTLFLAG_RD, &adapter->link_irq,
+			"Link MSIX IRQ Handled");
+	
+	ixgbe_add_if_sysctls(&adapter->interface);
 
 	/* MAC stats get the own sub node */
 
