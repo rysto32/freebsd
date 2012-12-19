@@ -409,6 +409,7 @@ struct ixgbe_interface {
 
 	/* Mbuf cluster size */
 	u32			rx_mbuf_sz;
+	bool			link_active;
 	u16			max_frame_size;
 
 	struct ifmedia		media;
@@ -443,7 +444,6 @@ struct adapter {
 	u32			optics;
 	u32			fc; /* local flow ctrl setting */
 	int			advertise;  /* link speeds */
-	bool			link_active;
 	u16			max_frame_size;
 	u16			num_segs;
 	u32			link_speed;
