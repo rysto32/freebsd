@@ -417,6 +417,8 @@ struct ixgbe_interface {
 	struct ifmedia		media;
 	
 	unsigned long   	mbuf_defrag_failed;
+	
+	struct sysctl_ctx_list	sysctl_ctx;
 };
 
 /* Our adapter structure */
