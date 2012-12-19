@@ -1859,6 +1859,7 @@ static int
 ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 {
 	struct adapter  *adapter = txr->interface->adapter;
+	struct ixgbe_interface *interface;
 	u32		olinfo_status = 0, cmd_type_len;
 	int             i, j, error, nsegs;
 	int		first;
@@ -1870,6 +1871,7 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	union ixgbe_adv_tx_desc *txd = NULL;
 
 	m_head = *m_headp;
+	interface = txr->interface;
 
 	/* Basic descriptor defines */
         cmd_type_len = (IXGBE_ADVTXD_DTYP_DATA |
@@ -1904,7 +1906,7 @@ retry:
 				remap = FALSE;
 				m = m_defrag(*m_headp, M_NOWAIT);
 				if (m == NULL) {
-					adapter->mbuf_defrag_failed++;
+					interface->mbuf_defrag_failed++;
 					m_freem(*m_headp);
 					*m_headp = NULL;
 					return (ENOBUFS);
@@ -5681,7 +5683,7 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 
 	/* Driver Statistics */
 	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "mbuf_defrag_failed",
-			CTLFLAG_RD, &adapter->mbuf_defrag_failed,
+			CTLFLAG_RD, &interface->mbuf_defrag_failed,
 			"m_defrag() failed");
 	SYSCTL_ADD_ULONG(ctx, child, OID_AUTO, "watchdog_events",
 			CTLFLAG_RD, &adapter->watchdog_events,
