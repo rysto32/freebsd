@@ -5001,12 +5001,12 @@ ixgbe_unregister_vlan_int(struct ixgbe_interface *interface, u16 vtag)
 }
 
 static int
-ixgbe_num_vlans(struct adapter *adapter)
+ixgbe_has_vlans(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
 	
 	interface = &adapter->interface;
-	return (interface->num_vlans);
+	return (interface->num_vlans != 0);
 }
 
 static uint32_t
@@ -5037,7 +5037,7 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 	** the VFTA and other state, so if there
 	** have been no vlan's registered do nothing.
 	*/
-	if (ixgbe_num_vlans(adapter) == 0)
+	if (!ixgbe_has_vlans(adapter))
 		return;
 
 	/*
