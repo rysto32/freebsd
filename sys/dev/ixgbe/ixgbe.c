@@ -123,7 +123,8 @@ static void	ixgbe_init(void *);
 static void	ixgbe_init_locked(struct ixgbe_interface *);
 static void     ixgbe_stop(struct ixgbe_interface *interface);
 static void     ixgbe_media_status(struct ifnet *, struct ifmediareq *);
-static void	ixgbe_media_status_int(struct adapter *, struct ifmediareq *);
+static void	ixgbe_media_status_int(struct ixgbe_interface *, 
+    struct ifmediareq *);
 static int      ixgbe_media_change(struct ifnet *);
 static int      ixgbe_media_change_int(struct ixgbe_interface *);
 static void     ixgbe_identify_hardware(struct adapter *);
@@ -167,7 +168,7 @@ static bool	ixgbe_rxeof(struct ix_queue *);
 static void	ixgbe_rx_checksum(u32, struct mbuf *, u32);
 static void     ixgbe_set_promisc(struct adapter *);
 static void     ixgbe_set_multi(struct adapter *);
-static void     ixgbe_update_link_status(struct adapter *);
+static void     ixgbe_update_link_status(struct ixgbe_interface *);
 static void	ixgbe_refresh_mbufs(struct rx_ring *, int);
 static int      ixgbe_xmit(struct tx_ring *, struct mbuf **);
 static int	ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS);
@@ -884,7 +885,7 @@ ixgbe_mq_start_locked(struct ixgbe_interface *interface, struct tx_ring *txr)
 	ifp = interface->ifp;
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
-	    interface->adapter->link_active == 0)
+	    interface->link_active == 0)
 		return (ENETDOWN);
 
 	/* Process the queue */
@@ -1773,21 +1774,25 @@ ixgbe_media_status(struct ifnet * ifp, struct ifmediareq * ifmr)
 	struct ixgbe_interface *interface;
 
 	interface = ixgbe_phys_get_interface(ifp);
-	return (ixgbe_media_status_int(interface->adapter, ifmr));
+	return (ixgbe_media_status_int(interface, ifmr));
 }
 
 static void
-ixgbe_media_status_int(struct adapter *adapter, struct ifmediareq * ifmr)
+ixgbe_media_status_int(struct ixgbe_interface *interface,
+    struct ifmediareq * ifmr)
 {
+	struct adapter *adapter;
+	
+	adapter = interface->adapter;
 
 	INIT_DEBUGOUT("ixgbe_media_status: begin");
 	IXGBE_CORE_LOCK(adapter);
-	ixgbe_update_link_status(adapter);
+	ixgbe_update_link_status(interface);
 
 	ifmr->ifm_status = IFM_AVALID;
 	ifmr->ifm_active = IFM_ETHER;
 
-	if (!adapter->link_active) {
+	if (!interface->link_active) {
 		IXGBE_CORE_UNLOCK(adapter);
 		return;
 	}
@@ -2207,7 +2212,7 @@ ixgbe_local_timer(void *arg)
 		if (!ixgbe_sfp_probe(adapter))
 			goto out; /* Nothing to do */
 
-	ixgbe_update_link_status(adapter);
+	ixgbe_update_link_status(interface);
 	ixgbe_update_stats_counters(adapter);
 
 	/*
@@ -2255,32 +2260,31 @@ watchdog:
 **	a link interrupt.
 */
 static void
-ixgbe_update_link_status(struct adapter *adapter)
+ixgbe_update_link_status(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
+	struct adapter	*adapter;
 	struct ifnet	*ifp;
-	device_t dev = adapter->dev;
 	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
 	ifp = interface->ifp;
 
 	if (adapter->link_up){ 
-		if (adapter->link_active == FALSE) {
+		if (interface->link_active == FALSE) {
 			if (bootverbose)
-				device_printf(dev,"Link is up %d Gbps %s \n",
+				if_printf(ifp, "Link is up %d Gbps %s \n",
 				    ((adapter->link_speed == 128)? 10:1),
 				    "Full Duplex");
-			adapter->link_active = TRUE;
+			interface->link_active = TRUE;
 			/* Update any Flow Control changes */
 			ixgbe_fc_enable(&adapter->hw);
 			if_link_state_change(ifp, LINK_STATE_UP);
 		}
 	} else { /* Link down */
-		if (adapter->link_active == TRUE) {
+		if (interface->link_active == TRUE) {
 			if (bootverbose)
-				device_printf(dev,"Link is Down\n");
+				if_printf(ifp, "Link is Down\n");
 			if_link_state_change(ifp, LINK_STATE_DOWN);
-			adapter->link_active = FALSE;
+			interface->link_active = FALSE;
 		}
 	}
 
@@ -2325,7 +2329,7 @@ ixgbe_stop(struct ixgbe_interface *interface)
 
 	/* Update the stack */
 	adapter->link_up = FALSE;
-       	ixgbe_update_link_status(adapter);
+       	ixgbe_update_link_status(interface);
 
 	/* reprogram the RAR[0] in case user changed it. */
 	ixgbe_set_rar(&adapter->hw, 0, adapter->hw.mac.addr, 0, IXGBE_RAH_AV);
@@ -5434,10 +5438,13 @@ static void
 ixgbe_handle_link(void *context, int pending)
 {
 	struct adapter  *adapter = context;
+	struct ixgbe_interface *interface;
+	
+	interface = &adapter->interface;
 
 	ixgbe_check_link(&adapter->hw,
 	    &adapter->link_speed, &adapter->link_up, 0);
-       	ixgbe_update_link_status(adapter);
+       	ixgbe_update_link_status(interface);
 }
 
 /*
