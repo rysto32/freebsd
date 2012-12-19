@@ -2096,7 +2096,6 @@ ixgbe_set_promisc(struct adapter *adapter)
 static void
 ixgbe_set_multi(struct adapter *adapter)
 {
-	u32	fctrl;
 	u8	*mta;
 	u8	*update_ptr;
 	struct	ifmultiaddr *ifma;
@@ -2133,18 +2132,7 @@ ixgbe_set_multi(struct adapter *adapter)
 	if_maddr_runlock(ifp);
 #endif
 
-	fctrl = IXGBE_READ_REG(&adapter->hw, IXGBE_FCTRL);
-	fctrl |= (IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
-	if (ifp->if_flags & IFF_PROMISC)
-		fctrl |= (IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
-	else if (mcnt >= MAX_NUM_MULTICAST_ADDRESSES ||
-	    ifp->if_flags & IFF_ALLMULTI) {
-		fctrl |= IXGBE_FCTRL_MPE;
-		fctrl &= ~IXGBE_FCTRL_UPE;
-	} else
-		fctrl &= ~(IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
-	
-	IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, fctrl);
+	ixgbe_set_promisc(adapter);
 
 	if (mcnt < MAX_NUM_MULTICAST_ADDRESSES) {
 		update_ptr = mta;
