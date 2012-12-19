@@ -394,7 +394,7 @@ ixgbe_netmap_rxsync_int(struct netmap_adapter *na,
 
 	hw = &interface->adapter->hw;
 
-	struct rx_ring *rxr = &interface->rx_rings[kring->ring_id];
+	struct rx_ring *rxr = &interface->rx_pool.rx_rings[kring->ring_id];
 
 	if (head > lim)
 		return netmap_ring_reinit(kring);
@@ -526,11 +526,11 @@ ixgbe_netmap_attach(struct adapter *adapter)
 	na.ifp = interface->ifp;
 	na.na_flags = NAF_BDG_MAYSLEEP;
 	na.num_tx_desc = interface->num_tx_desc;
-	na.num_rx_desc = interface->num_rx_desc;
+	na.num_rx_desc = interface->rx_pool.num_rx_desc;
 	na.nm_txsync = ixgbe_netmap_txsync;
 	na.nm_rxsync = ixgbe_netmap_rxsync;
 	na.nm_register = ixgbe_netmap_reg;
-	na.num_tx_rings = na.num_rx_rings = interface->num_queues;
+	na.num_tx_rings = na.num_rx_rings = interface->rx_pool.num_queues;
 	netmap_attach(&na);
 }
 
