@@ -2977,14 +2977,23 @@ static int
 ixgbe_allocate_phys_interface(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
-	int error;
+	int error, pool_index;
 	
-	error = ixgbe_init_interface(adapter, 0, &interface);
+	adapter->vll_unrhdr = new_unrhdr(0, 1, &adapter->core_mtx);
+	
+	pool_index = alloc_unr(adapter->vll_unrhdr);
+	
+	error = ixgbe_init_interface(adapter, pool_index, &interface);
 	
 	if (error)
-		return (error);
+		goto err;
 	
 	return (0);
+	
+err:
+	free_unr(adapter->vll_unrhdr, pool_index);
+	delete_unrhdr(adapter->vll_unrhdr);
+	return (error);
 }
 
 static int
@@ -3021,6 +3030,8 @@ ixgbe_free_interfaces(struct adapter *adapter)
 	sysctl_ctx_free(&interface->sysctl_ctx);
 	ixgbe_free_transmit_structures(interface);
 	ixgbe_free_receive_structures(interface);
+	free_unr(adapter->vll_unrhdr, interface->me);
+	delete_unrhdr(adapter->vll_unrhdr);
 }
 
 /*********************************************************************

@@ -477,6 +477,8 @@ struct adapter {
 	unsigned long		link_irq;
 
 	struct ixgbe_hw_stats 	stats;
+
+	struct unrhdr		*vll_unrhdr;
 };
 
 /* Precision Time Sync (IEEE 1588) defines */
