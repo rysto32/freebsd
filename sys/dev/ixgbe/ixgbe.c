@@ -139,6 +139,7 @@ static int	ixgbe_init_interface(struct adapter *, int,
 static void	ixgbe_free_interfaces(struct adapter *);
 static int	ixgbe_allocate_queues(struct ixgbe_interface *);
 static int	ixgbe_setup_msix(struct adapter *);
+static void	ixgbe_free_if_pci_resources(struct ixgbe_interface *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
 static int	ixgbe_setup_interface(device_t, struct adapter *);
@@ -2693,15 +2694,37 @@ ixgbe_allocate_pci_resources(struct adapter *adapter)
 }
 
 static void
+ixgbe_free_if_pci_resources(struct ixgbe_interface *interface)
+{
+	device_t dev;
+	struct ix_queue *que;
+	int i, rid;
+	
+	que = interface->queues;
+	dev = interface->adapter->dev;
+
+	/*
+	 *  Release all msix queue resources:
+	 */
+	for (i = 0; i < interface->num_queues; i++, que++) {
+		rid = que->msix + 1;
+		if (que->tag != NULL) {
+			bus_teardown_intr(dev, que->res, que->tag);
+			que->tag = NULL;
+		}
+		if (que->res != NULL)
+			bus_release_resource(dev, SYS_RES_IRQ, rid, que->res);
+	}
+}
+
+static void
 ixgbe_free_pci_resources(struct adapter * adapter)
 {
 	struct ixgbe_interface *interface;
-	struct 		ix_queue *que;
 	device_t	dev = adapter->dev;
 	int		rid, memrid;
 	
 	interface = &adapter->interface;
-	que = interface->queues;
 
 	if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 		memrid = PCIR_BAR(MSIX_82598_BAR);
@@ -2718,20 +2741,8 @@ ixgbe_free_pci_resources(struct adapter * adapter)
 	*/
 	if (adapter->res == NULL)
 		goto mem;
-
-	/*
-	**  Release all msix queue resources:
-	*/
-	for (int i = 0; i < interface->num_queues; i++, que++) {
-		rid = que->msix + 1;
-		if (que->tag != NULL) {
-			bus_teardown_intr(dev, que->res, que->tag);
-			que->tag = NULL;
-		}
-		if (que->res != NULL)
-			bus_release_resource(dev, SYS_RES_IRQ, rid, que->res);
-	}
-
+	
+	ixgbe_free_if_pci_resources(interface);
 
 	/* Clean the Legacy or Link interrupt last */
 	if (adapter->linkvec) /* we are doing MSIX */
