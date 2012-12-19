@@ -470,8 +470,6 @@ struct adapter {
 
 	/* Misc stats maintained by the driver */
 	unsigned long   	mbuf_defrag_failed;
-	unsigned long   	mbuf_header_failed;
-	unsigned long   	mbuf_packet_failed;
 	unsigned long   	watchdog_events;
 	unsigned long		link_irq;
 
