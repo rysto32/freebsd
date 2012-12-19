@@ -332,7 +332,7 @@ struct tx_ring {
  */
 struct rx_ring {
 	struct mtx		rx_mtx;
-        struct ixgbe_interface	*interface;
+        struct ixgbe_rx_pool	*pool;
 	u32			me;
 	union ixgbe_adv_rx_desc	*rx_base;
 	struct ixgbe_dma_alloc	rxdma;
@@ -365,6 +365,32 @@ struct rx_ring {
 #endif
 };
 
+struct ixgbe_rx_pool {
+	struct ixgbe_interface	*interface;
+	
+	int			index;
+	int			is_broadcast;
+
+	/*
+	 * Queues: 
+	 *   This is the irq holder, it has
+	 *   and RX/TX pair or rings associated
+	 *   with it.
+	 */
+	struct ix_queue		*queues;
+	u16			num_queues;
+
+	/*
+	 * Receive rings:
+	 *	Allocated at run time, an array of rings.
+	 */
+	struct rx_ring		*rx_rings;
+	u64			que_mask;
+	u32			num_rx_desc;
+
+	u32			rx_mbuf_sz;
+};
+
 struct ixgbe_interface {
 	struct adapter		*adapter;
 	struct ifnet		*ifp;	
@@ -384,31 +410,15 @@ struct ixgbe_interface {
 	u16			num_vlans;
 
 	/*
-	 * Queues: 
-	 *   This is the irq holder, it has
-	 *   and RX/TX pair or rings associated
-	 *   with it.
-	 */
-	struct ix_queue		*queues;
-	u16			num_queues;
-
-	/*
 	 * Transmit rings:
 	 *	Allocated at run time, an array of rings.
 	 */
 	struct tx_ring		*tx_rings;
 	u32			num_tx_desc;
-
-	/*
-	 * Receive rings:
-	 *	Allocated at run time, an array of rings.
-	 */
-	struct rx_ring		*rx_rings;
-	u64			que_mask;
-	u32			num_rx_desc;
+	
+	struct ixgbe_rx_pool	rx_pool;
 
 	/* Mbuf cluster size */
-	u32			rx_mbuf_sz;
 	bool			link_active;
 	u16			max_frame_size;
 
@@ -477,6 +487,8 @@ struct adapter {
 	unsigned long		link_irq;
 
 	struct ixgbe_hw_stats 	stats;
+	
+	int			pool_index_shift;
 
 	struct unrhdr		*vll_unrhdr;
 };
