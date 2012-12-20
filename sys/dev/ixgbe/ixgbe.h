@@ -494,6 +494,7 @@ struct adapter {
 	int			pool_index_shift;
 
 	struct unrhdr		*vll_unrhdr;
+	struct unrhdr		*intr_unrhdr;
 };
 
 
