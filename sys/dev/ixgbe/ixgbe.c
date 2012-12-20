@@ -2037,11 +2037,11 @@ ixgbe_set_promisc(struct adapter *adapter)
 	u_int32_t       reg_rctl;
 	enum ixgbe_promisc state;
 	uint32_t vml2flt;
-	
+
 	vml2flt = 0;
-	
+
 	IXGBE_CORE_LOCK_ASSERT(adapter);
-	
+
 	state = ixgbe_get_promisc_state(adapter);
 
 	reg_rctl = IXGBE_READ_REG(&adapter->hw, IXGBE_FCTRL);
