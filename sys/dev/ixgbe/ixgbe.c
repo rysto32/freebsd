@@ -2490,26 +2490,18 @@ ixgbe_allocate_legacy(struct adapter *adapter)
 	return (0);
 }
 
-
-/*********************************************************************
- *
- *  Setup MSIX Interrupt resources and handlers 
- *
- **********************************************************************/
 static int
-ixgbe_allocate_msix(struct adapter *adapter)
+ixgbe_allocate_pool_msix(struct ixgbe_rx_pool *pool)
 {
-	device_t        dev = adapter->dev;
-	struct 		ixgbe_interface *interface;
-	struct 		ix_queue *que;
-	struct  	tx_ring *txr;
-	int 		error, rid, vector = 0;
+	device_t dev;
+	struct ix_queue *que;
+	int i, vector, rid, error;
 	
-	interface = &adapter->interface;
-	que = interface->rx_pool.queues;
-	txr = interface->tx_rings;
+	dev = pool->interface->adapter->dev;
+	que = pool->queues;
+	vector = 0;
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, vector++, que++, txr++) {
+	for (i = 0; i < pool->num_queues; i++, vector++, que++) {
 		rid = vector + 1;
 		que->res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 		    RF_SHAREABLE | RF_ACTIVE);
@@ -2531,25 +2523,52 @@ ixgbe_allocate_msix(struct adapter *adapter)
 		bus_describe_intr(dev, que->res, que->tag, "que %d", i);
 #endif
 		que->msix = vector;
-        	interface->rx_pool.que_mask |= (u64)(1 << que->msix);
+        	pool->que_mask |= (u64)(1 << que->msix);
 		/*
 		** Bind the msix vector, and thus the
 		** ring to the corresponding cpu.
 		*/
-		if (interface->rx_pool.num_queues > 1)
+		if (pool->num_queues > 1)
 			bus_bind_intr(dev, que->res, i);
 
-#ifndef IXGBE_LEGACY_TX
-		TASK_INIT(&txr->txq_task, 0, ixgbe_deferred_mq_start, txr);
-#endif
 		TASK_INIT(&que->que_task, 0, ixgbe_handle_que, que);
 		que->tq = taskqueue_create_fast("ixgbe_que", M_NOWAIT,
 		    taskqueue_thread_enqueue, &que->tq);
 		taskqueue_start_threads(&que->tq, 1, PI_NET, "%s que",
-		    device_get_nameunit(adapter->dev));
+		    device_get_nameunit(dev));
 	}
+	
+	return (0);
+}
+
+/*********************************************************************
+ *
+ *  Setup MSIX Interrupt resources and handlers 
+ *
+ **********************************************************************/
+static int
+ixgbe_allocate_msix(struct adapter *adapter)
+{
+	device_t        dev = adapter->dev;
+	struct 		ixgbe_interface *interface;
+	struct  	tx_ring *txr;
+	int 		error, rid, vector, i;
+	
+	interface = &adapter->interface;
+	txr = interface->tx_rings;
+
+	error = ixgbe_allocate_pool_msix(&interface->rx_pool);
+	
+	if (error)
+		return (error);
+
+#ifndef IXGBE_LEGACY_TX
+	for (i = 0; i < interface->rx_pool.num_queues; i++, txr++)
+		TASK_INIT(&txr->txq_task, 0, ixgbe_deferred_mq_start, txr);
+#endif
 
 	/* and Link */
+	vector = interface->rx_pool.num_queues;
 	rid = vector + 1;
 	adapter->res = bus_alloc_resource_any(dev,
     	    SYS_RES_IRQ, &rid, RF_SHAREABLE | RF_ACTIVE);
