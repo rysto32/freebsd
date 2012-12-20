@@ -2491,7 +2491,7 @@ ixgbe_allocate_legacy(struct adapter *adapter)
 }
 
 static int
-ixgbe_allocate_pool_msix(struct ixgbe_rx_pool *pool)
+ixgbe_allocate_pool_msix(struct ixgbe_rx_pool *pool, driver_intr_t ithread)
 {
 	struct adapter *adapter;
 	device_t dev;
@@ -2523,7 +2523,7 @@ ixgbe_allocate_pool_msix(struct ixgbe_rx_pool *pool)
 		/* Set the handler function */
 		error = bus_setup_intr(dev, que->res,
 		    INTR_TYPE_NET | INTR_MPSAFE, NULL,
-		    ixgbe_msix_que, que, &que->tag);
+		    ithread, que, &que->tag);
 		if (error) {
 			free_unr(adapter->intr_unrhdr, vector);
 			que->res = NULL;
@@ -2568,7 +2568,7 @@ ixgbe_allocate_msix(struct adapter *adapter)
 	interface = &adapter->interface;
 	txr = interface->tx_rings;
 
-	error = ixgbe_allocate_pool_msix(&interface->rx_pool);
+	error = ixgbe_allocate_pool_msix(&interface->rx_pool, ixgbe_msix_que);
 	
 	if (error)
 		return (error);
