@@ -139,7 +139,7 @@ static int	ixgbe_init_interface(struct adapter *, int,
 static void	ixgbe_free_interfaces(struct adapter *);
 static int	ixgbe_allocate_queues(struct ixgbe_interface *);
 static int	ixgbe_setup_msix(struct adapter *);
-static void	ixgbe_free_if_pci_resources(struct ixgbe_interface *);
+static void	ixgbe_free_if_pci_resources(struct ixgbe_rx_pool *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
 static int	ixgbe_setup_interface(device_t, struct adapter *);
@@ -2493,19 +2493,29 @@ ixgbe_allocate_legacy(struct adapter *adapter)
 static int
 ixgbe_allocate_pool_msix(struct ixgbe_rx_pool *pool)
 {
+	struct adapter *adapter;
 	device_t dev;
 	struct ix_queue *que;
 	int i, vector, rid, error;
-	
-	dev = pool->interface->adapter->dev;
-	que = pool->queues;
-	vector = 0;
 
-	for (i = 0; i < pool->num_queues; i++, vector++, que++) {
+	adapter = pool->interface->adapter;
+	dev = adapter->dev;
+	que = pool->queues;
+
+	for (i = 0; i < pool->num_queues; i++, que++) {
+		vector = alloc_unr(adapter->intr_unrhdr);
+		
+		if (vector < 0) {
+			device_printf(dev, 
+			    "Unable to allocate interrupt vector\n");
+			return (ENXIO);
+		}
+		
 		rid = vector + 1;
 		que->res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 		    RF_SHAREABLE | RF_ACTIVE);
 		if (que->res == NULL) {
+			free_unr(adapter->intr_unrhdr, vector);
 			device_printf(dev,"Unable to allocate"
 		    	    " bus resource: que interrupt [%d]\n", vector);
 			return (ENXIO);
@@ -2515,6 +2525,7 @@ ixgbe_allocate_pool_msix(struct ixgbe_rx_pool *pool)
 		    INTR_TYPE_NET | INTR_MPSAFE, NULL,
 		    ixgbe_msix_que, que, &que->tag);
 		if (error) {
+			free_unr(adapter->intr_unrhdr, vector);
 			que->res = NULL;
 			device_printf(dev, "Failed to register QUE handler");
 			return (error);
@@ -2568,11 +2579,18 @@ ixgbe_allocate_msix(struct adapter *adapter)
 #endif
 
 	/* and Link */
-	vector = interface->rx_pool.num_queues;
+	vector = alloc_unr(adapter->intr_unrhdr);
+	
+	if (vector < 0) {
+		device_printf(dev, "Unable to allocate link vector\n");
+		return (ENXIO);
+	}
+	
 	rid = vector + 1;
 	adapter->res = bus_alloc_resource_any(dev,
     	    SYS_RES_IRQ, &rid, RF_SHAREABLE | RF_ACTIVE);
 	if (!adapter->res) {
+		free_unr(adapter->intr_unrhdr, vector);
 		device_printf(dev,"Unable to allocate"
     	    " bus resource: Link interrupt [%d]\n", rid);
 		return (ENXIO);
@@ -2582,6 +2600,7 @@ ixgbe_allocate_msix(struct adapter *adapter)
 	    INTR_TYPE_NET | INTR_MPSAFE, NULL,
 	    ixgbe_msix_link, adapter, &adapter->tag);
 	if (error) {
+		free_unr(adapter->intr_unrhdr, vector);
 		adapter->res = NULL;
 		device_printf(dev, "Failed to register LINK handler");
 		return (error);
@@ -2688,6 +2707,8 @@ ixgbe_setup_msix(struct adapter *adapter)
                	device_printf(adapter->dev,
 		    "Using MSIX interrupts with %d vectors\n", msgs);
 		adapter->num_queues = queues;
+		adapter->intr_unrhdr = new_unrhdr(0, msgs - 1, 
+		    &adapter->core_mtx);
 		return (msgs);
 	}
 msi:
@@ -2735,26 +2756,30 @@ ixgbe_allocate_pci_resources(struct adapter *adapter)
 }
 
 static void
-ixgbe_free_if_pci_resources(struct ixgbe_interface *interface)
+ixgbe_free_if_pci_resources(struct ixgbe_rx_pool *pool)
 {
 	device_t dev;
+	struct adapter *adapter;
 	struct ix_queue *que;
 	int i, rid;
 	
-	que = interface->rx_pool.queues;
-	dev = interface->adapter->dev;
+	que = pool->queues;
+	adapter = pool->interface->adapter;
+	dev = adapter->dev;
 
 	/*
 	 *  Release all msix queue resources:
 	 */
-	for (i = 0; i < interface->rx_pool.num_queues; i++, que++) {
+	for (i = 0; i < pool->num_queues; i++, que++) {
 		rid = que->msix + 1;
 		if (que->tag != NULL) {
 			bus_teardown_intr(dev, que->res, que->tag);
 			que->tag = NULL;
 		}
-		if (que->res != NULL)
+		if (que->res != NULL) {
 			bus_release_resource(dev, SYS_RES_IRQ, rid, que->res);
+			free_unr(adapter->intr_unrhdr, que->msix);
+		}
 	}
 }
 
@@ -2783,7 +2808,7 @@ ixgbe_free_pci_resources(struct adapter * adapter)
 	if (adapter->res == NULL)
 		goto mem;
 	
-	ixgbe_free_if_pci_resources(interface);
+	ixgbe_free_if_pci_resources(&interface->rx_pool);
 
 	/* Clean the Legacy or Link interrupt last */
 	if (adapter->linkvec) /* we are doing MSIX */
@@ -2795,8 +2820,12 @@ ixgbe_free_pci_resources(struct adapter * adapter)
 		bus_teardown_intr(dev, adapter->res, adapter->tag);
 		adapter->tag = NULL;
 	}
-	if (adapter->res != NULL)
+	if (adapter->res != NULL) {
 		bus_release_resource(dev, SYS_RES_IRQ, rid, adapter->res);
+
+		if (adapter->linkvec) /* we are doing MSIX */
+			free_unr(adapter->intr_unrhdr, adapter->linkvec);
+	}
 
 mem:
 	if (adapter->msix)
@@ -2809,6 +2838,9 @@ mem:
 	if (adapter->pci_mem != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY,
 		    PCIR_BAR(0), adapter->pci_mem);
+		
+	if (adapter->intr_unrhdr != NULL)
+		delete_unrhdr(adapter->intr_unrhdr);
 
 	return;
 }

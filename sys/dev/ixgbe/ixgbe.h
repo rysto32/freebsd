@@ -491,6 +491,7 @@ struct adapter {
 	int			pool_index_shift;
 
 	struct unrhdr		*vll_unrhdr;
+	struct unrhdr		*intr_unrhdr;
 };
 
 /* Precision Time Sync (IEEE 1588) defines */
