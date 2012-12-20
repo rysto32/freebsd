@@ -1323,6 +1323,8 @@ enum {
 
 /* VFRE bitmask */
 #define IXGBE_VFRE_ENABLE_ALL	0xFFFFFFFF
+#define IXGBE_VFRE_INDEX(vmdq)  ((vmdq) / 32)
+#define IXGBE_VFRE_BIT(vmdq)    (1 << ((vmdq) % 32))
 
 #define IXGBE_VF_INIT_TIMEOUT	200 /* Number of retries to clear RSTI */
 

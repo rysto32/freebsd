@@ -219,6 +219,10 @@ static void	ixgbe_handle_link(void *, int);
 static void	ixgbe_handle_msf(void *, int);
 static void	ixgbe_handle_mod(void *, int);
 
+static void	ixgbe_start_rx_pool(struct ixgbe_hw *, struct ixgbe_rx_pool *);
+static void	ixgbe_stop_rx_pool(struct ixgbe_hw *, struct ixgbe_rx_pool *);
+static void	ixgbe_wait_rx_queue_stop(struct ixgbe_hw *, struct rx_ring *);
+
 #ifdef IXGBE_FDIR
 static void	ixgbe_atr(struct tx_ring *, struct mbuf *);
 static void	ixgbe_reinit_fdir(void *, int);
@@ -1127,6 +1131,198 @@ ixgbe_calc_max_frame_size(struct adapter *adapter)
 	adapter->max_frame_size = interface->max_frame_size;
 }
 
+
+static void
+ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
+{
+	struct adapter *adapter;
+	struct rx_ring *rxr;
+	uint32_t rxdctl;
+	uint32_t vfre;
+	int vfre_index;
+	int i, j;
+#ifdef DEV_NETMAP
+	struct netmap_adapter *na;
+	struct netmap_kring *kring;
+	struct ifnet *ifp;
+	int t;
+#endif
+
+	adapter = pool->interface->adapter;
+	IXGBE_CORE_LOCK_ASSERT(adapter);
+
+	if (pool->is_broadcast)
+		/* 
+		 * Set fctrl to accept packets into the default queue again
+		 * ixgbe_set_fctrl does the work of deciding whether to turn
+		 * on the various promiscuous modes or not.
+		 */
+		ixgbe_set_promisc(adapter);
+
+	ixgbe_set_rar(hw, pool->index, IF_LLADDR(pool->interface->ifp), 
+	     pool->index, 1);
+
+	/* 
+	 * On the 82599, we have to enable the rx engine on this pool in 
+	 * the VFRE register.
+	 */
+	if (hw->mac.type != ixgbe_mac_82598EB) {
+		vfre_index = IXGBE_VFRE_INDEX(pool->index);
+
+		vfre = IXGBE_READ_REG(hw, IXGBE_VFRE(vfre_index));
+		vfre |= IXGBE_VFRE_BIT(pool->index);
+		IXGBE_WRITE_REG(hw, IXGBE_VFRE(vfre_index), vfre);
+	}
+
+	/* 
+	 * In stopping this queue, we may have removed multicast addresses
+	 * from the RAR registers or disabled multicast inexact filters.  
+	 * Make sure that they get put back.
+	 */
+	ixgbe_set_multi(adapter);
+
+	for (i = 0; i < pool->num_queues; i++) {
+		rxr = &pool->rx_rings[i];
+		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
+		if (hw->mac.type == ixgbe_mac_82598EB) {
+			/*
+			** PTHRESH = 21
+			** HTHRESH = 4
+			** WTHRESH = 8
+			*/
+			rxdctl &= ~0x3FFFFF;
+			rxdctl |= 0x080420;
+		}
+		rxdctl |= IXGBE_RXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
+		for (j = 0; j < 10; j++) {
+			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me)) &
+			    IXGBE_RXDCTL_ENABLE)
+				break;
+			else
+				msec_delay(1);
+		}
+		wmb();
+#ifdef DEV_NETMAP
+		/*
+		 * In netmap mode, we must preserve the buffers made
+		 * available to userspace before the if_init()
+		 * (this is true by default on the TX side, because
+		 * init makes all buffers available to userspace).
+		 *
+		 * netmap_reset() and the device specific routines
+		 * (e.g. ixgbe_setup_receive_rings()) map these
+		 * buffers at the end of the NIC ring, so here we
+		 * must set the RDT (tail) register to make sure
+		 * they are not overwritten.
+		 *
+		 * In this driver the NIC ring starts at RDH = 0,
+		 * RDT points to the last slot available for reception (?),
+		 * so RDT = num_rx_desc - 1 means the whole ring is available.
+		 */
+		ifp = pool->interface->ifp;
+		
+		if (!pool->is_broadcast && ifp->if_capenable & IFCAP_NETMAP) {
+			na = NA(ifp);
+			kring = &na->rx_rings[i];
+			t = na->num_rx_desc - 1 - kring->nr_hwavail;
+
+			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), t);
+		} else
+#endif /* DEV_NETMAP */
+			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me),
+			    pool->num_rx_desc - 1);
+	}
+}
+
+static void
+ixgbe_stop_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
+{
+	struct rx_ring *rxr;
+	uint32_t rxdctl;
+	uint32_t fctrl;
+	uint32_t rah;
+	uint32_t vmdq;
+	uint32_t mcstctrl;
+	int i;
+
+	/* Tell the hardware to stop delivering packets to this queue. */
+	if (pool->is_broadcast) {
+		/* 
+		 * Disable broadcast packet acceptance and unicast/multicast
+		 * promiscuous mode .
+		 */
+		fctrl = IXGBE_READ_REG(hw, IXGBE_FCTRL);
+		fctrl &= ~(IXGBE_FCTRL_BAM | IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
+		IXGBE_WRITE_REG(hw, IXGBE_FCTRL, fctrl);
+
+		/* Also disable multicast inexact filters. */
+		mcstctrl = IXGBE_READ_REG(hw, IXGBE_MCSTCTRL);
+		mcstctrl &= ~IXGBE_MCSTCTRL_MFE;
+		IXGBE_WRITE_REG(hw, IXGBE_MCSTCTRL, mcstctrl);
+	} 
+
+	if (hw->mac.type == ixgbe_mac_82598EB) {
+		/* 
+		 * Look at every entry in the RAR, and if it's set to deliver 
+		 * packets to this ring, disable it.
+		 */
+		for (i = 0; i < hw->mac.num_rar_entries; i++) {
+			rah = IXGBE_READ_REG(hw, IXGBE_RAH(i));
+			vmdq = (rah & IXGBE_RAH_VIND_MASK) >> 
+			    IXGBE_RAH_VIND_SHIFT;
+
+			if ((rah & IXGBE_RAH_AV) && vmdq == pool->index)
+				/* 
+				 * disable the acceptance of packets for this
+				 * queue's MAC 
+				 */
+				IXGBE_WRITE_REG(hw, IXGBE_RAH(i), rah &
+				    ~(IXGBE_RAH_AV | IXGBE_RAH_VIND_MASK));
+		}
+	} else {
+		/* 
+		 * Make sure that no RAR entries are directing packets to 
+		 * this pool. 
+		 */
+		 for (i = 0; i < hw->mac.num_rar_entries; i++)
+			ixgbe_clear_vmdq(hw, i, pool->index);
+	}
+
+	/* Now request that the queues stop. */
+	for (i = 0; i < pool->num_queues; i++) {
+		rxr = &pool->rx_rings[i];
+		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
+		rxdctl &= ~IXGBE_RXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
+	}
+	
+	for (i = 0; i < pool->num_queues; i++) {
+		rxr = &pool->rx_rings[i];
+		ixgbe_wait_rx_queue_stop(hw, rxr);
+	}
+}
+
+/* Wait for the receive hardware to actually signal that we stopped. */
+static void
+ixgbe_wait_rx_queue_stop(struct ixgbe_hw *hw, struct rx_ring *rxr)
+{
+	uint32_t rxdctl;
+
+	while((rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me))) & 
+	    IXGBE_RXDCTL_ENABLE) {
+		/* 
+		 * Keep clearing this bit because I'm paranoid that the request
+		 * might get missed somehow...
+		 */
+		rxdctl &= ~IXGBE_RXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
+	}
+
+	/* Delay for at least 100 usecs as per Intel recommendation. */
+	DELAY(100);
+}
+
 /*********************************************************************
  *  Init entry point
  *
@@ -1147,9 +1343,8 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	device_t 	dev;
 	struct ixgbe_hw *hw;
 	struct tx_ring	*txr;
-	struct rx_ring	*rxr;
-	u32		k, txdctl, mhadd, gpie;
-	u32		rxdctl, rxctrl;
+	u32		txdctl, mhadd, gpie;
+	u32		rxctrl;
 	
 	adapter = interface->adapter;
 	ifp = interface->ifp;
@@ -1162,13 +1357,9 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	ixgbe_stop_adapter(hw);
         callout_stop(&adapter->timer);
 
-        /* reprogram the RAR[0] in case user changed it. */
-        ixgbe_set_rar(hw, 0, adapter->hw.mac.addr, 0, IXGBE_RAH_AV);
-
 	/* Get the latest mac address, User can use a LAA */
 	bcopy(IF_LLADDR(ifp), hw->mac.addr,
 	      IXGBE_ETH_LENGTH_OF_ADDRESS);
-	ixgbe_set_rar(hw, 0, hw->mac.addr, 0, 1);
 	hw->addr_ctrl.rar_used_count = 1;
 
 	/* Set the various hardware offload abilities */
@@ -1268,56 +1459,8 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 		txdctl |= (32 << 0) | (1 << 8);
 		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
 	}
-
-	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-		rxr = &interface->rx_pool.rx_rings[i];
-		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
-		if (hw->mac.type == ixgbe_mac_82598EB) {
-			/*
-			** PTHRESH = 21
-			** HTHRESH = 4
-			** WTHRESH = 8
-			*/
-			rxdctl &= ~0x3FFFFF;
-			rxdctl |= 0x080420;
-		}
-		rxdctl |= IXGBE_RXDCTL_ENABLE;
-		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
-		for (k = 0; k < 10; k++) {
-			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me)) &
-			    IXGBE_RXDCTL_ENABLE)
-				break;
-			else
-				msec_delay(1);
-		}
-		wmb();
-#ifdef DEV_NETMAP
-		/*
-		 * In netmap mode, we must preserve the buffers made
-		 * available to userspace before the if_init()
-		 * (this is true by default on the TX side, because
-		 * init makes all buffers available to userspace).
-		 *
-		 * netmap_reset() and the device specific routines
-		 * (e.g. ixgbe_setup_receive_rings()) map these
-		 * buffers at the end of the NIC ring, so here we
-		 * must set the RDT (tail) register to make sure
-		 * they are not overwritten.
-		 *
-		 * In this driver the NIC ring starts at RDH = 0,
-		 * RDT points to the last slot available for reception (?),
-		 * so RDT = num_rx_desc - 1 means the whole ring is available.
-		 */
-		if (ifp->if_capenable & IFCAP_NETMAP) {
-			struct netmap_adapter *na = NA(ifp);
-			struct netmap_kring *kring = &na->rx_rings[i];
-			int t = na->num_rx_desc - 1 - kring->nr_hwavail;
-
-			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), t);
-		} else
-#endif /* DEV_NETMAP */
-		IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), interface->rx_pool.num_rx_desc - 1);
-	}
+	
+	ixgbe_start_rx_pool(hw, &interface->rx_pool);
 
 	/* Set up VLAN support and filter */
 	ixgbe_setup_vlan_hw_support(adapter);
@@ -2302,6 +2445,8 @@ ixgbe_stop(struct ixgbe_interface *interface)
 	ifp = interface->ifp;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
+	
+	ixgbe_stop_rx_pool(hw, &interface->rx_pool);
 
 	INIT_DEBUGOUT("ixgbe_stop: begin\n");
 	ixgbe_disable_intr(interface);
