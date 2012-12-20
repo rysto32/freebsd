@@ -1151,7 +1151,7 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 	adapter = pool->interface->adapter;
 	IXGBE_CORE_LOCK_ASSERT(adapter);
 
-	if (pool->is_broadcast)
+	if (pool->flags & IXGBE_RX_POOL_BROADCAST)
 		/* 
 		 * Set fctrl to accept packets into the default queue again
 		 * ixgbe_set_fctrl does the work of deciding whether to turn
@@ -1159,8 +1159,9 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 		 */
 		ixgbe_set_promisc(adapter);
 
-	ixgbe_set_rar(hw, pool->index, IF_LLADDR(pool->interface->ifp), 
-	     pool->index, 1);
+	if (pool->flags & IXGBE_RX_POOL_HAS_INTERFACE)
+		ixgbe_set_rar(hw, pool->index, IF_LLADDR(pool->interface->ifp), 
+		    pool->index, 1);
 
 	/* 
 	 * On the 82599, we have to enable the rx engine on this pool in 
@@ -1222,7 +1223,8 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 		 */
 		ifp = pool->interface->ifp;
 		
-		if (!pool->is_broadcast && ifp->if_capenable & IFCAP_NETMAP) {
+		if ((pool->flags & IXGBE_RX_POOL_BROADCAST) && 
+		    ifp->if_capenable & IFCAP_NETMAP) {
 			na = NA(ifp);
 			kring = &na->rx_rings[i];
 			t = na->num_rx_desc - 1 - kring->nr_hwavail;
@@ -1247,7 +1249,7 @@ ixgbe_stop_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 	int i;
 
 	/* Tell the hardware to stop delivering packets to this queue. */
-	if (pool->is_broadcast) {
+	if (pool->flags & IXGBE_RX_POOL_BROADCAST) {
 		/* 
 		 * Disable broadcast packet acceptance and unicast/multicast
 		 * promiscuous mode .
@@ -3366,7 +3368,8 @@ ixgbe_allocate_queues(struct ixgbe_interface *interface)
 	if (error)
 		goto fail;
 	
-	interface->rx_pool.is_broadcast = 0;
+	interface->rx_pool.flags = IXGBE_RX_POOL_BROADCAST | 
+	    IXGBE_RX_POOL_HAS_INTERFACE;
 
 	/* First allocate the TX ring struct memory */
 	if (!(interface->tx_rings =
@@ -4523,7 +4526,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 #ifdef DEV_NETMAP
 	na = NA(ifp);
 	/* same as in ixgbe_setup_transmit_ring() */
-	if (pool->is_broadcast)
+	if ((pool->flags & IXGBE_RX_POOL_HAS_INTERFACE) == 0)
 		slot = 0;
 	else
 		slot = netmap_reset(na, NR_RX, rxr->me, 0);
@@ -4600,7 +4603,8 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	*/
 	if (ixgbe_rsc_enable)
 		ixgbe_setup_hw_rsc(rxr);
-	else if (!pool->is_broadcast && ifp->if_capenable & IFCAP_LRO) {
+	else if ((pool->flags & IXGBE_RX_POOL_HAS_INTERFACE)
+	    && ifp->if_capenable & IFCAP_LRO) {
 		int err = tcp_lro_init(lro);
 		if (err) {
 			device_printf(dev, "LRO Initialization failed!\n");

@@ -369,7 +369,7 @@ struct ixgbe_rx_pool {
 	struct ixgbe_interface	*interface;
 	
 	int			index;
-	int			is_broadcast;
+	uint32_t		flags;
 
 	/*
 	 * Queues: 
@@ -390,6 +390,12 @@ struct ixgbe_rx_pool {
 
 	u32			rx_mbuf_sz;
 };
+
+/* This pool receives packets that pass inexact filters, like broadcasts. */
+#define IXGBE_RX_POOL_BROADCAST		(1 << 0)
+
+/* * This pool has an interface associated with it. */
+#define IXGBE_RX_POOL_HAS_INTERFACE	(1 << 1)
 
 struct ixgbe_interface {
 	struct adapter		*adapter;
