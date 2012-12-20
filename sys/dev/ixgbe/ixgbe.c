@@ -1146,6 +1146,8 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	struct ifnet   *ifp;
 	device_t 	dev;
 	struct ixgbe_hw *hw;
+	struct tx_ring	*txr;
+	struct rx_ring	*rxr;
 	u32		k, txdctl, mhadd, gpie;
 	u32		rxdctl, rxctrl;
 	
@@ -1251,7 +1253,8 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	/* Now enable all the queues */
 
 	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(i));
+		txr = &interface->tx_rings[i];
+		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
 		txdctl |= IXGBE_TXDCTL_ENABLE;
 		/* Set WTHRESH to 8, burst writeback */
 		txdctl |= (8 << 16);
@@ -1263,11 +1266,12 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 		 * Prefetching enables tx line rate even with 1 queue.
 		 */
 		txdctl |= (32 << 0) | (1 << 8);
-		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(i), txdctl);
+		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
 	}
 
 	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(i));
+		rxr = &interface->rx_pool.rx_rings[i];
+		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
 		if (hw->mac.type == ixgbe_mac_82598EB) {
 			/*
 			** PTHRESH = 21
@@ -1278,9 +1282,9 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 			rxdctl |= 0x080420;
 		}
 		rxdctl |= IXGBE_RXDCTL_ENABLE;
-		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(i), rxdctl);
+		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
 		for (k = 0; k < 10; k++) {
-			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(i)) &
+			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me)) &
 			    IXGBE_RXDCTL_ENABLE)
 				break;
 			else
@@ -1309,10 +1313,10 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 			struct netmap_kring *kring = &na->rx_rings[i];
 			int t = na->num_rx_desc - 1 - kring->nr_hwavail;
 
-			IXGBE_WRITE_REG(hw, IXGBE_RDT(i), t);
+			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), t);
 		} else
 #endif /* DEV_NETMAP */
-		IXGBE_WRITE_REG(hw, IXGBE_RDT(i), interface->rx_pool.num_rx_desc - 1);
+		IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), interface->rx_pool.num_rx_desc - 1);
 	}
 
 	/* Set up VLAN support and filter */
@@ -3428,15 +3432,15 @@ ixgbe_initialize_transmit_units(struct ixgbe_interface *interface)
 		u64	tdba = txr->txdma.dma_paddr;
 		u32	txctrl;
 
-		IXGBE_WRITE_REG(hw, IXGBE_TDBAL(i),
+		IXGBE_WRITE_REG(hw, IXGBE_TDBAL(txr->me),
 		       (tdba & 0x00000000ffffffffULL));
-		IXGBE_WRITE_REG(hw, IXGBE_TDBAH(i), (tdba >> 32));
-		IXGBE_WRITE_REG(hw, IXGBE_TDLEN(i),
+		IXGBE_WRITE_REG(hw, IXGBE_TDBAH(txr->me), (tdba >> 32));
+		IXGBE_WRITE_REG(hw, IXGBE_TDLEN(txr->me),
 		    interface->num_tx_desc * sizeof(union ixgbe_adv_tx_desc));
 
 		/* Setup the HW Tx Head and Tail descriptor pointers */
-		IXGBE_WRITE_REG(hw, IXGBE_TDH(i), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_TDT(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_TDH(txr->me), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_TDT(txr->me), 0);
 
 		/* Setup Transmit Descriptor Cmd Settings */
 		txr->txd_cmd = IXGBE_TXD_CMD_IFCS;
@@ -3448,23 +3452,24 @@ ixgbe_initialize_transmit_units(struct ixgbe_interface *interface)
 		/* Disable Head Writeback */
 		switch (hw->mac.type) {
 		case ixgbe_mac_82598EB:
-			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
+			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(txr->me));
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
 		default:
-			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+			txctrl = IXGBE_READ_REG(hw, 
+			     IXGBE_DCA_TXCTRL_82599(txr->me));
 			break;
                 }
 		txctrl &= ~IXGBE_DCA_TXCTRL_DESC_WRO_EN;
 		switch (hw->mac.type) {
 		case ixgbe_mac_82598EB:
-			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(i), txctrl);
+			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(txr->me), txctrl);
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
 		default:
-			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), txctrl);
+			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(txr->me), txctrl);
 			break;
 		}
 	}
@@ -4550,10 +4555,10 @@ ixgbe_initialize_receive_rings(struct ixgbe_rx_pool *pool)
 		u64 rdba = rxr->rxdma.dma_paddr;
 
 		/* Setup the Base and Length of the Rx Descriptor Ring */
-		IXGBE_WRITE_REG(hw, IXGBE_RDBAL(i),
+		IXGBE_WRITE_REG(hw, IXGBE_RDBAL(rxr->me),
 			       (rdba & 0x00000000ffffffffULL));
-		IXGBE_WRITE_REG(hw, IXGBE_RDBAH(i), (rdba >> 32));
-		IXGBE_WRITE_REG(hw, IXGBE_RDLEN(i),
+		IXGBE_WRITE_REG(hw, IXGBE_RDBAH(rxr->me), (rdba >> 32));
+		IXGBE_WRITE_REG(hw, IXGBE_RDLEN(rxr->me),
 		    pool->num_rx_desc * sizeof(union ixgbe_adv_rx_desc));
 
 		/* Set up the SRRCTL register */
@@ -4562,11 +4567,11 @@ ixgbe_initialize_receive_rings(struct ixgbe_rx_pool *pool)
 		srrctl &= ~IXGBE_SRRCTL_BSIZEPKT_MASK;
 		srrctl |= bufsz;
 		srrctl |= IXGBE_SRRCTL_DESCTYPE_ADV_ONEBUF;
-		IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
+		IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(rxr->me), srrctl);
 
 		/* Setup the HW Rx Head and Tail Descriptor Pointers */
-		IXGBE_WRITE_REG(hw, IXGBE_RDH(i), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_RDT(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_RDH(rxr->me), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), 0);
 
 		/* Set the processing limit */
 		rxr->process_limit = ixgbe_rx_process_limit;
@@ -6143,13 +6148,15 @@ static void
 ixgbe_enable_rx_drop(struct ixgbe_interface *interface)
 {
         struct ixgbe_hw *hw;
+	struct rx_ring *rxr;
 
 	hw = &interface->adapter->hw;
 
 	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-        	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
+		rxr = &interface->rx_pool.rx_rings[i];
+        	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(rxr->me));
         	srrctl |= IXGBE_SRRCTL_DROP_EN;
-        	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
+        	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(rxr->me), srrctl);
 	}
 }
 
@@ -6157,12 +6164,14 @@ static void
 ixgbe_disable_rx_drop(struct ixgbe_interface *interface)
 {
         struct ixgbe_hw *hw;
+	struct rx_ring *rxr;
 
 	hw = &interface->adapter->hw;
 
 	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-        	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
+		rxr = &interface->rx_pool.rx_rings[i];
+        	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(rxr->me));
         	srrctl &= ~IXGBE_SRRCTL_DROP_EN;
-        	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
+        	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(rxr->me), srrctl);
 	}
 }
