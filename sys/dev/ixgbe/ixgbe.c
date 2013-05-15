@@ -1184,6 +1184,8 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 
 	for (i = 0; i < pool->num_queues; i++) {
 		rxr = &pool->rx_rings[i];
+
+		IXGBE_RX_LOCK(rxr);
 		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
 		if (hw->mac.type == ixgbe_mac_82598EB) {
 			/*
@@ -1234,6 +1236,8 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 #endif /* DEV_NETMAP */
 			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me),
 			    pool->num_rx_desc - 1);
+
+		IXGBE_RX_UNLOCK(rxr);
 	}
 }
 
@@ -1294,14 +1298,13 @@ ixgbe_stop_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 	/* Now request that the queues stop. */
 	for (i = 0; i < pool->num_queues; i++) {
 		rxr = &pool->rx_rings[i];
+
+		IXGBE_RX_LOCK(rxr);
 		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
 		rxdctl &= ~IXGBE_RXDCTL_ENABLE;
 		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
-	}
-	
-	for (i = 0; i < pool->num_queues; i++) {
-		rxr = &pool->rx_rings[i];
 		ixgbe_wait_rx_queue_stop(hw, rxr);
+		IXGBE_RX_UNLOCK(rxr);
 	}
 }
 
@@ -1310,6 +1313,8 @@ static void
 ixgbe_wait_rx_queue_stop(struct ixgbe_hw *hw, struct rx_ring *rxr)
 {
 	uint32_t rxdctl;
+
+	IXGBE_RX_LOCK_ASSERT(rxr);
 
 	while((rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me))) & 
 	    IXGBE_RXDCTL_ENABLE) {
