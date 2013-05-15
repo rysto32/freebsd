@@ -395,7 +395,7 @@ struct ixgbe_rx_pool {
 #define IXGBE_RX_POOL_BROADCAST		(1 << 0)
 
 /* * This pool has an interface associated with it. */
-#define IXGBE_RX_POOL_HAS_INTERFACE	(1 << 1)
+#define IXGBE_RX_POOL_HAS_INTERFACE		(1 << 1)
 
 struct ixgbe_interface {
 	struct adapter		*adapter;

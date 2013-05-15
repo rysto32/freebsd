@@ -1160,7 +1160,7 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 		ixgbe_set_promisc(adapter);
 
 	if (pool->flags & IXGBE_RX_POOL_HAS_INTERFACE)
-		ixgbe_set_rar(hw, pool->index, IF_LLADDR(pool->interface->ifp), 
+		ixgbe_set_rar(hw, pool->index, IF_LLADDR(pool->interface->ifp),
 		    pool->index, 1);
 
 	/* 
