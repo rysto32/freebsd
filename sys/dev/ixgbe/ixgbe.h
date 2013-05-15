@@ -525,7 +525,7 @@ struct adapter {
 #define IXGBE_RX_UNLOCK(_sc)              mtx_unlock(&(_sc)->rx_mtx)
 #define IXGBE_CORE_LOCK_ASSERT(_sc)       mtx_assert(&(_sc)->core_mtx, MA_OWNED)
 #define IXGBE_TX_LOCK_ASSERT(_sc)         mtx_assert(&(_sc)->tx_mtx, MA_OWNED)
-
+#define IXGBE_RX_LOCK_ASSERT(_sc)         mtx_assert(&(_sc)->rx_mtx, MA_OWNED)
 /* For backward compatibility */
 #if !defined(PCIER_LINK_STA)
 #define PCIER_LINK_STA PCIR_EXPRESS_LINK_STA
