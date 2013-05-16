@@ -506,6 +506,15 @@ struct adapter {
 
 	struct unrhdr		*vll_unrhdr;
 	struct unrhdr		*intr_unrhdr;
+
+	/* 
+	 * Number of virtual interfaces that have "initialized hardware".
+	 * In ixgbe_init, when this is 0 we must initialize the hardware.  In
+	 * ixgbe_stop, when this reaches 0 we must stop the hardware.
+	 *
+	 * Protected by the core lock.
+	 */
+	int			num_hw_inited_interfaces;
 };
 
 /* Precision Time Sync (IEEE 1588) defines */
