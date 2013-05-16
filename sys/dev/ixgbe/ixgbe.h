@@ -428,6 +428,7 @@ struct ixgbe_interface {
 	 */
 	struct tx_ring		*tx_rings;
 	u32			num_tx_desc;
+	uint32_t		num_tx_queues;
 	
 	struct ixgbe_rx_pool	rx_pool;
 

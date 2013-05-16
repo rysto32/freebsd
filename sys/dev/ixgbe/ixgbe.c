@@ -679,7 +679,7 @@ ixgbe_detach(device_t dev)
 	ixgbe_stop(interface);
 	IXGBE_CORE_UNLOCK(adapter);
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, que++, txr++) {
+	for (int i = 0; i < interface->num_tx_queues; i++, que++, txr++) {
 		if (que->tq) {
 #ifndef IXGBE_LEGACY_TX
 			taskqueue_drain(que->tq, &txr->txq_task);
@@ -850,9 +850,9 @@ ixgbe_mq_start_int(struct ixgbe_interface *interface, struct mbuf *m)
 
 	/* Which queue to use */
 	if ((m->m_flags & M_FLOWID) != 0)
-		i = m->m_pkthdr.flowid % interface->rx_pool.num_queues;
+		i = m->m_pkthdr.flowid % interface->num_tx_queues;
 	else
-		i = curcpu % interface->rx_pool.num_queues;
+		i = curcpu % interface->num_tx_queues;
 
 	txr = &interface->tx_rings[i];
 	que = &interface->rx_pool.queues[i];
@@ -964,7 +964,7 @@ ixgbe_qflush_int(struct ixgbe_interface *interface)
 	ifp = interface->ifp;
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_tx_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
 		while ((m = buf_ring_dequeue_sc(txr->br)) != NULL)
 			m_freem(m);
@@ -1497,7 +1497,7 @@ ixgbe_start_all_tx_queues(struct ixgbe_hw *hw, struct ixgbe_interface *ifx)
 
 	IXGBE_CORE_LOCK_ASSERT(ifx->adapter);
 
-	for (i = 0; i < ifx->adapter->num_queues; i++) {
+	for (i = 0; i < ifx->num_tx_queues; i++) {
 		txr = &ifx->tx_rings[i];
 		
 		IXGBE_TX_LOCK(txr);
@@ -1514,7 +1514,7 @@ ixgbe_stop_all_tx_queues(struct ixgbe_hw *hw, struct ixgbe_interface *ifx)
 
 	IXGBE_CORE_LOCK_ASSERT(ifx->adapter);
 
-	for (i = 0; i < ifx->adapter->num_queues; i++) {
+	for (i = 0; i < ifx->num_tx_queues; i++) {
 		txr = &ifx->tx_rings[i];
 		
 		IXGBE_TX_LOCK(txr);
@@ -2542,7 +2542,7 @@ ixgbe_local_timer(void *arg)
 	** Check the TX queues status
 	**      - watchdog only if all queues show hung
 	*/          
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, que++, txr++) {
+	for (int i = 0; i < interface->num_tx_queues; i++, que++, txr++) {
 		if ((txr->queue_status == IXGBE_QUEUE_HUNG) &&
 		    (paused == 0))
 			++hung;
@@ -2550,7 +2550,7 @@ ixgbe_local_timer(void *arg)
 			taskqueue_enqueue(que->tq, &que->que_task);
         }
 	/* Only truely watchdog if all queues show hung */
-        if (hung == interface->rx_pool.num_queues)
+        if (hung == interface->num_tx_queues)
                 goto watchdog;
 
 out:
@@ -2903,7 +2903,7 @@ ixgbe_allocate_msix(struct adapter *adapter)
 		return (error);
 
 #ifndef IXGBE_LEGACY_TX
-	for (i = 0; i < interface->rx_pool.num_queues; i++, txr++)
+	for (i = 0; i < interface->num_tx_queues; i++, txr++)
 		TASK_INIT(&txr->txq_task, 0, ixgbe_deferred_mq_start, txr);
 #endif
 
@@ -3552,11 +3552,12 @@ ixgbe_allocate_queues(struct ixgbe_interface *interface)
 	
 	interface->rx_pool.flags = IXGBE_RX_POOL_BROADCAST | 
 	    IXGBE_RX_POOL_HAS_INTERFACE;
+	interface->num_tx_queues = interface->adapter->num_queues;
 
 	/* First allocate the TX ring struct memory */
 	if (!(interface->tx_rings =
 	    (struct tx_ring *) malloc(sizeof(struct tx_ring) *
-	    interface->rx_pool.num_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
+	    interface->num_tx_queues, M_DEVBUF, M_NOWAIT | M_ZERO))) {
 		device_printf(dev, "Unable to allocate TX ring memory\n");
 		error = ENOMEM;
 		goto tx_fail;
@@ -3571,7 +3572,7 @@ ixgbe_allocate_queues(struct ixgbe_interface *interface)
 	 * possibility that things fail midcourse and we need to
 	 * undo memory gracefully
 	 */ 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, txconf++) {
+	for (int i = 0; i < interface->num_tx_queues; i++, txconf++) {
 		/* Set up some basics */
 		txr = &interface->tx_rings[i];
 		txr->interface = interface;
@@ -3616,7 +3617,7 @@ ixgbe_allocate_queues(struct ixgbe_interface *interface)
 	/*
 	** Finally set up the queue holding structs
 	*/
-	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
+	for (int i = 0; i < interface->num_tx_queues; i++) {
 		que = &interface->rx_pool.queues[i];
 		que->txr = &interface->tx_rings[i];
 	}
@@ -3787,7 +3788,7 @@ ixgbe_setup_transmit_structures(struct ixgbe_interface *interface)
 
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, txr++)
+	for (int i = 0; i < interface->num_tx_queues; i++, txr++)
 		ixgbe_setup_transmit_ring(txr);
 
 	return (0);
@@ -3809,7 +3810,7 @@ ixgbe_initialize_transmit_units(struct ixgbe_interface *interface)
 
 	/* Setup the Base and Length of the Tx Descriptor Ring */
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_tx_queues; i++, txr++) {
 		u64	tdba = txr->txdma.dma_paddr;
 		u32	txctrl;
 
@@ -3892,7 +3893,7 @@ ixgbe_free_transmit_structures(struct ixgbe_interface *interface)
 	
 	txr = interface->tx_rings;
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++, txr++) {
+	for (int i = 0; i < interface->num_tx_queues; i++, txr++) {
 		IXGBE_TX_LOCK(txr);
 		ixgbe_free_transmit_buffers(txr);
 		ixgbe_dma_free(&txr->txdma);
@@ -6152,7 +6153,7 @@ ixgbe_add_if_sysctls(struct ixgbe_interface *interface)
 			CTLFLAG_RD, &interface->mbuf_defrag_failed,
 			"m_defrag() failed");
 	
-	for (i = 0; i < interface->rx_pool.num_queues; i++, txr++) {
+	for (i = 0; i < interface->num_tx_queues; i++, txr++) {
 		snprintf(namebuf, QUEUE_NAME_LEN, "queue%d", i);
 		queue_node = SYSCTL_ADD_NODE(ctx, ifx_list, OID_AUTO, namebuf,
 					    CTLFLAG_RD, NULL, "Queue Name");
