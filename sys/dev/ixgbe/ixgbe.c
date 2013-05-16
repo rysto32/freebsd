@@ -223,6 +223,13 @@ static void	ixgbe_start_rx_pool(struct ixgbe_hw *, struct ixgbe_rx_pool *);
 static void	ixgbe_stop_rx_pool(struct ixgbe_hw *, struct ixgbe_rx_pool *);
 static void	ixgbe_wait_rx_queue_stop(struct ixgbe_hw *, struct rx_ring *);
 
+static void	ixgbe_start_tx_queue(struct ixgbe_hw *, struct tx_ring *);
+static void	ixgbe_stop_tx_queue(struct ixgbe_hw *, struct tx_ring *);
+static void	ixgbe_start_all_tx_queues(struct ixgbe_hw *, 
+		    struct ixgbe_interface *);
+static void	ixgbe_stop_all_tx_queues(struct ixgbe_hw *, 
+		    struct ixgbe_interface *);
+
 #ifdef IXGBE_FDIR
 static void	ixgbe_atr(struct tx_ring *, struct mbuf *);
 static void	ixgbe_reinit_fdir(void *, int);
@@ -765,6 +772,8 @@ ixgbe_start_locked(struct tx_ring *txr, struct ifnet * ifp)
 
 	IXGBE_TX_LOCK_ASSERT(txr);
 
+	if ((txr->tx_flags & IXGBE_TXR_STARTED) == 0)
+		return;
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 		return;
 	if (!txr->interface->adapter->link_active)
@@ -869,7 +878,8 @@ ixgbe_mq_start_locked(struct ixgbe_interface *interface, struct tx_ring *txr, st
 	ifp = interface->ifp;
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
-	    interface->link_active == 0) {
+	    interface->link_active == 0 ||
+	    ((txr->tx_flags & IXGBE_TXR_STARTED) == 0)) {
 		if (m != NULL)
 			err = drbr_enqueue(ifp, txr->br, m);
 		return (err);
@@ -1324,10 +1334,193 @@ ixgbe_wait_rx_queue_stop(struct ixgbe_hw *hw, struct rx_ring *rxr)
 		 */
 		rxdctl &= ~IXGBE_RXDCTL_ENABLE;
 		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
+		
+		/* XXX force reset */
 	}
 
 	/* Delay for at least 100 usecs as per Intel recommendation. */
 	DELAY(100);
+}
+
+static void
+ixgbe_start_tx_queue(struct ixgbe_hw *hw, struct tx_ring *txr)
+{
+	uint32_t txdctl;
+	
+	IXGBE_TX_LOCK_ASSERT(txr);
+
+	txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
+	txdctl |= IXGBE_TXDCTL_ENABLE;
+	/* Set WTHRESH to 8, burst writeback */
+	txdctl |= (IXGBE_TX_WRITEBACK_THRESH << IXGBE_TXDCTL_WTHRESH_SHIFT);
+
+	/*
+	 * When the internal queue falls below PTHRESH (32),
+	 * start prefetching as long as there are at least
+	 * HTHRESH (1) buffers ready. The values are taken
+	 * from the Intel linux driver 3.8.21.
+	 * Prefetching enables tx line rate even with 1 queue.
+	 */
+	txdctl |= (32 << 0) | (1 << 8);
+	IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
+
+	txr->tx_flags |= IXGBE_TXR_STARTED;
+}
+
+/* 
+ * Wait for the transmit hardware to finish sending any packets we have
+ * queued, then stop the hardware queue.
+ */
+static void
+ixgbe_wait_tx_queue_stop(struct ixgbe_hw *hw, struct tx_ring *txr)
+{
+	uint32_t txdctl;
+	int32_t tdt;
+	int32_t tdh;
+	int num_tx_desc;
+	int start;
+
+	KASSERT((txr->tx_flags & IXGBE_TXR_STARTED) == 0,
+		("tx queue not stopped"));
+
+	num_tx_desc = txr->interface->adapter->num_tx_desc;
+	tdt = IXGBE_READ_REG(hw, IXGBE_TDT(txr->me));
+	txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
+	start = ticks;
+
+	/* 
+	 * Make sure that the hw thinks that the queue is started
+	 * if it doesn't, it will never drain descriptors out of
+	 * the tx queue.  In that case, it's safe to go on and mess
+	 * around with the tx queue.
+	 */
+	while (txdctl & IXGBE_TXDCTL_ENABLE) {
+
+		txdctl &= ~IXGBE_TXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
+
+		while (1) {
+#ifdef notyet
+			if ((ticks - start) > hz) {
+				ixgbe_force_reset_tx_ring(hw, txr);
+				/* 
+				 * Resetting the hw probably changed tdt, so 
+				 * get the new value.
+				 */
+				tdt = IXGBE_READ_REG(hw, IXGBE_TDT(txr->me));
+				start = ticks;
+			}
+#endif
+
+			tdh = IXGBE_READ_REG(hw, IXGBE_TDH(txr->me));
+
+			/* 
+			 * We need to wait until the hardware has processed
+			 * all tx descriptors that we've given it before trying
+			 * to stop the queue.  The datasheet says that we
+			 * should wait for tdh to equal tdt.  However, if the
+			 * tx writeback threshold is configured to be larger
+			 * than 1, then tdh will be updated in increments of
+			 * the threshold, so tdh will only get within into the
+			 * range (tdt - theshold, tdt] when the hardware has
+			 * finished processing all tx descriptors.
+			 *
+  			 * There are two cases to consider -- one where there
+  			 * isn't any rollover at num_tx_desc to worry about,
+  			 * and one where these is.
+			 */
+			if (tdh <= tdt) {
+				/* 
+				 * If tdh <= tdt, then tdh can catch tdt
+				 * without having to roll over at num_tx_desc.
+				 * All we have to do is check that tdh is at
+				 * least within threshold of the tdt.
+				 *
+				 * Note that tdt and tdh must be signed for
+				 * this comparison to work when the subtraction
+				 * will produce a negative value(for example,
+				 * when tdt and tdh are both 0).
+				 */
+				if (tdh > (tdt - IXGBE_TX_WRITEBACK_THRESH))
+					break;
+			} else {
+				/*
+				 * tdh must roll over at num_tx_desc to catch
+				 * tdt.  The right hand side of the comparision
+				 * is equivalent to:
+				 *
+				 * (tdt - threshold) (mod num_tx_desc)
+				 *
+				 * Again the values must be signed so this
+				 * works when threshold - tdt is negative.		 
+				 */
+				if (tdh > (num_tx_desc - 
+				    (IXGBE_TX_WRITEBACK_THRESH - tdt)))
+					break;
+			}
+
+			/* 
+			 * tdt changing indicates that the driver is queuing
+			 * more packets. 
+			 */
+			KASSERT(tdt == IXGBE_READ_REG(hw, IXGBE_TDT(txr->me)),
+			    ("more packets queued with tx queue stopped!"));
+		}
+
+		txdctl &= ~IXGBE_TXDCTL_ENABLE;
+		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
+
+		/* 
+		 * Read the value back again and ensure that the enable bit
+		 * was cleared in the while loop condition.  This check
+		 * ensures that the hardware has indeed stopped the queue as 
+		 * we want.
+		 */
+		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
+	}
+}
+
+static void
+ixgbe_stop_tx_queue(struct ixgbe_hw *hw, struct tx_ring *txr)
+{
+
+	IXGBE_TX_LOCK_ASSERT(txr);
+	txr->tx_flags &= ~IXGBE_TXR_STARTED;
+	ixgbe_wait_tx_queue_stop(hw, txr);
+}
+
+static void
+ixgbe_start_all_tx_queues(struct ixgbe_hw *hw, struct ixgbe_interface *ifx)
+{
+	struct tx_ring *txr;
+	int i;
+
+	IXGBE_CORE_LOCK_ASSERT(ifx->adapter);
+
+	for (i = 0; i < ifx->adapter->num_queues; i++) {
+		txr = &ifx->tx_rings[i];
+		
+		IXGBE_TX_LOCK(txr);
+		ixgbe_start_tx_queue(hw, txr);
+		IXGBE_TX_UNLOCK(txr);
+	}
+}
+
+static void
+ixgbe_stop_all_tx_queues(struct ixgbe_hw *hw, struct ixgbe_interface *ifx)
+{
+	struct tx_ring *txr;
+	int i;
+
+	IXGBE_CORE_LOCK_ASSERT(ifx->adapter);
+
+	for (i = 0; i < ifx->adapter->num_queues; i++) {
+		txr = &ifx->tx_rings[i];
+		
+		IXGBE_TX_LOCK(txr);
+		ixgbe_stop_tx_queue(hw, txr);
+		IXGBE_TX_UNLOCK(txr);
+	}
 }
 
 /*********************************************************************
@@ -1349,8 +1542,7 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	struct ifnet   *ifp;
 	device_t 	dev;
 	struct ixgbe_hw *hw;
-	struct tx_ring	*txr;
-	u32		txdctl, mhadd, gpie;
+	u32		mhadd, gpie;
 	u32		rxctrl;
 	
 	adapter = interface->adapter;
@@ -1450,23 +1642,7 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	
 	/* Now enable all the queues */
 
-	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-		txr = &interface->tx_rings[i];
-		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
-		txdctl |= IXGBE_TXDCTL_ENABLE;
-		/* Set WTHRESH to 8, burst writeback */
-		txdctl |= (8 << 16);
-		/*
-		 * When the internal queue falls below PTHRESH (32),
-		 * start prefetching as long as there are at least
-		 * HTHRESH (1) buffers ready. The values are taken
-		 * from the Intel linux driver 3.8.21.
-		 * Prefetching enables tx line rate even with 1 queue.
-		 */
-		txdctl |= (32 << 0) | (1 << 8);
-		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
-	}
-	
+	ixgbe_start_all_tx_queues(hw, interface);
 	ixgbe_start_rx_pool(hw, &interface->rx_pool);
 
 	/* Set up VLAN support and filter */
@@ -2452,7 +2628,8 @@ ixgbe_stop(struct ixgbe_interface *interface)
 	ifp = interface->ifp;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
-	
+
+	ixgbe_stop_all_tx_queues(hw, interface);
 	ixgbe_stop_rx_pool(hw, &interface->rx_pool);
 
 	INIT_DEBUGOUT("ixgbe_stop: begin\n");

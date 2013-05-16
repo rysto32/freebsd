@@ -195,6 +195,9 @@
 #define IXGBE_BR_SIZE			4096
 #define IXGBE_QUEUE_MIN_FREE		32
 
+#define IXGBE_TX_WRITEBACK_THRESH	8
+#define IXGBE_TXDCTL_WTHRESH_SHIFT	16
+
 /* IOCTL define to gather SFP+ Diagnostic data */
 #define SIOCGI2C	SIOCGIFGENERIC
 
@@ -324,7 +327,11 @@ struct tx_ring {
 	unsigned long   	no_tx_dma_setup;
 	u64			no_desc_avail;
 	u64			total_packets;
+	
+	uint32_t		tx_flags;
 };
+
+#define IXGBE_TXR_STARTED	(1 << 0)
 
 
 /*
