@@ -1536,27 +1536,148 @@ ixgbe_stop_all_tx_queues(struct ixgbe_hw *hw, struct ixgbe_interface *ifx)
 #define IXGBE_MHADD_MFS_SHIFT 16
 
 static void
+ixgbe_init_adapter(struct adapter *adapter)
+{
+	device_t dev;
+	struct ixgbe_hw *hw;
+	uint32_t	gpie;
+	uint32_t	rxctrl;
+	uint32_t	rxpb, frame, size, tmp;
+
+	dev = adapter->dev;
+	hw = &adapter->hw;
+	
+	hw->addr_ctrl.rar_used_count = 1;
+	ixgbe_init_hw(hw);
+	ixgbe_enable_transmitter(adapter);
+	
+	ixgbe_initialize_receive_units(adapter);
+
+	gpie = IXGBE_READ_REG(&adapter->hw, IXGBE_GPIE);
+
+	/* Enable Fan Failure Interrupt */
+	gpie |= IXGBE_SDP1_GPIEN;
+
+	/* Add for Module detection */
+	if (hw->mac.type == ixgbe_mac_82599EB)
+		gpie |= IXGBE_SDP2_GPIEN;
+
+	/* Thermal Failure Detection */
+	if (hw->mac.type == ixgbe_mac_X540)
+		gpie |= IXGBE_SDP0_GPIEN;
+
+	if (adapter->msix > 1) {
+		/* Enable Enhanced MSIX mode */
+		gpie |= IXGBE_GPIE_MSIX_MODE;
+		gpie |= IXGBE_GPIE_EIAME | IXGBE_GPIE_PBA_SUPPORT |
+		IXGBE_GPIE_OCD;
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_GPIE, gpie);
+
+	/* Set up VLAN support and filter */
+	ixgbe_setup_vlan_hw_support(adapter);
+
+	/* Enable Receive engine */
+	rxctrl = IXGBE_READ_REG(hw, IXGBE_RXCTRL);
+	if (hw->mac.type == ixgbe_mac_82598EB)
+		rxctrl |= IXGBE_RXCTRL_DMBYPS;
+	rxctrl |= IXGBE_RXCTRL_RXEN;
+	ixgbe_enable_rx_dma(hw, rxctrl);
+
+	callout_reset(&adapter->timer, hz, ixgbe_local_timer, adapter);
+
+	/* Set up MSI/X routing */
+	if (ixgbe_enable_msix)  {
+		ixgbe_configure_ivars(interface);
+		/* Set up auto-mask */
+		if (hw->mac.type == ixgbe_mac_82598EB)
+			IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
+		else {
+			IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(0), 0xFFFFFFFF);
+			IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(1), 0xFFFFFFFF);
+		}
+	} else {  /* Simple settings for Legacy/MSI */
+		ixgbe_set_ivar(adapter, 0, 0, 0);
+		ixgbe_set_ivar(adapter, 0, 0, 1);
+		IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
+	}
+
+#ifdef IXGBE_FDIR
+	/* Init Flow director */
+	if (hw->mac.type != ixgbe_mac_82598EB) {
+		u32 hdrm = 32 << fdir_pballoc;
+
+		hw->mac.ops.setup_rxpba(hw, 0, hdrm, PBA_STRATEGY_EQUAL);
+		ixgbe_init_fdir_signature_82599(&adapter->hw, fdir_pballoc);
+	}
+#endif
+
+	/*
+	** Check on any SFP devices that
+	** need to be kick-started
+	*/
+	if (hw->phy.type == ixgbe_phy_none) {
+		int err = hw->phy.ops.identify(hw);
+		if (err == IXGBE_ERR_SFP_NOT_SUPPORTED) {
+			device_printf(dev,
+			"Unsupported SFP+ module type was detected.\n");
+			return;
+		}
+	}
+
+	/* Set moderation on the Link interrupt */
+	IXGBE_WRITE_REG(hw, IXGBE_EITR(adapter->linkvec), IXGBE_LINK_ITR);
+
+	/* Config/Enable Link */
+	ixgbe_config_link(adapter);
+
+	/* Hardware Packet Buffer & Flow Control setup */
+	frame = adapter->max_frame_size;
+
+	/* Calculate High Water */
+	if (hw->mac.type == ixgbe_mac_X540)
+		tmp = IXGBE_DV_X540(frame, frame);
+	else
+		tmp = IXGBE_DV(frame, frame);
+	size = IXGBE_BT2KB(tmp);
+	rxpb = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(0)) >> 10;
+	hw->fc.high_water[0] = rxpb - size;
+
+	/* Now calculate Low Water */
+	if (hw->mac.type == ixgbe_mac_X540)
+		tmp = IXGBE_LOW_DV_X540(frame);
+	else
+		tmp = IXGBE_LOW_DV(frame);
+	hw->fc.low_water[0] = IXGBE_BT2KB(tmp);
+	
+	hw->fc.requested_mode = adapter->fc;
+	hw->fc.pause_time = IXGBE_FC_PAUSE;
+	hw->fc.send_xon = TRUE;
+
+	/* Initialize the FC settings */
+	ixgbe_start_hw(hw);
+}
+
+static void
 ixgbe_init_locked(struct ixgbe_interface *interface)
 {
 	struct adapter *adapter;
 	struct ifnet   *ifp;
 	device_t 	dev;
 	struct ixgbe_hw *hw;
-	u32		gpie;
-	u32		rxctrl;
 	
 	adapter = interface->adapter;
 	ifp = interface->ifp;
 	dev = adapter->dev;
 	hw = &adapter->hw;
 
-	mtx_assert(&adapter->core_mtx, MA_OWNED);
+	IXGBE_CORE_LOCK_ASSERT(interface->adapter);
 	INIT_DEBUGOUT("ixgbe_init: begin");
 	
 	ixgbe_stop(interface);
 
-	if (adapter->num_hw_inited_interfaces == 0)
-		hw->addr_ctrl.rar_used_count = 1;
+	if (interface->adapter->num_hw_inited_interfaces == 0)
+		ixgbe_init_adapter(interface->adapter);
 
 	/* Set the various hardware offload abilities */
 	ifp->if_hwassist = 0;
@@ -1577,16 +1698,10 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 		return;
 	}
 
-	if (adapter->num_hw_inited_interfaces == 0)
-		ixgbe_init_hw(hw);
-
 	ixgbe_initialize_transmit_units(interface);
 
-	if (adapter->num_hw_inited_interfaces == 0)
-		ixgbe_enable_transmitter(adapter);
-
 	/* Setup Multicast table */
-	ixgbe_set_multi(adapter);
+	ixgbe_set_multi(interface->adapter);
 
 	/*
 	** Determine the correct mbuf pool
@@ -1610,130 +1725,17 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 
 	/* Configure RX settings */
 	ixgbe_initialize_receive_rings(&interface->rx_pool);
-
-	if (adapter->num_hw_inited_interfaces == 0) {
-		ixgbe_initialize_receive_units(adapter);
-
-		gpie = IXGBE_READ_REG(&adapter->hw, IXGBE_GPIE);
-
-		/* Enable Fan Failure Interrupt */
-		gpie |= IXGBE_SDP1_GPIEN;
-
-		/* Add for Module detection */
-		if (hw->mac.type == ixgbe_mac_82599EB)
-			gpie |= IXGBE_SDP2_GPIEN;
-
-		/* Thermal Failure Detection */
-		if (hw->mac.type == ixgbe_mac_X540)
-			gpie |= IXGBE_SDP0_GPIEN;
-
-		if (adapter->msix > 1) {
-			/* Enable Enhanced MSIX mode */
-			gpie |= IXGBE_GPIE_MSIX_MODE;
-			gpie |= IXGBE_GPIE_EIAME | IXGBE_GPIE_PBA_SUPPORT |
-			IXGBE_GPIE_OCD;
-		}
-		IXGBE_WRITE_REG(hw, IXGBE_GPIE, gpie);
-	}
 	
 	/* Now enable all the queues */
 	ixgbe_start_all_tx_queues(hw, interface);
 	ixgbe_start_rx_pool(hw, &interface->rx_pool);
-
-	/* Set up VLAN support and filter */
-	if (adapter->num_hw_inited_interfaces == 0) {
-		ixgbe_setup_vlan_hw_support(adapter);
-
-		/* Enable Receive engine */
-		rxctrl = IXGBE_READ_REG(hw, IXGBE_RXCTRL);
-		if (hw->mac.type == ixgbe_mac_82598EB)
-			rxctrl |= IXGBE_RXCTRL_DMBYPS;
-		rxctrl |= IXGBE_RXCTRL_RXEN;
-		ixgbe_enable_rx_dma(hw, rxctrl);
-
-		callout_reset(&adapter->timer, hz, ixgbe_local_timer, adapter);
-
-		/* Set up MSI/X routing */
-		if (ixgbe_enable_msix)  {
-			ixgbe_configure_ivars(interface);
-			/* Set up auto-mask */
-			if (hw->mac.type == ixgbe_mac_82598EB)
-				IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
-			else {
-				IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(0), 0xFFFFFFFF);
-				IXGBE_WRITE_REG(hw, IXGBE_EIAM_EX(1), 0xFFFFFFFF);
-			}
-		} else {  /* Simple settings for Legacy/MSI */
-			ixgbe_set_ivar(adapter, 0, 0, 0);
-			ixgbe_set_ivar(adapter, 0, 0, 1);
-			IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
-		}
-
-	#ifdef IXGBE_FDIR
-		/* Init Flow director */
-		if (hw->mac.type != ixgbe_mac_82598EB) {
-			u32 hdrm = 32 << fdir_pballoc;
-
-			hw->mac.ops.setup_rxpba(hw, 0, hdrm, PBA_STRATEGY_EQUAL);
-			ixgbe_init_fdir_signature_82599(&adapter->hw, fdir_pballoc);
-		}
-#endif
-
-		/*
-		** Check on any SFP devices that
-		** need to be kick-started
-		*/
-		if (hw->phy.type == ixgbe_phy_none) {
-			int err = hw->phy.ops.identify(hw);
-			if (err == IXGBE_ERR_SFP_NOT_SUPPORTED) {
-				device_printf(dev,
-				"Unsupported SFP+ module type was detected.\n");
-				return;
-			}
-		}
-
-		/* Set moderation on the Link interrupt */
-		IXGBE_WRITE_REG(hw, IXGBE_EITR(adapter->linkvec), IXGBE_LINK_ITR);
-
-		/* Config/Enable Link */
-		ixgbe_config_link(adapter);
-
-		/* Hardware Packet Buffer & Flow Control setup */
-		{
-			u32 rxpb, frame, size, tmp;
-
-			frame = adapter->max_frame_size;
-
-			/* Calculate High Water */
-			if (hw->mac.type == ixgbe_mac_X540)
-				tmp = IXGBE_DV_X540(frame, frame);
-			else
-				tmp = IXGBE_DV(frame, frame);
-			size = IXGBE_BT2KB(tmp);
-			rxpb = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(0)) >> 10;
-			hw->fc.high_water[0] = rxpb - size;
-
-			/* Now calculate Low Water */
-			if (hw->mac.type == ixgbe_mac_X540)
-				tmp = IXGBE_LOW_DV_X540(frame);
-			else
-				tmp = IXGBE_LOW_DV(frame);
-			hw->fc.low_water[0] = IXGBE_BT2KB(tmp);
-			
-			hw->fc.requested_mode = adapter->fc;
-			hw->fc.pause_time = IXGBE_FC_PAUSE;
-			hw->fc.send_xon = TRUE;
-		}
-		/* Initialize the FC settings */
-		ixgbe_start_hw(hw);
-	}
 
 	/* And now turn on interrupts */
 	ixgbe_enable_intr(interface);
 
 	/* Now inform the stack we're ready */
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
-	adapter->num_hw_inited_interfaces++;
+	interface->adapter->num_hw_inited_interfaces++;
 
 	return;
 }
