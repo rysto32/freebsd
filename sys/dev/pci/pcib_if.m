@@ -47,6 +47,14 @@ METHOD int maxslots {
 };
 
 #
+#
+# Return the number of functions on the attached PCI bus.
+#
+METHOD int maxfuncs {
+	device_t	dev;
+};
+
+#
 # Read configuration space on the PCI bus. The bus, slot and func
 # arguments determine the device which is being read and the reg
 # argument is a byte offset into configuration space for that
@@ -153,4 +161,13 @@ METHOD int power_for_sleep {
 	device_t	pcib;
 	device_t	dev;
 	int		*pstate;
+};
+
+#
+# Enable Alternative RID Interpretation if both the pcib and the
+# downstream device dev both support it.
+#
+METHOD int try_enable_ari {
+	device_t	pcib;
+	device_t	dev;
 };

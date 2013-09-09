@@ -484,6 +484,7 @@ static device_method_t admpci_methods[] = {
 
 	/* pcib interface */
 	DEVMETHOD(pcib_maxslots,	admpci_maxslots),
+	DEVMETHOD(pcib_maxfuncs,	pcib_maxfuncs),
 	DEVMETHOD(pcib_read_config,	admpci_read_config),
 	DEVMETHOD(pcib_write_config,	admpci_write_config),
 	DEVMETHOD(pcib_route_interrupt,	admpci_route_interrupt),

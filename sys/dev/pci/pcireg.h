@@ -48,6 +48,12 @@
 #define	PCIE_REGMAX	4095	/* highest supported config register addr. */
 #define	PCI_MAXHDRTYPE	2
 
+#define PCIE_ARI_SLOTMAX 0
+#define PCIE_ARI_FUNCMAX 255
+
+#define PCIE_ARI_SLOT(func) (((func) >> 3) & PCI_SLOTMAX)
+#define PCIE_ARI_FUNC(func) ((func) & PCI_FUNCMAX)
+
 /* PCI config header registers for all devices */
 
 #define	PCIR_DEVVENDOR	0x00
@@ -765,6 +771,7 @@
 #define	PCIER_ROOT_CAP		0x1e
 #define	PCIER_ROOT_STA		0x20
 #define	PCIER_DEVICE_CAP2	0x24
+#define PCIEM_CAP2_ARI		0x20
 #define	PCIER_DEVICE_CTL2	0x28
 #define	PCIEM_CTL2_COMP_TIMEOUT_VAL	0x000f
 #define	PCIEM_CTL2_COMP_TIMEOUT_DIS	0x0010
@@ -885,3 +892,4 @@
 /* Serial Number definitions */
 #define	PCIR_SERIAL_LOW		0x04
 #define	PCIR_SERIAL_HIGH	0x08
+
