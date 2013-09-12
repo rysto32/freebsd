@@ -1644,13 +1644,13 @@ pcib_xlate_ari(device_t pcib, int bus, int *slot, int *func)
 
 
 static void
-pcib_enable_ari(struct pcib_softc *sc)
+pcib_enable_ari(struct pcib_softc *sc, uint32_t pcie_pos)
 {
 	uint32_t ctl2;
 
-	ctl2 = pci_read_config(sc->dev, PCIER_DEVICE_CTL2, 4);
+	ctl2 = pci_read_config(sc->dev, pcie_pos + PCIER_DEVICE_CTL2, 4);
 	ctl2 |= PCIEM_CTL2_ARI;
-	pci_write_config(sc->dev, PCIER_DEVICE_CTL2, ctl2, 4);
+	pci_write_config(sc->dev, pcie_pos + PCIER_DEVICE_CTL2, ctl2, 4);
 
 	sc->flags |= PCIB_ENABLE_ARI;
 }
@@ -1879,7 +1879,7 @@ pcib_try_enable_ari(device_t pcib, device_t dev)
 		return (ENXIO);
 	}
 	
-	pcib_enable_ari(sc);
+	pcib_enable_ari(sc, pcie_pos);
 
 	return (0);
 }
