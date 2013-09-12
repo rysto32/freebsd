@@ -52,7 +52,7 @@ METHOD int maxslots {
 #
 METHOD int maxfuncs {
 	device_t	dev;
-};
+} default pcib_maxfuncs;
 
 #
 # Read configuration space on the PCI bus. The bus, slot and func

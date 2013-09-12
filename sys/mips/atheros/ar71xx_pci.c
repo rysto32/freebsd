@@ -688,7 +688,6 @@ static device_method_t ar71xx_pci_methods[] = {
 
 	/* pcib interface */
 	DEVMETHOD(pcib_maxslots,	ar71xx_pci_maxslots),
-	DEVMETHOD(pcib_maxfuncs,	pcib_maxfuncs),
 	DEVMETHOD(pcib_read_config,	ar71xx_pci_read_config),
 	DEVMETHOD(pcib_write_config,	ar71xx_pci_write_config),
 	DEVMETHOD(pcib_route_interrupt,	ar71xx_pci_route_interrupt),
