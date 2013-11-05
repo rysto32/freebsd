@@ -207,6 +207,15 @@ static void	ixgbe_reinit_fdir(void *, int);
 /* Missing shared code prototype */
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
+static int	ixgbe_init_iov(device_t, int);
+static int	ixgbe_add_vf(device_t, int);
+
+static enum ixgbe_iov_mode	ixgbe_get_iov_mode(struct adapter *adapter);
+static int	ixgbe_max_vfs(enum ixgbe_iov_mode mode);
+static int	ixgbe_pf_queue_num(enum ixgbe_iov_mode mode, int num);
+
+
+
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
  *********************************************************************/
@@ -217,6 +226,8 @@ static device_method_t ixgbe_methods[] = {
 	DEVMETHOD(device_attach, ixgbe_attach),
 	DEVMETHOD(device_detach, ixgbe_detach),
 	DEVMETHOD(device_shutdown, ixgbe_shutdown),
+	DEVMETHOD(pci_init_iov, ixgbe_init_iov),
+	DEVMETHOD(pci_add_vf, ixgbe_add_vf),
 	DEVMETHOD_END
 };
 
@@ -442,6 +453,7 @@ ixgbe_attach(device_t dev)
 	int             error = 0;
 	u16		csum;
 	u32		ctrl_ext;
+	int		iov_err;
 
 	INIT_DEBUGOUT("ixgbe_attach: begin");
 
@@ -617,6 +629,15 @@ ixgbe_attach(device_t dev)
 	/* Set an initial default flow control value */
 	adapter->fc =  ixgbe_fc_full;
 
+	if (hw->mac.type != ixgbe_mac_82598EB) {
+		iov_err = pci_setup_iov(dev);
+
+		if (iov_err != 0) {
+			device_printf(dev, "Error %d setting up SR-IOV\n",
+			    iov_err);
+		}
+	}
+
 	/* let hardware know driver is loaded */
 	ctrl_ext = IXGBE_READ_REG(hw, IXGBE_CTRL_EXT);
 	ctrl_ext |= IXGBE_CTRL_EXT_DRV_LOAD;
@@ -664,6 +685,11 @@ ixgbe_detach(device_t dev)
 	/* Make sure VLANS are not using driver */
 	if (adapter->ifp->if_vlantrunk != NULL) {
 		device_printf(dev,"Vlan in use, detach first\n");
+		return (EBUSY);
+	}
+
+	if (pci_cleanup_iov(dev) != 0) {
+		device_printf(dev, "SR-IOV in use; detach first.\n");
 		return (EBUSY);
 	}
 
@@ -1101,12 +1127,13 @@ ixgbe_init_locked(struct adapter *adapter)
         callout_stop(&adapter->timer);
 
         /* reprogram the RAR[0] in case user changed it. */
-        ixgbe_set_rar(hw, 0, adapter->hw.mac.addr, 0, IXGBE_RAH_AV);
+        ixgbe_set_rar(hw, 0, adapter->hw.mac.addr, adapter->pf_rx_pool,
+            IXGBE_RAH_AV);
 
 	/* Get the latest mac address, User can use a LAA */
 	bcopy(IF_LLADDR(adapter->ifp), hw->mac.addr,
 	      IXGBE_ETH_LENGTH_OF_ADDRESS);
-	ixgbe_set_rar(hw, 0, hw->mac.addr, 0, 1);
+	ixgbe_set_rar(hw, 0, hw->mac.addr, adapter->pf_rx_pool, 1);
 	hw->addr_ctrl.rar_used_count = 1;
 
 	/* Set the various hardware offload abilities */
@@ -2169,7 +2196,8 @@ ixgbe_stop(void *arg)
        	ixgbe_update_link_status(adapter);
 
 	/* reprogram the RAR[0] in case user changed it. */
-	ixgbe_set_rar(&adapter->hw, 0, adapter->hw.mac.addr, 0, IXGBE_RAH_AV);
+	ixgbe_set_rar(&adapter->hw, 0, adapter->hw.mac.addr,
+	    adapter->pf_rx_pool, IXGBE_RAH_AV);
 
 	return;
 }
@@ -2819,6 +2847,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	struct rx_ring	*rxr;
 	int rsize, tsize, error = IXGBE_SUCCESS;
 	int txconf = 0, rxconf = 0;
+	enum ixgbe_iov_mode iov_mode;
 
         /* First allocate the top level queue structs */
         if (!(adapter->queues =
@@ -2851,6 +2880,9 @@ ixgbe_allocate_queues(struct adapter *adapter)
 	tsize = roundup2(adapter->num_tx_desc *
 	    sizeof(union ixgbe_adv_tx_desc), DBA_ALIGN);
 
+	iov_mode = ixgbe_get_iov_mode(adapter);
+	adapter->pf_rx_pool = ixgbe_max_vfs(iov_mode);
+
 	/*
 	 * Now set up the TX queues, txconf is needed to handle the
 	 * possibility that things fail midcourse and we need to
@@ -2860,7 +2892,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 		/* Set up some basics */
 		txr = &adapter->tx_rings[i];
 		txr->adapter = adapter;
-		txr->me = i;
+		txr->me = ixgbe_pf_queue_num(iov_mode, i);
 		txr->num_desc = adapter->num_tx_desc;
 
 		/* Initialize the TX side lock */
@@ -2907,7 +2939,7 @@ ixgbe_allocate_queues(struct adapter *adapter)
 		rxr = &adapter->rx_rings[i];
 		/* Set up some basics */
 		rxr->adapter = adapter;
-		rxr->me = i;
+		rxr->me = ixgbe_pf_queue_num(iov_mode, i);
 		rxr->num_desc = adapter->num_rx_desc;
 
 		/* Initialize the RX side lock */
@@ -3928,8 +3960,8 @@ ixgbe_setup_hw_rsc(struct rx_ring *rxr)
 	IXGBE_WRITE_REG(hw, IXGBE_RSCCTL(rxr->me), rscctrl);
 
 	/* Enable TCP header recognition */
-	IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(0),
-	    (IXGBE_READ_REG(hw, IXGBE_PSRTYPE(0)) |
+	IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(adapter->pf_rx_pool),
+	    (IXGBE_READ_REG(hw, IXGBE_PSRTYPE(adapter->pf_rx_pool)) |
 	    IXGBE_PSRTYPE_TCPHDR));
 
 	/* Disable RSC for ACK packets */
@@ -4199,7 +4231,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 			      IXGBE_PSRTYPE_UDPHDR |
 			      IXGBE_PSRTYPE_IPV4HDR |
 			      IXGBE_PSRTYPE_IPV6HDR;
-		IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(0), psrtype);
+		IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(adapter->pf_rx_pool), psrtype);
 	}
 
 	rxcsum = IXGBE_READ_REG(hw, IXGBE_RXCSUM);
@@ -5825,3 +5857,158 @@ ixgbe_disable_rx_drop(struct adapter *adapter)
         	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
 	}
 }
+
+static enum ixgbe_iov_mode
+ixgbe_get_iov_mode(struct adapter *adapter)
+{
+
+	if (adapter->num_queues <= 2)
+		return (IXGBE_64_VM);
+	else if (adapter->num_queues <= 4)
+		return (IXGBE_32_VM);
+	else
+		return (IXGBE_NO_VM);
+}
+
+static int
+ixgbe_max_vfs(enum ixgbe_iov_mode mode)
+{
+
+	/*
+	 * We return odd numbers below because we reserve 1 VM's worth of queues
+	 * for the PF.
+	 */
+	switch (mode) {
+	case IXGBE_64_VM:
+		return (63);
+	case IXGBE_32_VM:
+		return (31);
+	case IXGBE_NO_VM:
+	default:
+		return (0);
+	}
+}
+
+static int
+ixgbe_vf_queues(enum ixgbe_iov_mode mode)
+{
+
+	switch (mode) {
+	case IXGBE_64_VM:
+		return (2);
+	case IXGBE_32_VM:
+		return (4);
+	case IXGBE_NO_VM:
+	default:
+		return (0);
+	}
+}
+
+static int
+ixgbe_pf_queue_num(enum ixgbe_iov_mode mode, int num)
+{
+
+	return ((ixgbe_max_vfs(mode) * ixgbe_vf_queues(mode)) + num);
+}
+
+static int
+ixgbe_init_iov(device_t dev, int num_vfs)
+{
+	struct adapter *adapter;
+	struct ixgbe_hw *hw;
+	uint32_t mrqc, mtqc, vt_ctl, vf_reg, gcr_ext, gpie;
+	enum ixgbe_iov_mode mode;
+
+	adapter = device_get_softc(dev);
+	hw = &adapter->hw;
+	mode = ixgbe_get_iov_mode(adapter);
+
+	if (num_vfs > ixgbe_max_vfs(mode))
+		return (ENOSPC);
+
+	mrqc = IXGBE_READ_REG(hw, IXGBE_MRQC);
+	mrqc &= ~IXGBE_MRQC_MRQE_MASK;
+
+	switch (mode) {
+	case IXGBE_64_VM:
+		mrqc |= IXGBE_MRQC_VMDQRSS64EN;
+		break;
+	case IXGBE_32_VM:
+		mrqc |= IXGBE_MRQC_VMDQRSS32EN;
+		break;
+	default:
+		panic("Unexpected SR-IOV mode %d", mode);
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
+
+	mtqc = IXGBE_MTQC_VT_ENA;
+	switch (mode) {
+	case IXGBE_64_VM:
+		mtqc |= IXGBE_MTQC_64VF;
+		break;
+	case IXGBE_32_VM:
+		mtqc |= IXGBE_MTQC_32VF;
+		break;
+	default:
+		panic("Unexpected SR-IOV mode %d", mode);
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_MTQC, mtqc);
+	
+
+	gcr_ext = IXGBE_READ_REG(hw, IXGBE_GCR_EXT);
+	gcr_ext |= IXGBE_GCR_EXT_MSIX_EN;
+	gcr_ext &= ~IXGBE_GCR_EXT_VT_MODE_MASK;
+	switch (mode) {
+	case IXGBE_64_VM:
+		gcr_ext |= IXGBE_GCR_EXT_VT_MODE_64;
+		break;
+	case IXGBE_32_VM:
+		gcr_ext |= IXGBE_GCR_EXT_VT_MODE_32;
+		break;
+	default:
+		panic("Unexpected SR-IOV mode %d", mode);
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_GCR_EXT, gcr_ext);
+	
+
+	gpie = IXGBE_READ_REG(hw, IXGBE_GPIE);
+	gcr_ext &= ~IXGBE_GPIE_VTMODE_MASK;
+	switch (mode) {
+	case IXGBE_64_VM:
+		gpie |= IXGBE_GPIE_VTMODE_64;
+		break;
+	case IXGBE_32_VM:
+		gpie |= IXGBE_GPIE_VTMODE_32;
+		break;
+	default:
+		panic("Unexpected SR-IOV mode %d", mode);
+	}
+	IXGBE_WRITE_REG(hw, IXGBE_GPIE, gpie);
+
+	/* Enable rx/tx for the PF. */
+	vf_reg = IXGBE_VFRE_INDEX(adapter->pf_rx_pool);
+	IXGBE_WRITE_REG(hw, IXGBE_VFRE(vf_reg), 
+	    IXGBE_VFRE_BIT(adapter->pf_rx_pool));
+	IXGBE_WRITE_REG(hw, IXGBE_VFTE(vf_reg), 
+	    IXGBE_VFRE_BIT(adapter->pf_rx_pool));
+
+	/* Allow VM-to-VM communication. */
+	IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LBEN);
+
+	vt_ctl = IXGBE_VT_CTL_VT_ENABLE | IXGBE_VT_CTL_REPLEN;
+	vt_ctl |= (adapter->pf_rx_pool << IXGBE_VT_CTL_POOL_SHIFT);
+	IXGBE_WRITE_REG(hw, IXGBE_VT_CTL, vt_ctl);
+
+	return (0);
+}
+
+static int
+ixgbe_add_vf(device_t dev, int vfnum)
+{
+	struct adapter *adapter;
+
+	adapter = device_get_softc(dev);
+
+	return (0);
+}
+

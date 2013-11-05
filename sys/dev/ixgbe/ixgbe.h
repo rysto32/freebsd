@@ -215,6 +215,14 @@
 #define IXGBE_BULK_LATENCY	1200
 #define IXGBE_LINK_ITR		2000
 
+#define IXGBE_VFRE_INDEX(vmdq)  ((vmdq) / 32)
+#define IXGBE_VFRE_BIT(vmdq)    (1 << ((vmdq) % 32))
+
+enum ixgbe_iov_mode {
+	IXGBE_64_VM,
+	IXGBE_32_VM,
+	IXGBE_NO_VM
+};
 
 /*
  *****************************************************************************
@@ -369,6 +377,12 @@ struct rx_ring {
 #endif
 };
 
+struct ixgbe_vf {
+	int			index;
+	u8			ether_addr[ETHER_ADDR_LEN];
+	TAILQ_ENTRY(ixgbe_vf)	next;
+};
+
 /* Our adapter structure */
 struct adapter {
 	struct ifnet		*ifp;
@@ -470,6 +484,9 @@ struct adapter {
 	unsigned long		link_irq;
 
 	struct ixgbe_hw_stats 	stats;
+
+	int			pf_rx_pool;
+	TAILQ_HEAD(, ixgbe_vf)	vf_list;
 };
 
 
