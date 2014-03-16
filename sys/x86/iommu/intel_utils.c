@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/taskqueue.h>
 #include <sys/tree.h>
+#include <dev/pci/pcivar.h>
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
 #include <vm/vm_kern.h>
@@ -115,7 +116,7 @@ dmar_pglvl_supported(struct dmar_unit *unit, int pglvl)
 int
 ctx_set_agaw(struct dmar_ctx *ctx, int mgaw)
 {
-	int sagaw, i;
+	int sagaw, i, bus, slot, func;
 
 	ctx->mgaw = mgaw;
 	sagaw = DMAR_CAP_SAGAW(ctx->dmar->hw_cap);
@@ -127,10 +128,14 @@ ctx_set_agaw(struct dmar_ctx *ctx, int mgaw)
 			return (0);
 		}
 	}
+
+	bus = pci_get_bus(ctx->ctx_tag.owner);
+	slot = pci_get_slot(ctx->ctx_tag.owner);
+	func = pci_get_function(ctx->ctx_tag.owner);
 	device_printf(ctx->dmar->dev,
 	    "context request mgaw %d for pci%d:%d:%d:%d, "
-	    "no agaw found, sagaw %x\n", mgaw, ctx->dmar->segment, ctx->bus,
-	     ctx->slot, ctx->func, sagaw);
+	    "no agaw found, sagaw %x\n", mgaw, ctx->dmar->segment, bus, slot,
+	    func, sagaw);
 	return (EINVAL);
 }
 
