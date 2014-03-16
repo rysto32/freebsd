@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <x86/iommu/intel_reg.h>
 #include <x86/iommu/busdma_dmar.h>
 #include <x86/iommu/intel_dmar.h>
+#include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
 static MALLOC_DEFINE(M_DMAR_CTX, "dmar_ctx", "Intel DMAR Context");
@@ -105,9 +106,9 @@ dmar_map_ctx_entry(struct dmar_ctx *ctx, struct sf_buf **sfp)
 {
 	dmar_ctx_entry_t *ctxp;
 
-	ctxp = dmar_map_pgtbl(ctx->dmar->ctx_obj, 1 + ctx->bus,
+	ctxp = dmar_map_pgtbl(ctx->dmar->ctx_obj, 1 + PCI_RID2BUS(ctx->rid),
 	    DMAR_PGF_NOALLOC | DMAR_PGF_WAITOK, sfp);
-	ctxp += ((ctx->slot & 0x1f) << 3) + (ctx->func & 0x7);
+	ctxp += (ctx->rid & 0xff);
 	return (ctxp);
 }
 
@@ -218,7 +219,8 @@ ctx_init_rmrr(struct dmar_ctx *ctx, device_t dev)
 }
 
 static struct dmar_ctx *
-dmar_get_ctx_alloc(struct dmar_unit *dmar, int bus, int slot, int func)
+dmar_get_ctx_alloc(struct dmar_unit *dmar, int bus, int slot, int func, 
+    uint16_t rid)
 {
 	struct dmar_ctx *ctx;
 
@@ -228,6 +230,7 @@ dmar_get_ctx_alloc(struct dmar_unit *dmar, int bus, int slot, int func)
 	TASK_INIT(&ctx->unload_task, 0, dmar_ctx_unload_task, ctx);
 	mtx_init(&ctx->lock, "dmarctx", NULL, MTX_DEF);
 	ctx->dmar = dmar;
+	ctx->rid = rid;
 	ctx->bus = bus;
 	ctx->slot = slot;
 	ctx->func = func;
@@ -259,15 +262,17 @@ dmar_get_ctx(struct dmar_unit *dmar, device_t dev, bool id_mapped, bool rmrr_ini
 	dmar_ctx_entry_t *ctxp;
 	struct sf_buf *sf;
 	int bus, slot, func, error, mgaw;
+	uint16_t rid;
 	bool enable;
 
+	rid = pci_get_rid(dev);
 	bus = pci_get_bus(dev);
 	slot = pci_get_slot(dev);
 	func = pci_get_function(dev);
 	enable = false;
 	TD_PREP_PINNED_ASSERT;
 	DMAR_LOCK(dmar);
-	ctx = dmar_find_ctx_locked(dmar, bus, slot, func);
+	ctx = dmar_find_ctx_locked(dmar, rid);
 	error = 0;
 	if (ctx == NULL) {
 		/*
@@ -276,7 +281,7 @@ dmar_get_ctx(struct dmar_unit *dmar, device_t dev, bool id_mapped, bool rmrr_ini
 		 */
 		DMAR_UNLOCK(dmar);
 		dmar_ensure_ctx_page(dmar, bus);
-		ctx1 = dmar_get_ctx_alloc(dmar, bus, slot, func);
+		ctx1 = dmar_get_ctx_alloc(dmar, bus, slot, func, rid);
 
 		if (id_mapped) {
 			/*
@@ -344,7 +349,7 @@ dmar_get_ctx(struct dmar_unit *dmar, device_t dev, bool id_mapped, bool rmrr_ini
 		 * Recheck the contexts, other thread might have
 		 * already allocated needed one.
 		 */
-		ctx = dmar_find_ctx_locked(dmar, bus, slot, func);
+		ctx = dmar_find_ctx_locked(dmar, rid);
 		if (ctx == NULL) {
 			ctx = ctx1;
 			ctx->domain = alloc_unrl(dmar->domids);
@@ -514,14 +519,14 @@ dmar_free_ctx(struct dmar_ctx *ctx)
 }
 
 struct dmar_ctx *
-dmar_find_ctx_locked(struct dmar_unit *dmar, int bus, int slot, int func)
+dmar_find_ctx_locked(struct dmar_unit *dmar, uint16_t rid)
 {
 	struct dmar_ctx *ctx;
 
 	DMAR_ASSERT_LOCKED(dmar);
 
 	LIST_FOREACH(ctx, &dmar->contexts, link) {
-		if (ctx->bus == bus && ctx->slot == slot && ctx->func == func)
+		if (ctx->rid == rid)
 			return (ctx);
 	}
 	return (NULL);

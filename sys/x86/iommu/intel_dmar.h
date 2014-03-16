@@ -74,6 +74,7 @@ RB_PROTOTYPE(dmar_gas_entries_tree, dmar_map_entry, rb_entry,
 #define	DMAR_MAP_ENTRY_TM	0x8000	/* Transient */
 
 struct dmar_ctx {
+	uint16_t rid;	/* pci RID */
 	int bus;	/* pci bus/slot/func */
 	int slot;
 	int func;
@@ -273,8 +274,7 @@ struct dmar_ctx *dmar_get_ctx(struct dmar_unit *dmar, device_t dev,
     bool id_mapped, bool rmrr_init);
 void dmar_free_ctx_locked(struct dmar_unit *dmar, struct dmar_ctx *ctx);
 void dmar_free_ctx(struct dmar_ctx *ctx);
-struct dmar_ctx *dmar_find_ctx_locked(struct dmar_unit *dmar, int bus,
-    int slot, int func);
+struct dmar_ctx *dmar_find_ctx_locked(struct dmar_unit *dmar, uint16_t rid);
 void dmar_ctx_unload_entry(struct dmar_map_entry *entry, bool free);
 void dmar_ctx_unload(struct dmar_ctx *ctx,
     struct dmar_map_entries_tailq *entries, bool cansleep);
