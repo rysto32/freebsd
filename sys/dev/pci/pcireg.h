@@ -57,6 +57,10 @@
     (((slot) & PCI_SLOTMAX) << PCI_RID_SLOT_SHIFT) | \
     (((func) & PCI_FUNCMAX) << PCI_RID_FUNC_SHIFT))
 
+#define PCI_RID2BUS(rid) (((rid) >> PCI_RID_BUS_SHIFT) & PCI_RID_BUS_SHIFT)
+#define PCI_RID2SLOT(rid) (((rid) >> PCI_RID_SLOT_SHIFT) & PCI_RID_SLOT_SHIFT)
+#define PCI_RID2FUNC(rid) (((rid) >> PCI_RID_FUNC_SHIFT) & PCI_RID_FUNC_SHIFT)
+
 /* PCI config header registers for all devices */
 
 #define	PCIR_DEVVENDOR	0x00

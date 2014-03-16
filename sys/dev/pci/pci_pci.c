@@ -56,7 +56,7 @@ static int		pcib_suspend(device_t dev);
 static int		pcib_resume(device_t dev);
 static int		pcib_power_for_sleep(device_t pcib, device_t dev,
 			    int *pstate);
-static int		pcib_get_rid(device_t pcib, device_t dev);
+static uint16_t		pcib_get_rid(device_t pcib, device_t dev);
 
 static device_method_t pcib_methods[] = {
     /* Device interface */
@@ -1937,7 +1937,7 @@ pcib_power_for_sleep(device_t pcib, device_t dev, int *pstate)
 	return (PCIB_POWER_FOR_SLEEP(bus, dev, pstate));
 }
 
-static int
+static uint16_t
 pcib_get_rid(device_t pcib, device_t dev)
 {
 	uint8_t bus, slot, func;

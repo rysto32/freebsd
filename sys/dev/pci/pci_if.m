@@ -160,7 +160,7 @@ METHOD int msix_count {
 	device_t	child;
 } DEFAULT null_msi_count;
 
-METHOD int get_rid {
+METHOD uint16_t get_rid {
 	device_t dev;
 };
 

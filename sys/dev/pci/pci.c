@@ -124,7 +124,7 @@ static void		pci_resume_msix(device_t dev);
 static int		pci_remap_intr_method(device_t bus, device_t dev,
 			    u_int irq);
 
-static int		pci_get_rid_method(device_t dev);
+static uint16_t		pci_get_rid_method(device_t dev);
 
 static device_method_t pci_methods[] = {
 	/* Device interface */
@@ -5059,7 +5059,7 @@ pci_restore_state(device_t dev)
 	pci_cfg_restore(dev, dinfo);
 }
 
-static int
+static uint16_t
 pci_get_rid_method(device_t dev)
 {
 
