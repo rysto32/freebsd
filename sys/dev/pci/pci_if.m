@@ -159,3 +159,8 @@ METHOD int msix_count {
 	device_t	dev;
 	device_t	child;
 } DEFAULT null_msi_count;
+
+METHOD int get_rid {
+	device_t dev;
+};
+

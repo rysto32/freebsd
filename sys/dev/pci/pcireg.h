@@ -48,6 +48,15 @@
 #define	PCIE_REGMAX	4095	/* highest supported config register addr. */
 #define	PCI_MAXHDRTYPE	2
 
+#define	PCI_RID_BUS_SHIFT	8
+#define	PCI_RID_SLOT_SHIFT	3
+#define PCI_RID_FUNC_SHIFT	0
+
+#define PCI_RID(bus, slot, func) \
+    ((((bus) & PCI_BUSMAX) << PCI_RID_BUS_SHIFT) | \
+    (((slot) & PCI_SLOTMAX) << PCI_RID_SLOT_SHIFT) | \
+    (((func) & PCI_FUNCMAX) << PCI_RID_FUNC_SHIFT))
+
 /* PCI config header registers for all devices */
 
 #define	PCIR_DEVVENDOR	0x00

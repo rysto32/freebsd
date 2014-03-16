@@ -56,6 +56,7 @@ static int		pcib_suspend(device_t dev);
 static int		pcib_resume(device_t dev);
 static int		pcib_power_for_sleep(device_t pcib, device_t dev,
 			    int *pstate);
+static int		pcib_get_rid(device_t pcib, device_t dev);
 
 static device_method_t pcib_methods[] = {
     /* Device interface */
@@ -93,6 +94,7 @@ static device_method_t pcib_methods[] = {
     DEVMETHOD(pcib_release_msix,	pcib_release_msix),
     DEVMETHOD(pcib_map_msi,		pcib_map_msi),
     DEVMETHOD(pcib_power_for_sleep,	pcib_power_for_sleep),
+    DEVMETHOD(pcib_get_rid,		pcib_get_rid),
 
     DEVMETHOD_END
 };
@@ -1933,4 +1935,16 @@ pcib_power_for_sleep(device_t pcib, device_t dev, int *pstate)
 
 	bus = device_get_parent(pcib);
 	return (PCIB_POWER_FOR_SLEEP(bus, dev, pstate));
+}
+
+static int
+pcib_get_rid(device_t pcib, device_t dev)
+{
+	uint8_t bus, slot, func;
+
+	bus = pci_get_bus(dev);
+	slot = pci_get_slot(dev);
+	func = pci_get_function(dev);
+
+	return (PCI_RID(bus, slot, func));
 }
