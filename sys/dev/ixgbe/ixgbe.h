@@ -378,9 +378,8 @@ struct rx_ring {
 };
 
 struct ixgbe_vf {
-	int			index;
+	int			pool_index;
 	u8			ether_addr[ETHER_ADDR_LEN];
-	TAILQ_ENTRY(ixgbe_vf)	next;
 };
 
 /* Our adapter structure */
@@ -485,8 +484,9 @@ struct adapter {
 
 	struct ixgbe_hw_stats 	stats;
 
+	int			num_vfs;
 	int			pf_rx_pool;
-	TAILQ_HEAD(, ixgbe_vf)	vf_list;
+	struct ixgbe_vf		*vfs;
 };
 
 

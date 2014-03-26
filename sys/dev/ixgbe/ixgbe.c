@@ -383,6 +383,8 @@ static int fdir_pballoc = 1;
 #include <dev/netmap/ixgbe_netmap.h>
 #endif /* DEV_NETMAP */
 
+static MALLOC_DEFINE(M_IXGBE, "ixgbe", "IXGBE driver allocations");
+
 /*********************************************************************
  *  Device identification routine
  *
@@ -3161,15 +3163,15 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 		u64	tdba = txr->txdma.dma_paddr;
 		u32	txctrl;
 
-		IXGBE_WRITE_REG(hw, IXGBE_TDBAL(i),
+		IXGBE_WRITE_REG(hw, IXGBE_TDBAL(txr->me),
 		       (tdba & 0x00000000ffffffffULL));
-		IXGBE_WRITE_REG(hw, IXGBE_TDBAH(i), (tdba >> 32));
-		IXGBE_WRITE_REG(hw, IXGBE_TDLEN(i),
+		IXGBE_WRITE_REG(hw, IXGBE_TDBAH(txr->me), (tdba >> 32));
+		IXGBE_WRITE_REG(hw, IXGBE_TDLEN(txr->me),
 		    adapter->num_tx_desc * sizeof(union ixgbe_adv_tx_desc));
 
 		/* Setup the HW Tx Head and Tail descriptor pointers */
-		IXGBE_WRITE_REG(hw, IXGBE_TDH(i), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_TDT(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_TDH(txr->me), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_TDT(txr->me), 0);
 
 		/* Setup Transmit Descriptor Cmd Settings */
 		txr->txd_cmd = IXGBE_TXD_CMD_IFCS;
@@ -3181,23 +3183,25 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 		/* Disable Head Writeback */
 		switch (hw->mac.type) {
 		case ixgbe_mac_82598EB:
-			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
+			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(txr->me));
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
 		default:
-			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+			txctrl = IXGBE_READ_REG(hw, 
+			    IXGBE_DCA_TXCTRL_82599(txr->me));
 			break;
                 }
 		txctrl &= ~IXGBE_DCA_TXCTRL_DESC_WRO_EN;
 		switch (hw->mac.type) {
 		case ixgbe_mac_82598EB:
-			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(i), txctrl);
+			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(txr->me), txctrl);
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
 		default:
-			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), txctrl);
+			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(txr->me), 
+			    txctrl);
 			break;
 		}
 
@@ -4204,23 +4208,23 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		u64 rdba = rxr->rxdma.dma_paddr;
 
 		/* Setup the Base and Length of the Rx Descriptor Ring */
-		IXGBE_WRITE_REG(hw, IXGBE_RDBAL(i),
+		IXGBE_WRITE_REG(hw, IXGBE_RDBAL(rxr->me),
 			       (rdba & 0x00000000ffffffffULL));
-		IXGBE_WRITE_REG(hw, IXGBE_RDBAH(i), (rdba >> 32));
-		IXGBE_WRITE_REG(hw, IXGBE_RDLEN(i),
+		IXGBE_WRITE_REG(hw, IXGBE_RDBAH(rxr->me), (rdba >> 32));
+		IXGBE_WRITE_REG(hw, IXGBE_RDLEN(rxr->me),
 		    adapter->num_rx_desc * sizeof(union ixgbe_adv_rx_desc));
 
 		/* Set up the SRRCTL register */
-		srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
+		srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(rxr->me));
 		srrctl &= ~IXGBE_SRRCTL_BSIZEHDR_MASK;
 		srrctl &= ~IXGBE_SRRCTL_BSIZEPKT_MASK;
 		srrctl |= bufsz;
 		srrctl |= IXGBE_SRRCTL_DESCTYPE_ADV_ONEBUF;
-		IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
+		IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(rxr->me), srrctl);
 
 		/* Setup the HW Rx Head and Tail Descriptor Pointers */
-		IXGBE_WRITE_REG(hw, IXGBE_RDH(i), 0);
-		IXGBE_WRITE_REG(hw, IXGBE_RDT(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_RDH(rxr->me), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), 0);
 
 		/* Set the processing limit */
 		rxr->process_limit = ixgbe_rx_process_limit;
@@ -5905,10 +5909,17 @@ ixgbe_vf_queues(enum ixgbe_iov_mode mode)
 }
 
 static int
+ixgbe_vf_queue_num(enum ixgbe_iov_mode mode, uint32_t vfnum, int num)
+{
+
+	return ((vfnum * ixgbe_vf_queues(mode)) + num);
+}
+
+static int
 ixgbe_pf_queue_num(enum ixgbe_iov_mode mode, int num)
 {
 
-	return ((ixgbe_max_vfs(mode) * ixgbe_vf_queues(mode)) + num);
+	return (ixgbe_vf_queue_num(mode, ixgbe_max_vfs(mode), num));
 }
 
 static int
@@ -5925,6 +5936,16 @@ ixgbe_init_iov(device_t dev, int num_vfs)
 
 	if (num_vfs > ixgbe_max_vfs(mode))
 		return (ENOSPC);
+
+	IXGBE_CORE_LOCK(adapter);
+
+	adapter->vfs = malloc(sizeof(*adapter->vfs) * num_vfs, M_IXGBE, 
+	    M_NOWAIT | M_ZERO);
+
+	if (adapter->vfs == NULL) {
+		IXGBE_CORE_UNLOCK(adapter);
+		return (ENOMEM);
+	}
 
 	mrqc = IXGBE_READ_REG(hw, IXGBE_MRQC);
 	mrqc &= ~IXGBE_MRQC_MRQE_MASK;
@@ -5999,6 +6020,10 @@ ixgbe_init_iov(device_t dev, int num_vfs)
 	vt_ctl |= (adapter->pf_rx_pool << IXGBE_VT_CTL_POOL_SHIFT);
 	IXGBE_WRITE_REG(hw, IXGBE_VT_CTL, vt_ctl);
 
+	adapter->num_vfs = num_vfs;
+
+	IXGBE_CORE_UNLOCK(adapter);
+
 	return (0);
 }
 
@@ -6006,8 +6031,27 @@ static int
 ixgbe_add_vf(device_t dev, int vfnum)
 {
 	struct adapter *adapter;
+	struct ixgbe_hw *hw;
+	struct ixgbe_vf *vf;
+	uint32_t vf_reg;
 
 	adapter = device_get_softc(dev);
+	hw = &adapter->hw;
+
+	KASSERT(vfnum < adapter->num_vfs, ("VF index %d is out of range %d",
+	    vfnum, adapter->num_vfs));
+
+	IXGBE_CORE_LOCK(adapter);
+	vf = &adapter->vfs[vfnum];
+	vf->pool_index = vfnum;
+
+	vf_reg = IXGBE_VFRE_INDEX(vf->pool_index);
+	IXGBE_WRITE_REG(hw, IXGBE_VFRE(vf_reg), 
+	    IXGBE_VFRE_BIT(vf->pool_index));
+	IXGBE_WRITE_REG(hw, IXGBE_VFTE(vf_reg), 
+	    IXGBE_VFRE_BIT(vf->pool_index));
+	
+	IXGBE_CORE_UNLOCK(adapter);
 
 	return (0);
 }
