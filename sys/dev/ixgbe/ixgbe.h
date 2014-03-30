@@ -92,6 +92,7 @@
 #include <machine/smp.h>
 
 #include "ixgbe_api.h"
+#include "ixgbe_mbx.h"
 
 /* Tunables */
 
@@ -215,8 +216,21 @@
 #define IXGBE_BULK_LATENCY	1200
 #define IXGBE_LINK_ITR		2000
 
-#define IXGBE_VFRE_INDEX(vmdq)  ((vmdq) / 32)
-#define IXGBE_VFRE_BIT(vmdq)    (1 << ((vmdq) % 32))
+#define IXGBE_VF_INDEX(vmdq)  ((vmdq) / 32)
+#define IXGBE_VF_BIT(vmdq)    (1 << ((vmdq) % 32))
+
+#define IXGBE_VT_MSG_MASK	0xFFFF
+
+#define IXGBE_VT_MSGINFO(msg)	\
+	(((msg) & IXGBE_VT_MSGINFO_MASK) >> IXGBE_VT_MSGINFO_SHIFT)
+
+#define IXGBE_VF_GET_QUEUES_RESP_LEN	5
+
+
+#define IXGBE_API_VER_1_0	0		
+#define IXGBE_API_VER_2_0	1	/* Solaris API.  Not supported. */
+#define IXGBE_API_VER_1_1	2
+#define IXGBE_API_VER_UNKNOWN	UINT16_MAX
 
 enum ixgbe_iov_mode {
 	IXGBE_64_VM,
@@ -377,9 +391,19 @@ struct rx_ring {
 #endif
 };
 
+#define IXGBE_VF_CTS		(1 << 0) /* VF is clear to send. */
+#define IXGBE_VF_CAP_MAC	(1 << 1) /* VF is permitted to change MAC. */
+#define IXGBE_VF_CAP_VLAN	(1 << 2) /* VF is permitted to join vlans. */
+
 struct ixgbe_vf {
-	int			pool_index;
-	u8			ether_addr[ETHER_ADDR_LEN];
+	u_int			pool_index;
+	u_int			rar_index;
+	u_int			max_frame_size;
+	uint32_t		flags;
+	uint8_t			ether_addr[ETHER_ADDR_LEN];
+	uint16_t		default_vlan;
+	uint16_t		vlan_tag;
+	uint16_t		api_ver;
 };
 
 /* Our adapter structure */
@@ -441,6 +465,7 @@ struct adapter {
 	struct task     	link_task;  /* Link tasklet */
 	struct task     	mod_task;   /* SFP tasklet */
 	struct task     	msf_task;   /* Multispeed Fiber */
+	struct task		mbx_task;   /* VF -> PF mailbox interrupt */
 #ifdef IXGBE_FDIR
 	int			fdir_reinit;
 	struct task     	fdir_task;

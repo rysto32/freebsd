@@ -1624,6 +1624,7 @@ enum {
 #define IXGBE_VLVF_ENTRIES		64
 #define IXGBE_VLVF_VLANID_MASK		0x00000FFF
 /* Per VF Port VLAN insertion rules */
+#define IXGBE_VMVIR_VLANA_DESC		0x00000000 /* Use tag from descriptor */
 #define IXGBE_VMVIR_VLANA_DEFAULT	0x40000000 /* Always use default VLAN */
 #define IXGBE_VMVIR_VLANA_NEVER		0x80000000 /* Never insert VLAN tag */
 
