@@ -92,6 +92,7 @@
 #include <machine/smp.h>
 
 #include "ixgbe_api.h"
+#include "ixgbe_common.h"
 #include "ixgbe_mbx.h"
 
 /* Tunables */
@@ -394,6 +395,7 @@ struct rx_ring {
 #define IXGBE_VF_CTS		(1 << 0) /* VF is clear to send. */
 #define IXGBE_VF_CAP_MAC	(1 << 1) /* VF is permitted to change MAC. */
 #define IXGBE_VF_CAP_VLAN	(1 << 2) /* VF is permitted to join vlans. */
+#define IXGBE_VF_ACTIVE		(1 << 3) /* VF is active. */
 
 struct ixgbe_vf {
 	u_int			pool_index;
@@ -512,6 +514,7 @@ struct adapter {
 	int			num_vfs;
 	int			pf_rx_pool;
 	struct ixgbe_vf		*vfs;
+	int			vf_max_frame_size;
 };
 
 
