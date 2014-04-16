@@ -143,6 +143,12 @@ struct pcicfg_pcix {
     uint8_t	pcix_location;	/* Offset of PCI-X capability registers. */
 };
 
+struct pcicfg_vf {
+       int index;
+};
+
+#define PCICFG_VF (1 << 0) /* Device is an SR-IOV Virtual Function */
+
 /* config header information common to all header types */
 typedef struct pcicfg {
     struct device *dev;		/* device which owns this */
@@ -179,6 +185,8 @@ typedef struct pcicfg {
     uint8_t	slot;		/* config space slot address */
     uint8_t	func;		/* config space function number */
 
+    uint32_t	flags;		/* flags defined above */
+
     struct pcicfg_pp pp;	/* Power management */
     struct pcicfg_vpd vpd;	/* Vital product data */
     struct pcicfg_msi msi;	/* PCI MSI */
@@ -186,6 +194,8 @@ typedef struct pcicfg {
     struct pcicfg_ht ht;	/* HyperTransport */
     struct pcicfg_pcie pcie;	/* PCI Express */
     struct pcicfg_pcix pcix;	/* PCI-X */
+    struct pcicfg_iov *iov;	/* SR-IOV */
+    struct pcicfg_vf vf;	/* SR-IOV Virtual Function */
 } pcicfgregs;
 
 /* additional type 1 device config header information (PCI to PCI bridge) */
@@ -503,7 +513,11 @@ pci_msix_count(device_t dev)
 static __inline uint16_t
 pci_get_rid(device_t dev)
 {
-	return (PCI_GET_RID(device_get_parent(dev), dev));
+	return (PCI_GET_RID(device_get_parent(dev), d
+METHOD int iov_attach {
+	device_t	dev;
+	device_t	child;
+};ev));
 }
 
 static __inline void
@@ -511,6 +525,18 @@ pci_child_added(device_t dev)
 {
 
     return (PCI_CHILD_ADDED(device_get_parent(dev), dev));
+}
+
+static __inline int
+pci_iov_attach(device_t dev)
+{
+	return (PCI_IOV_ATTACH(device_get_parent(dev), dev));
+}
+
+static __inline int
+pci_iov_detach(device_t dev)
+{
+	return (PCI_IOV_DETACH(device_get_parent(dev), dev));
 }
 
 device_t pci_find_bsf(uint8_t, uint8_t, uint8_t);

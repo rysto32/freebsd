@@ -189,3 +189,28 @@ METHOD void child_added {
 	device_t	dev;
 	device_t	child;
 };
+
+METHOD int iov_attach {
+	device_t	dev;
+	device_t	child;
+};
+
+METHOD int iov_detach {
+	device_t	dev;
+	device_t	child;
+};
+
+METHOD int init_iov {
+	device_t		dev;
+	uint16_t		num_vfs;
+};
+
+METHOD void uninit_iov {
+	device_t		dev;
+};
+
+METHOD int add_vf {
+	device_t		dev;
+	uint16_t		vfnum;
+};
+

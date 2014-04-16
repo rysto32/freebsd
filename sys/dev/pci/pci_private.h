@@ -150,4 +150,10 @@ struct resource *pci_alloc_multi_resource(device_t dev, device_t child,
 		    int type, int *rid, u_long start, u_long end, u_long count,
 		    u_long num, u_int flags);
 
+int		pci_iov_attach_method(device_t bus, device_t dev);
+int		pci_iov_detach_method(device_t bus, device_t dev);
+
+device_t	pci_add_iov_child(device_t bus, size_t size, uint16_t rid,
+		    uint16_t vid, uint16_t did, const char *driver);
+
 #endif /* _PCI_PRIVATE_H_ */
