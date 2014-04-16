@@ -106,6 +106,18 @@ pci_setup_iov_method(device_t bus, device_t dev)
 		error = EBUSY;
 		goto cleanup;
 	}
+	iov->rman.rm_start = 0;
+	iov->rman.rm_end = ~0ul;
+	iov->rman.rm_type = RMAN_ARRAY;
+	iov->rman.rm_descr = "SR-IOV VF I/O memory";
+
+	error = rman_init(&iov->rman);
+
+	if (error != 0) {
+		goto cleanup;
+	}
+
+	iov->rman_inited = 1;
 
 	iov->iov_pos = iov_pos;
 
@@ -124,6 +136,10 @@ pci_setup_iov_method(device_t bus, device_t dev)
 	return (0);
 
 cleanup:
+	if (iov != NULL && iov->rman_inited) {
+		rman_fini(&iov->rman);
+		iov->rman_inited = 0;
+	}
 	free(iov, M_SRIOV);
 	mtx_unlock(&Giant);
 	return (error);
@@ -156,10 +172,65 @@ pci_cleanup_iov_method(device_t bus, device_t dev)
 		iov->iov_cdev = NULL;
 	}
 
+	if (iov->rman_inited) {
+		rman_fini(&iov->rman);
+		iov->rman_inited = 0;
+	}
+
 	free(iov, M_SRIOV);
 	mtx_unlock(&Giant);
 
 	return (0);
+}
+
+static int
+pci_iov_alloc_bar(struct pci_devinfo *dinfo, int bar, pci_addr_t bar_shift)
+{
+	struct resource *res;
+	struct pcicfg_iov *iov;
+	device_t dev, bus;
+	u_long start, end;
+	pci_addr_t bar_size;
+	int rid;
+
+	iov = dinfo->cfg.iov;
+	dev = dinfo->cfg.dev;
+	bus = device_get_parent(dev);
+	rid = iov->iov_pos + PCIR_SRIOV_BAR(bar);
+	bar_size = 1 << bar_shift;
+
+	res = pci_alloc_multi_resource(bus, dev, SYS_RES_MEMORY, &rid, 1ul,
+	    ~1ul, 1, iov->iov_num_vfs, RF_ACTIVE);
+
+	if (res == NULL)
+		return (ENXIO);
+
+	iov->iov_bar[bar].res = res;
+	iov->iov_bar[bar].bar_size = bar_size;
+	iov->iov_bar[bar].bar_shift = bar_shift;
+
+	start = rman_get_start(res);
+	end = start + rman_get_size(res) - 1;
+	return (rman_manage_region(&iov->rman, start, end));
+}
+
+static void
+pci_iov_add_bars(struct pcicfg_iov *iov, struct pci_devinfo *dinfo)
+{
+	struct pci_iov_bar *bar;
+	uint64_t bar_start;
+	int i;
+
+	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
+		bar = &iov->iov_bar[i];
+		if (bar->res != NULL) {
+			bar_start = rman_get_start(bar->res) +
+			    dinfo->cfg.vf.index * bar->bar_size;
+
+			pci_add_bar(dinfo->cfg.dev, PCIR_BAR(i), bar_start,
+			    bar->bar_shift);
+		}
+	}
 }
 
 /*
@@ -216,6 +287,8 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	struct pcicfg_iov *iov;
 	int error;
 	int i;
+	pci_addr_t bar_value, testval;
+	int last_64;
 	uint32_t page_cap, page_size;
 	uint16_t rid_off, rid_stride;
 	uint16_t next_rid, last_rid;
@@ -306,8 +379,26 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	vid = pci_get_vendor(dev);
 	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
 
+	last_64 = 0;
+	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
+		if (!last_64) {
+			pci_read_bar(dev,
+			    iov->iov_pos + PCIR_SRIOV_BAR(i),
+			    &bar_value, &testval, &last_64);
+
+			if (testval != 0) {
+				error = pci_iov_alloc_bar(dinfo, i,
+				   pci_mapsize(testval));
+
+				if (error != 0)
+					goto out;
+			}
+		} else
+			last_64 = 0;
+	}
+
 	iov_ctl = IOV_READ(dinfo, PCIR_SRIOV_CTL, 2);
-	iov_ctl |= PCIM_SRIOV_VF_EN;
+	iov_ctl |= PCIM_SRIOV_VF_EN | PCIM_SRIOV_VF_MSE;
 	IOV_WRITE(dinfo, PCIR_SRIOV_CTL, iov_ctl, 2);
 
 	/* Per specification, we must wait 100ms before accessing VFs. */
@@ -321,6 +412,8 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 
 		dinfo->cfg.iov = iov;
 		dinfo->cfg.vf.index = i;
+
+		pci_iov_add_bars(iov, dinfo);
 
 		error = PCI_ADD_VF(dev, i);
 
@@ -337,6 +430,17 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 out:
 	if (iov_inited)
 		PCI_UNINIT_IOV(dev);
+
+	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
+		if (iov->iov_bar[i].res != NULL) {
+			pci_release_resource(bus, dev, SYS_RES_MEMORY,
+			    iov->iov_pos + PCIR_SRIOV_BAR(i),
+			    iov->iov_bar[i].res);
+			pci_delete_resource(bus, dev, SYS_RES_MEMORY,
+			    iov->iov_pos + PCIR_SRIOV_BAR(i));
+			iov->iov_bar[i].res = NULL;
+		}
+	}
 	iov->iov_num_vfs = 0;
 	mtx_unlock(&Giant);
 	return (error);
@@ -353,5 +457,69 @@ pci_iov_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 	default:
 		return (EINVAL);
 	}
+}
+
+struct resource *
+pci_vf_alloc_mem_resource(device_t dev, device_t child, int *rid, u_long start,
+    u_long end, u_long count, u_int flags)
+{
+	struct pci_devinfo *dinfo;
+	struct pcicfg_iov *iov;
+	struct pci_map *map;
+	struct resource *res;
+	struct resource_list_entry *rle;
+	u_long bar_start, bar_end;
+	pci_addr_t bar_length;
+
+	dinfo = device_get_ivars(child);
+	iov = dinfo->cfg.iov;
+
+	map = pci_find_bar(child, *rid);
+	if (map == NULL)
+		return (NULL);
+
+	bar_length = 1 << map->pm_size;
+	bar_start = map->pm_value;
+	bar_end = bar_start + bar_length - 1;
+
+	res = rman_reserve_resource(&iov->rman, bar_start, bar_end,
+	    bar_length, flags, child);
+
+	if (res == NULL)
+		return (NULL);
+
+	rle = resource_list_add(&dinfo->resources, SYS_RES_MEMORY, *rid,
+	    bar_start, bar_end, 1);
+
+	if (rle == NULL) {
+		rman_release_resource(res);
+		return (NULL);
+	}
+
+	rle->res = res;
+	rle->flags |= RLE_RESERVED;
+
+	return (resource_list_alloc(&dinfo->resources, dev, child,
+	    SYS_RES_MEMORY, rid, bar_start, bar_end, 1, flags));
+}
+
+int
+pci_vf_release_mem_resource(device_t dev, device_t child, int rid,
+    struct resource *r)
+{
+	struct pci_devinfo *dinfo;
+	struct resource_list_entry *rle;
+
+	dinfo = device_get_ivars(child);
+
+	rle = resource_list_find(&dinfo->resources, SYS_RES_MEMORY, rid);
+
+	if (rle != NULL) {
+		rle->res = NULL;
+		resource_list_delete(&dinfo->resources, SYS_RES_MEMORY,
+		    rid);
+	}
+
+	return (rman_release_resource(r));
 }
 
