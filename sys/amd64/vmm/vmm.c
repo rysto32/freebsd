@@ -191,6 +191,11 @@ static int vmm_ipinum;
 SYSCTL_INT(_hw_vmm, OID_AUTO, ipinum, CTLFLAG_RD, &vmm_ipinum, 0,
     "IPI vector used for vcpu notifications");
 
+static int vmm_force_iommu = 0;
+TUNABLE_INT("hw.vmm.force_iommu", &vmm_force_iommu);
+SYSCTL_INT(_hw_vmm, OID_AUTO, force_iommu, CTLFLAG_RDTUN, &vmm_force_iommu, 0,
+    "Force use of I/O MMU even if no passthrough devices were found.");
+
 static void vm_deactivate_cpu(struct vm *vm, int vcpuid);
 
 static void
@@ -276,7 +281,7 @@ vmm_handler(module_t mod, int what, void *arg)
 	switch (what) {
 	case MOD_LOAD:
 		vmmdev_init();
-		if (ppt_avail_devices() > 0)
+		if (vmm_force_iommu || ppt_avail_devices() > 0)
 			iommu_init();
 		error = vmm_init();
 		if (error == 0)
