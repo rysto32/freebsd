@@ -29,12 +29,25 @@
 #ifndef _PCI_IOV_PRIVATE_H_
 #define _PCI_IOV_PRIVATE_H_
 
+struct pci_iov_bar {
+	struct resource *res;
+
+	pci_addr_t bar_size;
+	pci_addr_t bar_shift;
+};
+
 struct pcicfg_iov {
 	struct cdev *iov_cdev;
+
+	struct pci_iov_bar iov_bar[PCIR_MAX_BAR_0 + 1];
+	struct rman rman;
  
 	int iov_pos;
 	int iov_num_vfs;
+	uint32_t iov_flags;
 };
+
+#define	IOV_RMAN_INITED	(1 << 0)
 
 #endif
 
