@@ -125,11 +125,12 @@ ppt_probe(device_t dev)
 	 * - be allowed by administrator to be used in this role
 	 * - be an endpoint device
 	 */
-	if (vmm_is_pptdev(bus, slot, func) &&
-	    (dinfo->cfg.hdrtype & PCIM_HDRTYPE) == PCIM_HDRTYPE_NORMAL)
+	if ((dinfo->cfg.hdrtype & PCIM_HDRTYPE) != PCIM_HDRTYPE_NORMAL)
+		return (ENXIO);
+	else if (vmm_is_pptdev(bus, slot, func))
 		return (0);
 	else
-		return (ENXIO);
+		return (BUS_PROBE_NOWILDCARD);
 }
 
 static int
