@@ -189,6 +189,8 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_msi_count,	pci_msi_count_method),
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
+	DEVMETHOD(pci_setup_iov,	pci_setup_iov_method),
+	DEVMETHOD(pci_cleanup_iov,	pci_cleanup_iov_method),
 
 	DEVMETHOD_END
 };
@@ -633,6 +635,8 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
 	cfg->mfdev		= (cfg->hdrtype & PCIM_MFDEV) != 0;
 	cfg->hdrtype		&= ~PCIM_MFDEV;
 	STAILQ_INIT(&cfg->maps);
+
+	cfg->iov		= NULL;
 
 	pci_fixancient(cfg);
 	pci_hdrtypedata(pcib, b, s, f, cfg);
@@ -3533,6 +3537,27 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 			    dinfo_size);
 	}
 #undef REG
+}
+
+device_t
+pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
+    uint16_t did, const char *driver)
+{
+	struct pci_devinfo *dinfo;
+	device_t pcib;
+	int busno, slot, func;
+
+	pcib = device_get_parent(bus);
+
+	PCIB_DECODE_RID(pcib, rid, &busno, &slot, &func);
+
+	dinfo = pci_fill_devinfo(pcib, pci_get_domain(pcib), busno, slot, func,
+	    vid, did, size);
+
+	dinfo->cfg.flags |= PCICFG_VF;
+	pci_add_named_child(bus, dinfo, driver);
+
+	return (dinfo->cfg.dev);
 }
 
 static void
