@@ -165,3 +165,27 @@ METHOD uint16_t get_rid {
 	device_t	child;
 };
 
+METHOD int setup_iov {
+	device_t	dev;
+	device_t	child;
+};
+
+METHOD int cleanup_iov {
+	device_t	dev;
+	device_t	child;
+};
+
+METHOD int init_iov {
+	device_t	dev;
+	int		num_vfs;
+};
+
+METHOD int uninit_iov {
+	device_t	dev;
+};
+
+METHOD int add_vf {
+	device_t	dev;
+	int		vfnum;
+};
+
