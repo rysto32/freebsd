@@ -345,3 +345,4 @@ acpi_pci_get_dma_tag(device_t bus, device_t child)
 	return (pci_get_dma_tag(bus, child));
 }
 #endif
+

@@ -120,8 +120,6 @@ static int		pci_remap_intr_method(device_t bus, device_t dev,
 
 static uint16_t		pci_get_rid_method(device_t dev, device_t child);
 
-static void		pci_add_named_child(device_t bus,
-			    struct pci_devinfo *dinfo, const char *name);
 static struct pci_devinfo * pci_fill_devinfo(device_t pcib, int d, int b, int s,
     int f, uint16_t vid, uint16_t did, size_t size);
 
@@ -190,6 +188,10 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
 	DEVMETHOD(pci_child_added,	pci_child_added_method),
+#ifdef PCI_IOV
+	DEVMETHOD(pci_iov_attach,	pci_iov_attach_method),
+	DEVMETHOD(pci_iov_detach,	pci_iov_detach_method),
+#endif
 
 	DEVMETHOD_END
 };
@@ -644,6 +646,9 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
 	cfg->mfdev		= (cfg->hdrtype & PCIM_MFDEV) != 0;
 	cfg->hdrtype		&= ~PCIM_MFDEV;
 	STAILQ_INIT(&cfg->maps);
+
+	cfg->devinfo_size	= size;
+	cfg->iov		= NULL;
 
 	pci_fixancient(cfg);
 	pci_hdrtypedata(pcib, b, s, f, cfg);
@@ -3548,10 +3553,33 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 #undef REG
 }
 
-static void
-pci_add_named_child(device_t bus, struct pci_devinfo *dinfo, const char *name)
+#ifdef PCI_IOV
+device_t
+pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
+    uint16_t did)
 {
-	dinfo->cfg.dev = device_add_child(bus, name, -1);
+	struct pci_devinfo *dinfo;
+	device_t pcib;
+	int busno, slot, func;
+
+	pcib = device_get_parent(bus);
+
+	PCIB_DECODE_RID(pcib, rid, &busno, &slot, &func);
+
+	dinfo = pci_fill_devinfo(pcib, pci_get_domain(pcib), busno, slot, func,
+	    vid, did, size);
+
+	dinfo->cfg.flags |= PCICFG_VF;
+	pci_add_child(bus, dinfo);
+
+	return (dinfo->cfg.dev);
+}
+#endif
+
+void
+pci_add_child(device_t bus, struct pci_devinfo *dinfo)
+{
+	dinfo->cfg.dev = device_add_child(bus, NULL, -1);
 	device_set_ivars(dinfo->cfg.dev, dinfo);
 	resource_list_init(&dinfo->resources);
 	pci_cfg_save(dinfo->cfg.dev, dinfo, 0);
@@ -3565,13 +3593,6 @@ void
 pci_child_added_method(device_t dev, device_t child)
 {
 
-}
-
-void
-pci_add_child(device_t bus, struct pci_devinfo *dinfo)
-{
-
-	pci_add_named_child(bus, dinfo, NULL);
 }
 
 static int
