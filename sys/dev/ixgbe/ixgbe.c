@@ -210,6 +210,7 @@ static void	ixgbe_reinit_fdir(void *, int);
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
 static int	ixgbe_init_iov(device_t, int);
+static int	ixgbe_uninit_iov(device_t);
 static int	ixgbe_add_vf(device_t, int);
 
 static void	ixgbe_initialize_iov(struct adapter *adapter);
@@ -244,6 +245,7 @@ static device_method_t ixgbe_methods[] = {
 	DEVMETHOD(device_detach, ixgbe_detach),
 	DEVMETHOD(device_shutdown, ixgbe_shutdown),
 	DEVMETHOD(pci_init_iov, ixgbe_init_iov),
+	DEVMETHOD(pci_uninit_iov, ixgbe_uninit_iov),
 	DEVMETHOD(pci_add_vf, ixgbe_add_vf),
 	DEVMETHOD_END
 };
@@ -6448,6 +6450,45 @@ ixgbe_init_iov(device_t dev, int num_vfs)
 	adapter->vf_max_frame_size = adapter->max_frame_size;
 	adapter->num_vfs = num_vfs;
 	ixgbe_initialize_iov(adapter);
+
+	IXGBE_CORE_UNLOCK(adapter);
+
+	return (0);
+}
+
+static int
+ixgbe_uninit_iov(device_t dev)
+{
+	struct ixgbe_hw *hw;
+	struct adapter *adapter;
+	uint32_t pf_reg, vf_reg;
+	int i;
+
+	adapter = device_get_softc(dev);
+	hw = &adapter->hw;
+
+	IXGBE_CORE_LOCK(adapter);
+
+	/* Enable rx/tx for the PF and disable it for all VFs. */
+	pf_reg = IXGBE_VF_INDEX(adapter->pf_rx_pool);
+	IXGBE_WRITE_REG(hw, IXGBE_VFRE(pf_reg),
+	    IXGBE_VF_BIT(adapter->pf_rx_pool));
+	IXGBE_WRITE_REG(hw, IXGBE_VFTE(pf_reg),
+	    IXGBE_VF_BIT(adapter->pf_rx_pool));
+
+	if (pf_reg == 0)
+		vf_reg = 1;
+	else
+		vf_reg = 0;
+ 	IXGBE_WRITE_REG(hw, IXGBE_VFRE(vf_reg), 0);
+	IXGBE_WRITE_REG(hw, IXGBE_VFTE(vf_reg), 0);
+
+	IXGBE_WRITE_REG(hw, IXGBE_VT_CTL, 0);
+
+	free(adapter->vfs, M_IXGBE);
+	adapter->vfs = NULL;
+	adapter->num_vfs = 0;
+	adapter->vf_max_frame_size = adapter->max_frame_size;
 
 	IXGBE_CORE_UNLOCK(adapter);
 
