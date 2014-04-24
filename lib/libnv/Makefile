@@ -3,7 +3,8 @@
 LIB=	nv
 SHLIBDIR?= /lib
 SHLIB_MAJOR= 0
-VPATH=${.CURDIR}/../../sys/libstand/nv
+
+.PATH: ${.CURDIR}/../../sys/libkern/nv
 
 SRCS=	dnvlist.c
 SRCS+=	msgio.c
