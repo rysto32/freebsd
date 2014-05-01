@@ -1181,6 +1181,7 @@ ixgbe_init_locked(struct adapter *adapter)
 	}
 
 	ixgbe_init_hw(hw);
+	ixgbe_initialize_iov(adapter);
 	ixgbe_initialize_transmit_units(adapter);
 
 	/* Setup Multicast table */
@@ -1393,8 +1394,6 @@ ixgbe_init_locked(struct adapter *adapter)
 
 	/* And now turn on interrupts */
 	ixgbe_enable_intr(adapter);
-
-	ixgbe_initialize_iov(adapter);
 
 	/* Inform VFs that our reset is done and that they can use the mbx. */
 	ctrl_ext = IXGBE_READ_REG(hw, IXGBE_CTRL_EXT);
@@ -5273,7 +5272,7 @@ ixgbe_vf_set_default_vlan(struct adapter *adapter, struct ixgbe_vf *vf,
 
 	if (tag == 0) {
 		/* Accept non-vlan tagged traffic. */
-		vmolr |= IXGBE_VMOLR_AUPE;
+		//vmolr |= IXGBE_VMOLR_AUPE;
 
 		/* Allow VM to tag outgoing traffic; no default tag. */
 		vmvir = IXGBE_VMVIR_VLANA_DESC;
@@ -6462,7 +6461,6 @@ ixgbe_uninit_iov(device_t dev)
 	struct ixgbe_hw *hw;
 	struct adapter *adapter;
 	uint32_t pf_reg, vf_reg;
-	int i;
 
 	adapter = device_get_softc(dev);
 	hw = &adapter->hw;
