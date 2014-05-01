@@ -351,3 +351,6 @@ device		xenpci			# Xen HVM Hypervisor services driver
 
 # VMware support
 device		vmx			# VMware VMXNET3 Ethernet
+
+options         ALT_BREAK_TO_DEBUGGER
+
