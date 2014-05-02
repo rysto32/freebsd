@@ -3172,6 +3172,7 @@ kgssapi/gsstest.c		optional kgssapi_debug
 # routines may be optimized for a particular platform.  In either case,
 # the file should be moved to conf/files.<arch> from here.
 #
+libkern/asprintf.c		standard
 libkern/arc4random.c		standard
 libkern/bcd.c			standard
 libkern/bsearch.c		standard
