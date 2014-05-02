@@ -34,9 +34,11 @@
 
 #include <sys/cdefs.h>
 
+#ifndef _KERNEL
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
+#endif
 
 #ifndef	_NVLIST_T_DECLARED
 #define	_NVLIST_T_DECLARED

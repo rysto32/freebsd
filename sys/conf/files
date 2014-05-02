@@ -3111,7 +3111,6 @@ libkern/memcchr.c		standard
 libkern/memchr.c		optional fdt
 libkern/memcmp.c		standard
 libkern/nv/dnvlist.c		standard
-libkern/nv/msgio.c		standard
 libkern/nv/nvlist.c		standard
 libkern/nv/nvpair.c		standard
 libkern/qsort.c			standard

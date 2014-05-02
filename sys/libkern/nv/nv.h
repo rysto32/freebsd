@@ -34,10 +34,12 @@
 
 #include <sys/cdefs.h>
 
+#ifndef _KERNEL
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#endif
 
 #ifndef	_NVLIST_T_DECLARED
 #define	_NVLIST_T_DECLARED
@@ -70,8 +72,10 @@ bool		 nvlist_empty(const nvlist_t *nvl);
 
 nvlist_t *nvlist_clone(const nvlist_t *nvl);
 
+#ifndef _KERNEL
 void nvlist_dump(const nvlist_t *nvl, int fd);
 void nvlist_fdump(const nvlist_t *nvl, FILE *fp);
+#endif
 
 size_t		 nvlist_size(const nvlist_t *nvl);
 void		*nvlist_pack(const nvlist_t *nvl, size_t *sizep);

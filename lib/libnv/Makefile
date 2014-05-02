@@ -4,12 +4,18 @@ LIB=	nv
 SHLIBDIR?= /lib
 SHLIB_MAJOR= 0
 
-.PATH: ${.CURDIR}/../../sys/libkern/nv
+LIBNV_PATH=${.CURDIR}/../../sys/libkern/nv
+
+.PATH: ${LIBNV_PATH}
+
+CFLAGS+=-I${LIBNV_PATH}
+
 
 SRCS=	dnvlist.c
 SRCS+=	msgio.c
 SRCS+=	nvlist.c
 SRCS+=	nvpair.c
+SRCS+=  nv_user.c
 
 INCS=	dnv.h
 INCS+=	nv.h
