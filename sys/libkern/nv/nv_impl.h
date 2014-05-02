@@ -44,6 +44,39 @@ typedef struct nvpair nvpair_t;
 
 #define	NV_FLAG_BIG_ENDIAN		0x80
 
+#ifdef _KERNEL
+MALLOC_DECLARE(M_NVLIST);
+
+#define	nv_malloc(size)			malloc((size), M_NVLIST, M_NOWAIT)
+#define	nv_calloc(n, size)		malloc((n) * (size), M_NVLIST, \
+					    M_NOWAIT | M_ZERO)
+#define	nv_realloc(buf, size)		realloc((buf), (size), M_NVLIST, \
+					    M_NOWAIT)
+#define	nv_free(buf)			free((buf), M_NVLIST)
+#define	nv_strdup(buf)			strdup((buf), M_NVLIST)
+#define	nv_vasprintf(ptr, ...)		vasprintf(ptr, M_NVLIST, __VA_ARGS__)
+
+#define	SAVE_ERRNO(var)		((void)(var))
+#define	RESTORE_ERRNO(var)	((void)(var))
+
+#define ERRNO_OR_DEFAULT(default)	(default)
+
+#else
+
+#define	nv_malloc(size)			malloc((size))
+#define	nv_calloc(n, size)		calloc((n), (size))
+#define	nv_realloc(buf, size)		realloc((buf), (size))
+#define	nv_free(buf)			free((buf))
+#define	nv_strdup(buf)			strdup((buf))
+#define	nv_vasprintf(ptr, ...)		vasprintf(ptr, __VA_ARGS__)
+
+#define	SAVE_ERRNO(var) 	(var) = errno
+#define	RESTORE_ERRNO(var) 	errno = (var)
+
+#define ERRNO_OR_DEFAULT(default)	(errno == 0 ? (default) : errno)
+
+#endif
+
 int	*nvlist_descriptors(const nvlist_t *nvl, size_t *nitemsp);
 size_t	 nvlist_ndescriptors(const nvlist_t *nvl);
 
@@ -126,5 +159,10 @@ nvpair_t *nvpair_movev_string(char *value, const char *namefmt, va_list nameap) 
 nvpair_t *nvpair_movev_nvlist(nvlist_t *value, const char *namefmt, va_list nameap) __printflike(2, 0);
 nvpair_t *nvpair_movev_descriptor(int value, const char *namefmt, va_list nameap) __printflike(2, 0);
 nvpair_t *nvpair_movev_binary(void *value, size_t size, const char *namefmt, va_list nameap) __printflike(3, 0);
+
+unsigned char *nvpair_pack_descriptor(const nvpair_t *nvp, unsigned char *ptr, 
+    int64_t *fdidxp, size_t *leftp);
+const unsigned char *nvpair_unpack_descriptor(int flags, nvpair_t *nvp, 
+    const unsigned char *ptr, size_t *leftp, const int *fds, size_t nfds);
 
 #endif	/* !_NV_IMPL_H_ */
