@@ -63,4 +63,6 @@ nvlist_t *nvlist_xunpack(const void *buf, size_t size, const int *fds,
     size_t nfds);
 bool nvlist_check_header(struct nvlist_header *nvlhdrp);
 
+#define	NVLIST_MAX_LEVEL 10
+
 #endif	/* !_NVLIST_IMPL_H_ */
