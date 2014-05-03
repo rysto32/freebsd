@@ -130,6 +130,14 @@ nvlist_destroy(nvlist_t *nvl)
 	RESTORE_ERRNO(serrno);
 }
 
+void
+nvlist_set_error(nvlist_t *nvl, int error)
+{
+
+	if (nvl != NULL && error != 0)
+		nvl->nvl_error = error;
+}
+
 int
 nvlist_error(const nvlist_t *nvl)
 {
