@@ -36,7 +36,17 @@ CODE {
 	{
 		return (0);
 	}
+
+	static void
+	null_get_iov_config_schema(device_t dev, struct nvlist *pf,
+	    struct nvlist *vf)
+	{
+	}
 };
+
+HEADER {
+	struct nvlist;
+}
 
 
 METHOD u_int32_t read_config {
@@ -174,6 +184,12 @@ METHOD int cleanup_iov {
 	device_t	dev;
 	device_t	child;
 };
+
+METHOD void get_iov_config_schema {
+	device_t		dev;
+	struct nvlist		*pf_schema;
+	struct nvlist		*vf_schema;
+} DEFAULT null_get_iov_config_schema;
 
 METHOD int init_iov {
 	device_t	dev;

@@ -46,6 +46,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 
 #include <machine/bus.h>
+#include <machine/stdarg.h>
+
+#include <libkern/nv/nv.h>
+#include <sys/iov_schema.h>
 
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
@@ -70,6 +74,13 @@ static struct cdevsw iov_cdevsw = {
 
 #define IOV_WRITE(d, r, v, w) \
 	pci_write_config((d)->cfg.dev, (d)->cfg.iov->iov_pos + r, v, w)
+
+typedef void (pci_iov_fill_schema_t)(device_t, nvlist_t *, nvlist_t *);
+
+static pci_iov_fill_schema_t fill_driver_schema;
+static pci_iov_fill_schema_t fill_iov_schema;
+
+static nvlist_t *	pci_iov_get_schema(device_t dev);
 
 int
 pci_setup_iov_method(device_t bus, device_t dev)
@@ -601,6 +612,150 @@ out:
 	return (error);
 }
 
+static void
+fill_driver_schema(device_t dev, nvlist_t *pf, nvlist_t *vf)
+{
+
+	PCI_GET_IOV_CONFIG_SCHEMA(dev, pf, vf);
+}
+
+static void
+fill_iov_schema(device_t dev, nvlist_t *pf, nvlist_t *vf)
+{
+
+	/* VF parameters. */
+	pci_iov_schema_add_bool(vf, "passthrough", IOV_SCHEMA_HASDEFAULT, 0);
+
+	/* PF parameters. */
+	pci_iov_schema_add_uint16(pf, "num_vfs", IOV_SCHEMA_REQUIRED, -1);
+	pci_iov_schema_add_string(pf, "device", IOV_SCHEMA_REQUIRED, NULL);
+}
+
+/* Fill in the subsystem schema for both the PF and the VF. */
+static int
+pci_iov_fill_schema(device_t dev, nvlist_t *pf, nvlist_t *vf,
+    const char *name, pci_iov_fill_schema_t *fill)
+{
+	nvlist_t *pf_sub, *vf_sub;
+
+	pf_sub = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (pf_sub == NULL)
+		return (ENOMEM);
+
+	vf_sub = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (vf_sub == NULL) {
+		nvlist_destroy(pf_sub);
+		return (ENOMEM);
+	}
+
+	fill(dev, pf_sub, vf_sub);
+	nvlist_move_nvlist(vf, name, vf_sub);
+	nvlist_move_nvlist(pf, name, pf_sub);
+
+	return (0);
+}
+
+static nvlist_t *
+pci_iov_get_schema(device_t dev)
+{
+	nvlist_t *schema, *pf, *vf;
+	int error;
+
+	pf = NULL;
+	vf = NULL;
+
+	schema = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (schema == NULL)
+		goto fail;
+
+	pf = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (pf == NULL)
+		goto fail;
+
+	vf = nvlist_create(NV_FLAG_IGNORE_CASE);
+	if (vf == NULL)
+		goto fail;
+
+	error = pci_iov_fill_schema(dev, pf, vf, IOV_CONFIG_NAME,
+	    fill_iov_schema);
+	if (error != 0)
+		goto fail;
+
+	error = pci_iov_fill_schema(dev, pf, vf, DRIVER_CONFIG_NAME,
+	    fill_driver_schema);
+	if (error != 0)
+		goto fail;
+
+	nvlist_move_nvlist(schema, PF_CONFIG_NAME, pf);
+	nvlist_move_nvlist(schema, VF_SCHEMA_NAME, vf);
+
+	return (schema);
+
+fail:
+	nvlist_destroy(schema);
+	nvlist_destroy(pf);
+	nvlist_destroy(vf);
+	return (NULL);
+}
+
+static int
+pci_iov_get_schema_ioctl(struct cdev *cdev, struct pci_iov_schema *output)
+{
+	device_t dev;
+	struct pci_devinfo *dinfo;
+	nvlist_t *schema;
+	void *packed;
+	size_t output_len, size;
+	int error;
+
+	schema = NULL;
+	packed = NULL;
+
+	mtx_lock(&Giant);
+	dinfo = cdev->si_drv1;
+	dev = dinfo->cfg.dev;
+
+	schema = pci_iov_get_schema(dev);
+	mtx_unlock(&Giant);
+
+	if (schema == NULL) {
+		error = ENOMEM;
+		goto fail;
+	}
+
+	packed = nvlist_pack(schema, &size);
+	if (packed == NULL) {
+		error = nvlist_error(schema);
+		if (error == 0)
+			error = ENOMEM;
+		goto fail;
+	}
+
+	output_len = output->len;
+	output->len = size;
+	if (size <= output_len) {
+		error = copyout(packed, output->schema, size);
+
+		if (error != 0)
+			goto fail;
+
+		output->error = 0;
+	} else
+		/*
+		 * If we return an error then the ioctl code won't copyout
+		 * output back to userland, so we flag the error in the struct
+		 * instead.
+		 */
+		output->error = EMSGSIZE;
+
+	error = 0;
+
+fail:
+	nvlist_destroy(schema);
+	free(packed, M_NVLIST);
+
+	return (error);
+}
 
 static int
 pci_iov_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
@@ -612,6 +767,9 @@ pci_iov_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 		return (pci_iov_config(dev, (struct pci_iov_arg *)data));
 	case IOV_DELETE:
 		return (pci_iov_delete(dev));
+	case IOV_GET_SCHEMA:
+		return (pci_iov_get_schema_ioctl(dev,
+		    (struct pci_iov_schema *)data));
 	default:
 		return (EINVAL);
 	}
