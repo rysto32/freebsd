@@ -65,6 +65,10 @@ typedef struct nvlist nvlist_t;
  */
 #define	NV_FLAG_IGNORE_CASE		0x01
 
+#if defined(_KERNEL) && defined(MALLOC_DECLARE)
+MALLOC_DECLARE(M_NVLIST);
+#endif
+
 nvlist_t	*nvlist_create(int flags);
 void		 nvlist_destroy(nvlist_t *nvl);
 int		 nvlist_error(const nvlist_t *nvl);

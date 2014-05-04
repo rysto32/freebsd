@@ -45,8 +45,6 @@ typedef struct nvpair nvpair_t;
 #define	NV_FLAG_BIG_ENDIAN		0x80
 
 #ifdef _KERNEL
-MALLOC_DECLARE(M_NVLIST);
-
 #define	nv_malloc(size)			malloc((size), M_NVLIST, M_NOWAIT)
 #define	nv_calloc(n, size)		malloc((n) * (size), M_NVLIST, \
 					    M_NOWAIT | M_ZERO)
