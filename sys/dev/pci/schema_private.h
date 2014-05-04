@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2013-2014 Sandvine Inc.  All rights reserved.
+ * Copyright (c) 2014 Sandvine Inc.  All rights reserved.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,31 +26,10 @@
  * $FreeBSD$
  */
 
-#ifndef _PCI_IOV_PRIVATE_H_
-#define _PCI_IOV_PRIVATE_H_
+#ifndef _SCHEMA_PRIVATE_H_
+#define _SCHEMA_PRIVATE_H_
 
-struct pci_iov_bar {
-	struct resource *res;
-
-	pci_addr_t bar_size;
-	pci_addr_t bar_shift;
-};
-
-struct pcicfg_iov {
-	struct cdev *iov_cdev;
-	nvlist_t *iov_schema;
-
-	struct pci_iov_bar iov_bar[PCIR_MAX_BAR_0 + 1];
-	struct rman rman;
-	char rman_name[64];
- 
-	int iov_pos;
-	int iov_num_vfs;
-	uint32_t iov_flags;
-};
-
-#define	IOV_RMAN_INITED		0x0001
-#define	IOV_BUSY		0x0002
+int		pci_iov_schema_validate_config(const nvlist_t *, nvlist_t *);
+uint16_t	pci_iov_config_get_num_vfs(const nvlist_t *);
 
 #endif
-
