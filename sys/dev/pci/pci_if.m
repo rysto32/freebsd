@@ -28,6 +28,10 @@
 
 #include <sys/bus.h>
 
+#include_all <sys/types.h>
+#include_all <machine/stdarg.h>
+#include_all <libkern/nv/nv.h>
+
 INTERFACE pci;
 
 CODE {
@@ -35,6 +39,11 @@ CODE {
 	null_msi_count(device_t dev, device_t child)
 	{
 		return (0);
+	}
+
+	static void
+	null_get_iov_config_schema(device_t dev, nvlist_t *pf, nvlist_t *vf)
+	{
 	}
 };
 
@@ -174,6 +183,12 @@ METHOD int cleanup_iov {
 	device_t	dev;
 	device_t	child;
 };
+
+METHOD void get_iov_config_schema {
+	device_t	dev;
+	nvlist_t	*pf_schema;
+	nvlist_t	*vf_schema;
+} DEFAULT null_get_iov_config_schema;
 
 METHOD int init_iov {
 	device_t	dev;

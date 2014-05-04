@@ -452,6 +452,16 @@ for (file_i = 0; file_i < num_files; file_i++) {
 			printc("#include " incld);
 		}
 
+		# The special #include_all directive includes in both the .h
+		# file and the .c file
+		if (/^#[ 	]*include_all[ 	]+["<][^">]+[">]/) {
+			incld = $0;
+			sub(/^#[ 	]*include_all[ 	]+/, "", incld);
+			debug("Included file: " incld);
+			printc("#include " incld);
+			printh("#include " incld);
+		}
+
 		sub(/#.*/, "");		# remove comments
 		sub(/^[	 ]+/, "");	# remove leading ...
 		sub(/[ 	]+$/, "");	# ... and trailing whitespace
