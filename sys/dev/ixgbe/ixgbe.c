@@ -209,10 +209,10 @@ static void	ixgbe_reinit_fdir(void *, int);
 /* Missing shared code prototype */
 extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
-static int	ixgbe_init_iov(device_t, int);
+static int	ixgbe_init_iov(device_t, int, const nvlist_t *);
 static int	ixgbe_uninit_iov(device_t);
 static void	ixgbe_get_iov_schema(device_t, nvlist_t *, nvlist_t *);
-static int	ixgbe_add_vf(device_t, int);
+static int	ixgbe_add_vf(device_t, int, const nvlist_t *);
 
 static void	ixgbe_initialize_iov(struct adapter *adapter);
 
@@ -6427,7 +6427,7 @@ ixgbe_pf_queue_num(enum ixgbe_iov_mode mode, int num)
 }
 
 static int
-ixgbe_init_iov(device_t dev, int num_vfs)
+ixgbe_init_iov(device_t dev, int num_vfs, const nvlist_t *config)
 {
 	struct adapter *adapter;
 	enum ixgbe_iov_mode mode;
@@ -6659,10 +6659,11 @@ ixgbe_init_vf(struct adapter *adapter, struct ixgbe_vf *vf)
 }
 
 static int
-ixgbe_add_vf(device_t dev, int vfnum)
+ixgbe_add_vf(device_t dev, int vfnum, const nvlist_t *config)
 {
 	struct adapter *adapter;
 	struct ixgbe_vf *vf;
+	const void *mac;
 
 	adapter = device_get_softc(dev);
 
@@ -6679,7 +6680,13 @@ ixgbe_add_vf(device_t dev, int vfnum)
 	vf->max_frame_size = ETHER_MAX_LEN;
 	ixgbe_update_vf_max_frame(adapter, vf->max_frame_size);
 
-	vf->flags = IXGBE_VF_CAP_MAC | IXGBE_VF_ACTIVE;
+	mac = nvlist_get_binary(config, "mac-addr", NULL);
+	bcopy(mac, vf->ether_addr, ETHER_ADDR_LEN);
+
+	vf->flags = IXGBE_VF_ACTIVE;
+
+	if (nvlist_get_bool(config, "allow-set-mac"))
+		vf->flags |= IXGBE_VF_CAP_MAC;
 
 	ixgbe_init_vf(adapter, vf);
 	IXGBE_CORE_UNLOCK(adapter);
