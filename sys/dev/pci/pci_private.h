@@ -150,7 +150,8 @@ struct resource *pci_alloc_multi_resource(device_t dev, device_t child,
 		    int type, int *rid, u_long start, u_long end, u_long count,
 		    u_long num, u_int flags);
 
-int		pci_iov_attach_method(device_t bus, device_t dev);
+int		pci_iov_attach_method(device_t bus, device_t dev,
+		    struct nvlist *pf_schema, struct nvlist *vf_schema);
 int		pci_iov_detach_method(device_t bus, device_t dev);
 
 struct resource *pci_vf_alloc_mem_resource(device_t dev, device_t child,
