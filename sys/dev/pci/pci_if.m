@@ -38,6 +38,10 @@ CODE {
 	}
 };
 
+HEADER {
+	struct nvlist;
+}
+
 
 METHOD u_int32_t read_config {
 	device_t	dev;
@@ -168,6 +172,8 @@ METHOD uint16_t get_rid {
 METHOD int iov_attach {
 	device_t	dev;
 	device_t	child;
+	struct nvlist	*pf_schema;
+	struct nvlist	*vf_schema;
 };
 
 METHOD int iov_detach {
