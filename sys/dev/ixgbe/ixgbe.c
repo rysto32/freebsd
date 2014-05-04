@@ -211,6 +211,7 @@ extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
 static int	ixgbe_init_iov(device_t, int);
 static int	ixgbe_uninit_iov(device_t);
+static void	ixgbe_get_iov_schema(device_t, nvlist_t *, nvlist_t *);
 static int	ixgbe_add_vf(device_t, int);
 
 static void	ixgbe_initialize_iov(struct adapter *adapter);
@@ -246,6 +247,7 @@ static device_method_t ixgbe_methods[] = {
 	DEVMETHOD(device_shutdown, ixgbe_shutdown),
 	DEVMETHOD(pci_init_iov, ixgbe_init_iov),
 	DEVMETHOD(pci_uninit_iov, ixgbe_uninit_iov),
+	DEVMETHOD(pci_get_iov_config_schema, ixgbe_get_iov_schema),
 	DEVMETHOD(pci_add_vf, ixgbe_add_vf),
 	DEVMETHOD_END
 };
@@ -6611,6 +6613,17 @@ ixgbe_update_vf_max_frame(struct adapter * adapter, int max_frame)
 		adapter->vf_max_frame_size = max_frame;
 }
 
+static void
+ixgbe_get_iov_schema(device_t dev, nvlist_t *pf, nvlist_t *vf)
+{
+	uint8_t null_mac[ETHER_ADDR_LEN] = {0, 0, 0, 0, 0, 0};
+
+	pci_iov_schema_add_binary(vf, "mac-addr", "mac-addr",
+	    IOV_SCHEMA_HASDEFAULT, null_mac, sizeof(null_mac));
+	pci_iov_schema_add_uint16(vf, "vlan", 0, 0);
+	pci_iov_schema_add_bool(vf, "spoof-check", IOV_SCHEMA_HASDEFAULT, 1);
+	pci_iov_schema_add_bool(vf, "allow-set-mac", IOV_SCHEMA_HASDEFAULT, 0);
+}
 
 static void
 ixgbe_init_vf(struct adapter *adapter, struct ixgbe_vf *vf)

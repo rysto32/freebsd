@@ -91,6 +91,9 @@
 #include <sys/smp.h>
 #include <machine/smp.h>
 
+#include <libkern/nv/nv.h>
+#include <sys/iov_schema.h>
+
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
 #include "ixgbe_mbx.h"
