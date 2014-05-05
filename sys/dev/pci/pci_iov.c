@@ -620,7 +620,12 @@ pci_iov_delete(struct cdev *cdev)
 	dev = dinfo->cfg.dev;
 	bus = device_get_parent(dev);
 
-	if (iov->num_vfs == 0) {
+	if (iov->iov_flags & IOV_BUSY) {
+		mtx_unlock(&Giant);
+		return (EBUSY);
+	}
+
+	if (iov->iov_num_vfs == 0) {
 		mtx_unlock(&Giant);
 		return (ECHILD);
 	}
