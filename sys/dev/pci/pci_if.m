@@ -192,16 +192,18 @@ METHOD void get_iov_config_schema {
 } DEFAULT null_get_iov_config_schema;
 
 METHOD int init_iov {
-	device_t	dev;
-	int		num_vfs;
+	device_t		dev;
+	int			num_vfs;
+	const struct nvlist	*config;
 };
 
 METHOD int uninit_iov {
-	device_t	dev;
+	device_t		dev;
 };
 
 METHOD int add_vf {
-	device_t	dev;
-	int		vfnum;
+	device_t		dev;
+	int			vfnum;
+	const struct nvlist	*config;
 };
 
