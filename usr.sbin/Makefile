@@ -38,6 +38,7 @@ SUBDIR=	adduser \
 	ifmcstat \
 	inetd \
 	iostat \
+	iovctl \
 	iscsid \
 	kldxref \
 	mailwrapper \
