@@ -285,6 +285,55 @@ pci_iov_config_page_size(struct pci_devinfo *dinfo)
 }
 
 static int
+pci_iov_init_rman(struct pcicfg_iov *iov)
+{
+	int error;
+
+	iov->rman.rm_start = 0;
+	iov->rman.rm_end = ~0ul;
+	iov->rman.rm_type = RMAN_ARRAY;
+	iov->rman.rm_descr = "SR-IOV VF I/O memory";
+
+	error = rman_init(&iov->rman);
+	if (error != 0)
+		return (error);
+
+	iov->iov_flags |= IOV_RMAN_INITED;
+	return (0);
+}
+
+static int
+pci_iov_setup_bars(struct pci_devinfo *dinfo)
+{
+	device_t dev;
+	struct pcicfg_iov *iov;
+	pci_addr_t bar_value, testval;
+	int i, last_64, error;
+
+	iov = dinfo->cfg.iov;
+	dev = dinfo->cfg.dev;
+	last_64 = 0;
+
+	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
+		if (!last_64) {
+			pci_read_bar(dev,
+			    iov->iov_pos + PCIR_SRIOV_BAR(i),
+			    &bar_value, &testval, &last_64);
+
+			if (testval != 0) {
+				error = pci_iov_alloc_bar(dinfo, i,
+				   pci_mapsize(testval));
+				if (error != 0)
+					return (error);
+			}
+		} else
+			last_64 = 0;
+	}
+
+	return (0);
+}
+
+static int
 pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 {
 	device_t bus, dev, vf;
@@ -293,8 +342,6 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	struct pcicfg_iov *iov;
 	int error;
 	int i;
-	pci_addr_t bar_value, testval;
-	int last_64;
 	uint16_t rid_off, rid_stride;
 	uint16_t next_rid, last_rid;
 	uint16_t iov_ctl;
@@ -363,40 +410,18 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	iov_ctl &= ~(PCIM_SRIOV_VF_EN | PCIM_SRIOV_VF_MSE);
 	IOV_WRITE(dinfo, PCIR_SRIOV_CTL, iov_ctl, 2);
 
-	iov->rman.rm_start = 0;
-	iov->rman.rm_end = ~0ul;
-	iov->rman.rm_type = RMAN_ARRAY;
-	iov->rman.rm_descr = "SR-IOV VF I/O memory";
-
-	error = rman_init(&iov->rman);
-
+	error = pci_iov_init_rman(iov);
 	if (error != 0)
 		goto out;
-
-	iov->iov_flags |= IOV_RMAN_INITED;
 
 	iov->iov_num_vfs = arg->num_vfs;
 
 	vid = pci_get_vendor(dev);
 	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
 
-	last_64 = 0;
-	for (i = 0; i <= PCIR_MAX_BAR_0; i++) {
-		if (!last_64) {
-			pci_read_bar(dev,
-			    iov->iov_pos + PCIR_SRIOV_BAR(i),
-			    &bar_value, &testval, &last_64);
-
-			if (testval != 0) {
-				error = pci_iov_alloc_bar(dinfo, i,
-				   pci_mapsize(testval));
-
-				if (error != 0)
-					goto out;
-			}
-		} else
-			last_64 = 0;
-	}
+	error = pci_iov_setup_bars(dinfo);
+	if (error != 0)
+		goto out;
 
 	iov_ctl = IOV_READ(dinfo, PCIR_SRIOV_CTL, 2);
 	iov_ctl |= PCIM_SRIOV_VF_EN | PCIM_SRIOV_VF_MSE;
