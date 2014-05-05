@@ -193,6 +193,7 @@ METHOD void get_iov_config_schema {
 METHOD int init_iov {
 	device_t	dev;
 	int		num_vfs;
+	const nvlist_t	*config;
 };
 
 METHOD int uninit_iov {
@@ -202,5 +203,6 @@ METHOD int uninit_iov {
 METHOD int add_vf {
 	device_t	dev;
 	int		vfnum;
+	const nvlist_t	*config;
 };
 
