@@ -333,20 +333,56 @@ pci_iov_setup_bars(struct pci_devinfo *dinfo)
 	return (0);
 }
 
+static void
+pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const char *driver,
+    uint16_t first_rid, uint16_t rid_stride)
+{
+	device_t bus, dev, vf;
+	struct pcicfg_iov *iov;
+	struct pci_devinfo *vfinfo;
+	int i, error;
+	uint16_t vid, did, next_rid;
+
+	iov = dinfo->cfg.iov;
+	dev = dinfo->cfg.dev;
+	bus = device_get_parent(dev);
+	next_rid = first_rid;
+	vid = pci_get_vendor(dev);
+	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
+
+	for (i = 0; i < iov->iov_num_vfs; i++, next_rid += rid_stride) {
+		vf = pci_add_iov_child(bus, sizeof(*vfinfo), next_rid, vid, did,
+		    driver);
+
+		vfinfo = device_get_ivars(vf);
+
+		vfinfo->cfg.iov = iov;
+		vfinfo->cfg.vf.index = i;
+
+		pci_iov_add_bars(iov, vfinfo);
+
+		error = PCI_ADD_VF(dev, i);
+		if (error != 0) {
+			device_printf(dev, "Failed to add VF %d\n", i);
+			pci_delete_child(bus, vf);
+		}
+	}
+
+	bus_generic_attach(bus);
+}
+
 static int
 pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 {
-	device_t bus, dev, vf;
+	device_t bus, dev;
 	const char *driver;
 	struct pci_devinfo *dinfo;
 	struct pcicfg_iov *iov;
-	int error;
-	int i;
+	int i, error;
 	uint16_t rid_off, rid_stride;
-	uint16_t next_rid, last_rid;
+	uint16_t first_rid, last_rid;
 	uint16_t iov_ctl;
 	uint16_t total_vfs;
-	uint16_t vid, did;
 	int iov_inited;
 
 	mtx_lock(&Giant);
@@ -397,8 +433,8 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	rid_off = IOV_READ(dinfo, PCIR_SRIOV_VF_OFF, 2);
 	rid_stride = IOV_READ(dinfo, PCIR_SRIOV_VF_STRIDE, 2);
 
-	next_rid = pci_get_rid(dev) + rid_off;
-	last_rid = next_rid + (arg->num_vfs - 1) * rid_stride;
+	first_rid = pci_get_rid(dev) + rid_off;
+	last_rid = first_rid + (arg->num_vfs - 1) * rid_stride;
 
 	/* We don't yet support allocating extra bus numbers for VFs. */
 	if (pci_get_bus(dev) != PCI_RID2BUS(last_rid)) {
@@ -416,9 +452,6 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 
 	iov->iov_num_vfs = arg->num_vfs;
 
-	vid = pci_get_vendor(dev);
-	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
-
 	error = pci_iov_setup_bars(dinfo);
 	if (error != 0)
 		goto out;
@@ -429,27 +462,8 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 
 	/* Per specification, we must wait 100ms before accessing VFs. */
 	msleep(iov, &Giant, 0, "iov", hz/10);
+	pci_iov_enumerate_vfs(dinfo, driver, first_rid, rid_stride);
 
-	for (i = 0; i < iov->iov_num_vfs; i++, next_rid += rid_stride) {
-		vf = pci_add_iov_child(bus, sizeof(*dinfo), next_rid, vid, did,
-		    driver);
-
-		dinfo = device_get_ivars(vf);
-
-		dinfo->cfg.iov = iov;
-		dinfo->cfg.vf.index = i;
-
-		pci_iov_add_bars(iov, dinfo);
-
-		error = PCI_ADD_VF(dev, i);
-
-		if (error != 0) {
-			device_printf(dev, "Failed to add VF %d\n", i);
-			pci_delete_child(bus, vf);
-		}
-	}
-
-	bus_generic_attach(bus);
 	iov->iov_flags &= ~IOV_BUSY;
 	mtx_unlock(&Giant);
 
