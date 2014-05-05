@@ -224,6 +224,10 @@ pci_iov_set_ari(device_t bus)
 	int i, error, devcount, lowest_func, lowest_pos, iov_pos, dev_func;
 	uint16_t iov_ctl;
 
+	/* If ARI is disabled on the downstream port there is nothing to do. */
+	if (!PCIB_ARI_ENABLED(device_get_parent(bus)))
+		return (0);
+
 	error = device_get_children(bus, &devlist, &devcount);
 
 	if (error != 0)
@@ -257,6 +261,30 @@ pci_iov_set_ari(device_t bus)
 }
 
 static int
+pci_iov_config_page_size(struct pci_devinfo *dinfo)
+{
+	uint32_t page_cap, page_size;
+
+	page_cap = IOV_READ(dinfo, PCIR_SRIOV_PAGE_CAP, 4);
+
+	/*
+	 * If the system page size is less than the smallest SR-IOV page size
+	 * then round up to the smallest SR-IOV page size.
+	 */
+	if (PAGE_SHIFT < PCI_SRIOV_BASE_PAGE_SHIFT)
+		page_size = (1 << 0);
+	else
+		page_size = (1 << (PAGE_SHIFT - PCI_SRIOV_BASE_PAGE_SHIFT));
+
+	/* Check that the device supports the system page size. */
+	if (!(page_size & page_cap))
+		return (ENXIO);
+
+	IOV_WRITE(dinfo, PCIR_SRIOV_PAGE_SIZE, page_size, 4);
+	return (0);
+}
+
+static int
 pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 {
 	device_t bus, dev, vf;
@@ -267,7 +295,6 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	int i;
 	pci_addr_t bar_value, testval;
 	int last_64;
-	uint32_t page_cap, page_size;
 	uint16_t rid_off, rid_stride;
 	uint16_t next_rid, last_rid;
 	uint16_t iov_ctl;
@@ -304,30 +331,13 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	else
 		driver = NULL;
 
-	page_cap = IOV_READ(dinfo, PCIR_SRIOV_PAGE_CAP, 4);
-
-	/*
-	 * If the system page size is less than the smallest SR-IOV page size
-	 * then round up to the smallest SR-IOV page size.
-	 */
-	if (PAGE_SHIFT < PCI_SRIOV_BASE_PAGE_SHIFT)
-		page_size = (1 << 0);
-	else
-		page_size = (1 << (PAGE_SHIFT - PCI_SRIOV_BASE_PAGE_SHIFT));
-
-	/* Check that the device supports the system page size. */
-	if (!(page_size & page_cap)) {
-		error = ENXIO;
+	error = pci_iov_config_page_size(dinfo);
+	if (error != 0)
 		goto out;
-	}
-	IOV_WRITE(dinfo, PCIR_SRIOV_PAGE_SIZE, page_size, 4);
 
-	if (PCIB_ARI_ENABLED(device_get_parent(bus))) {
-		error = pci_iov_set_ari(bus);
-
-		if (error != 0)
-			goto out;
-	}
+	error = pci_iov_set_ari(bus);
+	if (error != 0)
+		goto out;
 
 	error = PCI_INIT_IOV(dev, arg->num_vfs);
 
