@@ -620,6 +620,11 @@ pci_iov_delete(struct cdev *cdev)
 	dev = dinfo->cfg.dev;
 	bus = device_get_parent(dev);
 
+	if (iov->num_vfs == 0) {
+		mtx_unlock(&Giant);
+		return (ECHILD);
+	}
+
 	iov->iov_flags |= IOV_BUSY;
 
 	error = device_get_children(bus, &devlist, &devcount);
@@ -634,7 +639,6 @@ pci_iov_delete(struct cdev *cdev)
 			continue;
 
 		error = device_detach(vf);
-
 		if (error != 0) {
 			/*
 			 * If any device fails to detach, then re-attach all
