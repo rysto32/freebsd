@@ -46,4 +46,7 @@ void	pci_iov_schema_add_uint32(nvlist_t *schema, const char *name,
 void	pci_iov_schema_add_uint64(nvlist_t *schema, const char *name,
 	    uint32_t flags, uint64_t defaultVal);
 
+int		pci_iov_schema_validate_config(const nvlist_t *, nvlist_t *);
+uint16_t	pci_iov_config_get_num_vfs(const nvlist_t *);
+
 #endif
