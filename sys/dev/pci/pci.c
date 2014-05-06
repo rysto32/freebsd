@@ -189,8 +189,10 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_msi_count,	pci_msi_count_method),
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
+#ifdef PCI_IOV
 	DEVMETHOD(pci_setup_iov,	pci_setup_iov_method),
 	DEVMETHOD(pci_cleanup_iov,	pci_cleanup_iov_method),
+#endif
 
 	DEVMETHOD_END
 };
@@ -3539,6 +3541,7 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 #undef REG
 }
 
+#ifdef PCI_IOV
 device_t
 pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
     uint16_t did, const char *driver)
@@ -3559,6 +3562,7 @@ pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
 
 	return (dinfo->cfg.dev);
 }
+#endif
 
 static void
 pci_add_named_child(device_t bus, struct pci_devinfo *dinfo, const char *name)
@@ -4647,12 +4651,15 @@ struct resource *
 pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
     u_long start, u_long end, u_long count, u_int flags)
 {
+#ifdef PCI_IOV
 	struct pci_devinfo *dinfo;
+#endif
 
 	if (device_get_parent(child) != dev)
 		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
 		    type, rid, start, end, count, flags));
 
+#ifdef PCI_IOV
 	dinfo = device_get_ivars(child);
 	if (dinfo->cfg.flags & PCICFG_VF) {
 		switch (type) {
@@ -4666,6 +4673,7 @@ pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
 
 		/* Fall through for other types of resource allocations. */
 	}
+#endif
 
 	return (pci_alloc_multi_resource(dev, child, type, rid, start, end,
 	    count, 1, flags));
@@ -4686,6 +4694,7 @@ pci_release_resource(device_t dev, device_t child, int type, int rid,
 	dinfo = device_get_ivars(child);
 	cfg = &dinfo->cfg;
 
+#ifdef PCI_IOV
 	if (dinfo->cfg.flags & PCICFG_VF) {
 		switch (type) {
 		/* VFs can't have I/O BARs. */
@@ -4698,6 +4707,7 @@ pci_release_resource(device_t dev, device_t child, int type, int rid,
 
 		/* Fall through for other types of resource allocations. */
 	}
+#endif
 
 #ifdef NEW_PCIB
 	/*
@@ -4861,6 +4871,7 @@ pci_read_config_method(device_t dev, device_t child, int reg, int width)
 	struct pci_devinfo *dinfo = device_get_ivars(child);
 	pcicfgregs *cfg = &dinfo->cfg;
 
+#ifdef PCI_IOV
 	/*
 	 * SR-IOV VFs don't implement the VID or DID registers, so we have to
 	 * emulate them here.
@@ -4889,6 +4900,7 @@ pci_read_config_method(device_t dev, device_t child, int reg, int width)
 			}
 		}
 	}
+#endif
 
 	return (PCIB_READ_CONFIG(device_get_parent(dev),
 	    cfg->bus, cfg->slot, cfg->func, reg, width));
