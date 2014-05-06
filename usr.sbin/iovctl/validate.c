@@ -141,7 +141,7 @@ apply_subsystem_defaults(nvlist_t *device_config, const char *subsystem,
 			errx(EX_SOFTWARE, "Unexpected type '%d'", type);
 		}
 	}
-	nvlist_move_nvlist(parent_config, subsystem, config);
+	nvlist_move_nvlist(device_config, subsystem, config);
 }
 
 /*
@@ -165,15 +165,15 @@ apply_defaults(nvlist_t *vf, const nvlist_t *defaults)
  */
 static void
 validate_subsystem(const nvlist_t *device, const nvlist_t *device_schema,
-    const char *subsystem, const char *config_name)
+    const char *subsystem_name, const char *config_name)
 {
 	const nvlist_t *subsystem, *schema, *config;
 	const char *name;
 	void *cookie;
 	int type;
 
-	subsystem = nvlist_get_nvlist(device, subsystem);
-	schema = nvlist_get_nvlist(device_schema, subsystem);
+	subsystem = nvlist_get_nvlist(device, subsystem_name);
+	schema = nvlist_get_nvlist(device_schema, subsystem_name);
 
 	cookie = NULL;
 	while ((name = nvlist_next(schema, &type, &cookie)) != NULL) {
