@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/queue.h>
 
 #include <errno.h>
-#include <fcntl.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -59,29 +58,6 @@ __FBSDID("$FreeBSD$");
 #define	PJDLOG_RASSERT(expr, ...)	assert(expr)
 #define	PJDLOG_ABORT(...)		abort()
 #endif
-
-#define	NVPAIR_MAGIC	0x6e7670	/* "nvp" */
-struct nvpair {
-	int		 nvp_magic;
-	char		*nvp_name;
-	int		 nvp_type;
-	uint64_t	 nvp_data;
-	size_t		 nvp_datasize;
-	nvlist_t	*nvp_list;	/* Used for sanity checks. */
-	TAILQ_ENTRY(nvpair) nvp_next;
-};
-
-#define	NVPAIR_ASSERT(nvp)	do {					\
-	PJDLOG_ASSERT((nvp) != NULL);					\
-	PJDLOG_ASSERT((nvp)->nvp_magic == NVPAIR_MAGIC);		\
-} while (0)
-
-struct nvpair_header {
-	uint8_t		nvph_type;
-	uint16_t	nvph_namesize;
-	uint64_t	nvph_datasize;
-} __packed;
-
 
 void
 nvpair_assert(const nvpair_t *nvp)
@@ -315,36 +291,6 @@ nvpair_pack_nvlist(const nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
 
 	ptr += nvp->nvp_datasize;
 	*leftp -= nvp->nvp_datasize;
-
-	return (ptr);
-}
-
-static unsigned char *
-nvpair_pack_descriptor(const nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
-    size_t *leftp)
-{
-	int64_t value;
-
-	NVPAIR_ASSERT(nvp);
-	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_DESCRIPTOR);
-
-	value = (int64_t)nvp->nvp_data;
-	if (value != -1) {
-		/*
-		 * If there is a real descriptor here, we change its number
-		 * to position in the array of descriptors send via control
-		 * message.
-		 */
-		PJDLOG_ASSERT(fdidxp != NULL);
-
-		value = *fdidxp;
-		(*fdidxp)++;
-	}
-
-	PJDLOG_ASSERT(*leftp >= sizeof(value));
-	memcpy(ptr, &value, sizeof(value));
-	ptr += sizeof(value);
-	*leftp -= sizeof(value);
 
 	return (ptr);
 }
@@ -603,46 +549,6 @@ nvpair_unpack_nvlist(int flags __unused, nvpair_t *nvp,
 }
 
 static const unsigned char *
-nvpair_unpack_descriptor(int flags, nvpair_t *nvp, const unsigned char *ptr,
-    size_t *leftp, const int *fds, size_t nfds)
-{
-	int64_t idx;
-
-	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_DESCRIPTOR);
-
-	if (nvp->nvp_datasize != sizeof(idx)) {
-		errno = EINVAL;
-		return (NULL);
-	}
-	if (*leftp < sizeof(idx)) {
-		errno = EINVAL;
-		return (NULL);
-	}
-
-	if ((flags & NV_FLAG_BIG_ENDIAN) != 0)
-		idx = be64dec(ptr);
-	else
-		idx = le64dec(ptr);
-
-	if (idx < 0) {
-		errno = EINVAL;
-		return (NULL);
-	}
-
-	if ((size_t)idx >= nfds) {
-		errno = EINVAL;
-		return (NULL);
-	}
-
-	nvp->nvp_data = (uint64_t)fds[idx];
-
-	ptr += sizeof(idx);
-	*leftp -= sizeof(idx);
-
-	return (ptr);
-}
-
-static const unsigned char *
 nvpair_unpack_binary(int flags __unused, nvpair_t *nvp,
     const unsigned char *ptr, size_t *leftp)
 {
@@ -746,7 +652,7 @@ nvpair_name(const nvpair_t *nvp)
 	return (nvp->nvp_name);
 }
 
-static nvpair_t *
+nvpair_t *
 nvpair_allocv(int type, uint64_t data, size_t datasize, const char *namefmt,
     va_list nameap)
 {
@@ -846,13 +752,6 @@ nvpair_create_nvlist(const char *name, const nvlist_t *value)
 }
 
 nvpair_t *
-nvpair_create_descriptor(const char *name, int value)
-{
-
-	return (nvpair_createf_descriptor(value, "%s", name));
-}
-
-nvpair_t *
 nvpair_create_binary(const char *name, const void *value, size_t size)
 {
 
@@ -919,19 +818,6 @@ nvpair_createf_nvlist(const nvlist_t *value, const char *namefmt, ...)
 
 	va_start(nameap, namefmt);
 	nvp = nvpair_createv_nvlist(value, namefmt, nameap);
-	va_end(nameap);
-
-	return (nvp);
-}
-
-nvpair_t *
-nvpair_createf_descriptor(int value, const char *namefmt, ...)
-{
-	va_list nameap;
-	nvpair_t *nvp;
-
-	va_start(nameap, namefmt);
-	nvp = nvpair_createv_descriptor(value, namefmt, nameap);
 	va_end(nameap);
 
 	return (nvp);
@@ -1023,28 +909,6 @@ nvpair_createv_nvlist(const nvlist_t *value, const char *namefmt,
 }
 
 nvpair_t *
-nvpair_createv_descriptor(int value, const char *namefmt, va_list nameap)
-{
-	nvpair_t *nvp;
-
-	if (value < 0 || !fd_is_valid(value)) {
-		errno = EBADF;
-		return (NULL);
-	}
-
-	value = fcntl(value, F_DUPFD_CLOEXEC, 0);
-	if (value < 0)
-		return (NULL);
-
-	nvp = nvpair_allocv(NV_TYPE_DESCRIPTOR, (uint64_t)value,
-	    sizeof(int64_t), namefmt, nameap);
-	if (nvp == NULL)
-		close(value);
-
-	return (nvp);
-}
-
-nvpair_t *
 nvpair_createv_binary(const void *value, size_t size, const char *namefmt,
     va_list nameap)
 {
@@ -1084,13 +948,6 @@ nvpair_move_nvlist(const char *name, nvlist_t *value)
 }
 
 nvpair_t *
-nvpair_move_descriptor(const char *name, int value)
-{
-
-	return (nvpair_movef_descriptor(value, "%s", name));
-}
-
-nvpair_t *
 nvpair_move_binary(const char *name, void *value, size_t size)
 {
 
@@ -1118,19 +975,6 @@ nvpair_movef_nvlist(nvlist_t *value, const char *namefmt, ...)
 
 	va_start(nameap, namefmt);
 	nvp = nvpair_movev_nvlist(value, namefmt, nameap);
-	va_end(nameap);
-
-	return (nvp);
-}
-
-nvpair_t *
-nvpair_movef_descriptor(int value, const char *namefmt, ...)
-{
-	va_list nameap;
-	nvpair_t *nvp;
-
-	va_start(nameap, namefmt);
-	nvp = nvpair_movev_descriptor(value, namefmt, nameap);
 	va_end(nameap);
 
 	return (nvp);
@@ -1186,19 +1030,6 @@ nvpair_movev_nvlist(nvlist_t *value, const char *namefmt, va_list nameap)
 }
 
 nvpair_t *
-nvpair_movev_descriptor(int value, const char *namefmt, va_list nameap)
-{
-
-	if (value < 0 || !fd_is_valid(value)) {
-		errno = EBADF;
-		return (NULL);
-	}
-
-	return (nvpair_allocv(NV_TYPE_DESCRIPTOR, (uint64_t)value,
-	    sizeof(int64_t), namefmt, nameap));
-}
-
-nvpair_t *
 nvpair_movev_binary(void *value, size_t size, const char *namefmt,
     va_list nameap)
 {
@@ -1249,17 +1080,6 @@ nvpair_get_nvlist(const nvpair_t *nvp)
 
 	return ((const nvlist_t *)(intptr_t)nvp->nvp_data);
 }
-
-int
-nvpair_get_descriptor(const nvpair_t *nvp)
-{
-
-	NVPAIR_ASSERT(nvp);
-	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_DESCRIPTOR);
-
-	return ((int)nvp->nvp_data);
-}
-
 const void *
 nvpair_get_binary(const nvpair_t *nvp, size_t *sizep)
 {
