@@ -131,4 +131,9 @@ nvpair_t *nvpair_movev_nvlist(nvlist_t *value, const char *namefmt, va_list name
 nvpair_t *nvpair_movev_descriptor(int value, const char *namefmt, va_list nameap) __printflike(2, 0);
 nvpair_t *nvpair_movev_binary(void *value, size_t size, const char *namefmt, va_list nameap) __printflike(3, 0);
 
+unsigned char *nvpair_pack_descriptor(const nvpair_t *nvp, unsigned char *ptr,
+    int64_t *fdidxp, size_t *leftp);
+const unsigned char *nvpair_unpack_descriptor(int flags, nvpair_t *nvp,
+    const unsigned char *ptr, size_t *leftp, const int *fds, size_t nfds);
+
 #endif	/* !_NV_IMPL_H_ */

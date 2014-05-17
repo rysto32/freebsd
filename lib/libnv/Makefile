@@ -13,6 +13,7 @@ SRCS=	dnvlist.c
 SRCS+=	msgio.c
 SRCS+=	nvlist.c
 SRCS+=	nvpair.c
+SRCS+=	nv_user.c
 
 INCS=	dnv.h
 INCS+=	nv.h
