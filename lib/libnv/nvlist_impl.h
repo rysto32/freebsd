@@ -36,9 +36,30 @@
 
 #include "nv.h"
 
+TAILQ_HEAD(nvl_head, nvpair);
+
+#define	NVLIST_MAGIC	0x6e766c	/* "nvl" */
+struct nvlist {
+	int		nvl_magic;
+	int		nvl_error;
+	int		nvl_flags;
+	struct nvl_head	nvl_head;
+};
+
+#define	NVLIST_HEADER_MAGIC	0x6c
+#define	NVLIST_HEADER_VERSION	0x00
+struct nvlist_header {
+	uint8_t		nvlh_magic;
+	uint8_t		nvlh_version;
+	uint8_t		nvlh_flags;
+	uint64_t	nvlh_descriptors;
+	uint64_t	nvlh_size;
+} __packed;
+
 void *nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep);
 nvlist_t *nvlist_xunpack(const void *buf, size_t size, const int *fds,
     size_t nfds);
+bool nvlist_check_header(struct nvlist_header *nvlhdrp);
 
 nvpair_t *nvlist_get_nvpair_parent(const nvlist_t *nvl);
 const unsigned char *nvlist_unpack_header(nvlist_t *nvl,
