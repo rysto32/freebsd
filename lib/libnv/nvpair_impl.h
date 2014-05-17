@@ -38,7 +38,27 @@
 
 #include "nv.h"
 
-TAILQ_HEAD(nvl_head, nvpair);
+#define	NVPAIR_MAGIC	0x6e7670	/* "nvp" */
+struct nvpair {
+	int		 nvp_magic;
+	char		*nvp_name;
+	int		 nvp_type;
+	uint64_t	 nvp_data;
+	size_t		 nvp_datasize;
+	nvlist_t	*nvp_list;	/* Used for sanity checks. */
+	TAILQ_ENTRY(nvpair) nvp_next;
+};
+
+#define	NVPAIR_ASSERT(nvp)	do {					\
+	PJDLOG_ASSERT((nvp) != NULL);					\
+	PJDLOG_ASSERT((nvp)->nvp_magic == NVPAIR_MAGIC);		\
+} while (0)
+
+struct nvpair_header {
+	uint8_t		nvph_type;
+	uint16_t	nvph_namesize;
+	uint64_t	nvph_datasize;
+} __packed;
 
 void nvpair_assert(const nvpair_t *nvp);
 nvlist_t *nvpair_nvlist(const nvpair_t *nvp);
@@ -53,6 +73,8 @@ const unsigned char *nvpair_unpack(bool isbe, const unsigned char *ptr,
 void nvpair_free_structure(nvpair_t *nvp);
 void nvpair_init_datasize(nvpair_t *nvp);
 const char *nvpair_type_string(int type);
+nvpair_t *nvpair_allocv(int type, uint64_t data, size_t datasize,
+    const char *namefmt, va_list nameap);
 
 /* Pack functions. */
 unsigned char *nvpair_pack_header(const nvpair_t *nvp, unsigned char *ptr,
