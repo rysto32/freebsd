@@ -498,7 +498,8 @@ nvpair_unpack_string(bool isbe __unused, nvpair_t *nvp,
 
 const unsigned char *
 nvpair_unpack_nvlist(bool isbe __unused, nvpair_t *nvp,
-    const unsigned char *ptr, size_t *leftp, size_t nfds, nvlist_t **child)
+    const unsigned char *ptr, size_t *leftp, size_t nfds, nvlist_t **child,
+    int level)
 {
 	nvlist_t *value;
 
@@ -551,7 +552,7 @@ nvpair_unpack_binary(bool isbe __unused, nvpair_t *nvp,
 
 const unsigned char *
 nvpair_unpack(bool isbe, const unsigned char *ptr, size_t *leftp,
-    nvpair_t **nvpp)
+    nvpair_t **nvpp, int level)
 {
 	nvpair_t *nvp, *tmp;
 
@@ -965,6 +966,12 @@ nvpair_movev_nvlist(nvlist_t *value, const char *namefmt, va_list nameap)
 
 	if (value == NULL || nvlist_get_nvpair_parent(value) != NULL) {
 		errno = EINVAL;
+		return (NULL);
+	}
+
+	if (nvlist_error(value) != 0) {
+		errno = nvlist_error(value);
+		nvlist_destroy(value);
 		return (NULL);
 	}
 

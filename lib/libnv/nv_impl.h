@@ -53,8 +53,6 @@ nvpair_t *nvlist_first_nvpair(const nvlist_t *nvl);
 nvpair_t *nvlist_next_nvpair(const nvlist_t *nvl, const nvpair_t *nvp);
 nvpair_t *nvlist_prev_nvpair(const nvlist_t *nvl, const nvpair_t *nvp);
 
-void nvlist_add_nvpair(nvlist_t *nvl, const nvpair_t *nvp);
-
 void nvlist_move_nvpair(nvlist_t *nvl, nvpair_t *nvp);
 
 void nvlist_set_parent(nvlist_t *nvl, nvpair_t *parent);
