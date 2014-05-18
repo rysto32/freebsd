@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2009-2013 The FreeBSD Foundation
+ * Copyright (c) 2013 The FreeBSD Foundation
  * All rights reserved.
  *
  * This software was developed by Pawel Jakub Dawidek under sponsorship from
@@ -29,54 +29,39 @@
  * $FreeBSD$
  */
 
-#ifndef	_NVPAIR_IMPL_H_
-#define	_NVPAIR_IMPL_H_
-
-#include <sys/queue.h>
+#ifndef	_NVLIST_IMPL_H_
+#define	_NVLIST_IMPL_H_
 
 #ifndef _KERNEL
 #include <stdint.h>
 #endif
 
-#include "nv.h"
+#include <sys/nv.h>
 
-#define	NVPAIR_MAGIC	0x6e7670	/* "nvp" */
-struct nvpair {
-	int		 nvp_magic;
-	char		*nvp_name;
-	int		 nvp_type;
-	uint64_t	 nvp_data;
-	size_t		 nvp_datasize;
-	nvlist_t	*nvp_list;	/* Used for sanity checks. */
-	TAILQ_ENTRY(nvpair) nvp_next;
+TAILQ_HEAD(nvl_head, nvpair);
+
+#define	NVLIST_MAGIC	0x6e766c	/* "nvl" */
+struct nvlist {
+	int		nvl_magic;
+	int		nvl_error;
+	int		nvl_flags;
+	int		nvl_depth;
+	struct nvl_head	nvl_head;
 };
 
-#define	NVPAIR_ASSERT(nvp)	do {					\
-	PJDLOG_ASSERT((nvp) != NULL);					\
-	PJDLOG_ASSERT((nvp)->nvp_magic == NVPAIR_MAGIC);		\
-} while (0)
-
-struct nvpair_header {
-	uint8_t		nvph_type;
-	uint16_t	nvph_namesize;
-	uint64_t	nvph_datasize;
+#define	NVLIST_HEADER_MAGIC	0x6c
+#define	NVLIST_HEADER_VERSION	0x00
+struct nvlist_header {
+	uint8_t		nvlh_magic;
+	uint8_t		nvlh_version;
+	uint8_t		nvlh_flags;
+	uint64_t	nvlh_descriptors;
+	uint64_t	nvlh_size;
 } __packed;
 
-void nvpair_assert(const nvpair_t *nvp);
-const nvlist_t *nvpair_nvlist(const nvpair_t *nvp);
-nvpair_t *nvpair_next(const nvpair_t *nvp);
-nvpair_t *nvpair_prev(const nvpair_t *nvp);
-void nvpair_insert(struct nvl_head *head, nvpair_t *nvp, nvlist_t *nvl);
-void nvpair_remove(struct nvl_head *head, nvpair_t *nvp, const nvlist_t *nvl);
-size_t nvpair_header_size(void);
-size_t nvpair_size(const nvpair_t *nvp);
-unsigned char *nvpair_pack(nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
-    size_t *leftp);
-const unsigned char *nvpair_unpack(int flags, const unsigned char *ptr,
-    size_t *leftp, const int *fds, size_t nfds, nvpair_t **nvpp, int level);
-void nvpair_free_structure(nvpair_t *nvp);
-const char *nvpair_type_string(int type);
-nvpair_t *nvpair_allocv(int type, uint64_t data, size_t datasize,
-    const char *namefmt, va_list nameap);
+void *nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep);
+nvlist_t *nvlist_xunpack(const void *buf, size_t size, const int *fds,
+    size_t nfds, int level);
+bool nvlist_check_header(struct nvlist_header *nvlhdrp);
 
-#endif	/* !_NVPAIR_IMPL_H_ */
+#endif	/* !_NVLIST_IMPL_H_ */

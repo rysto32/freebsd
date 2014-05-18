@@ -47,11 +47,11 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #endif
 
-#include "nv.h"
-#include "nv_impl.h"
-#include "nvlist_getters.h"
+#include <sys/nv.h>
+#include <sys/nv_impl.h>
+#include <sys/nvlist_getters.h>
 
-#include "dnv.h"
+#include <sys/dnv.h>
 
 DNVLIST_GET(bool, bool)
 DNVLIST_GET(uint64_t, number)
