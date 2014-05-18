@@ -69,11 +69,11 @@ dnvlist_getv_##type(const nvlist_t *nvl, ftype defval,			\
 	char *name;							\
 	ftype value;							\
 									\
-	vasprintf(&name, namefmt, nameap);				\
+	nv_vasprintf(&name, namefmt, nameap);				\
 	if (name == NULL)						\
 		return (defval);					\
 	value = dnvlist_get_##type(nvl, name, defval);			\
-	free(name);							\
+	nv_free(name);							\
 	return (value);							\
 }
 
@@ -111,11 +111,11 @@ dnvlist_takev_##type(nvlist_t *nvl, ftype defval, const char *namefmt,	\
 	char *name;							\
 	ftype value;							\
 									\
-	vasprintf(&name, namefmt, nameap);				\
+	nv_vasprintf(&name, namefmt, nameap);				\
 	if (name == NULL)						\
 		return (defval);					\
 	value = dnvlist_take_##type(nvl, name, defval);			\
-	free(name);							\
+	nv_free(name);							\
 	return (value);							\
 }
 
@@ -148,11 +148,11 @@ nvlist_existsv_##type(const nvlist_t *nvl, const char *namefmt,		\
 	char *name;							\
 	bool exists;							\
 									\
-	vasprintf(&name, namefmt, nameap);				\
+	nv_vasprintf(&name, namefmt, nameap);				\
 	if (name == NULL)						\
 		return (0);						\
 	exists = nvlist_exists_##type(nvl, name);			\
-	free(name);							\
+	nv_free(name);							\
 	return (exists);						\
 }
 
@@ -210,11 +210,11 @@ nvlist_getv_##type(const nvlist_t *nvl, const char *namefmt,		\
 	char *name;							\
 	ftype value;							\
 									\
-	vasprintf(&name, namefmt, nameap);				\
+	nv_vasprintf(&name, namefmt, nameap);				\
 	if (name == NULL)						\
 		nvlist_report_missing(NV_TYPE_##TYPE, "<unknown>");	\
 	value = nvlist_get_##type(nvl, name);				\
-	free(name);							\
+	nv_free(name);							\
 									\
 	return (value);							\
 }
@@ -256,11 +256,11 @@ nvlist_takev_##type(nvlist_t *nvl, const char *namefmt, va_list nameap)	\
 	char *name;							\
 	ftype value;							\
 									\
-	vasprintf(&name, namefmt, nameap);				\
+	nv_vasprintf(&name, namefmt, nameap);				\
 	if (name == NULL)						\
 		nvlist_report_missing(NV_TYPE_##TYPE, "<unknown>");	\
 	value = nvlist_take_##type(nvl, name);				\
-	free(name);							\
+	nv_free(name);							\
 	return (value);							\
 }
 
@@ -289,11 +289,11 @@ nvlist_freev_##type(nvlist_t *nvl, const char *namefmt, va_list nameap)	\
 {									\
 	char *name;							\
 									\
-	vasprintf(&name, namefmt, nameap);				\
+	nv_vasprintf(&name, namefmt, nameap);				\
 	if (name == NULL)						\
 		nvlist_report_missing(NV_TYPE_##TYPE, "<unknown>");	\
 	nvlist_free_##type(nvl, name);					\
-	free(name);							\
+	nv_free(name);							\
 }
 
 #endif
