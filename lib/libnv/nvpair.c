@@ -34,6 +34,16 @@ __FBSDID("$FreeBSD$");
 #include <sys/endian.h>
 #include <sys/queue.h>
 
+#ifdef _KERNEL
+
+#include <sys/errno.h>
+#include <sys/lock.h>
+#include <sys/malloc.h>
+#include <sys/systm.h>
+
+#include <machine/stdarg.h>
+
+#else
 #include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -41,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#endif
 
 #ifdef HAVE_PJDLOG
 #include <pjdlog.h>
@@ -53,10 +64,16 @@ __FBSDID("$FreeBSD$");
 #include "nvpair_impl.h"
 
 #ifndef	HAVE_PJDLOG
+#ifdef _KERNEL
+#define	PJDLOG_ASSERT(...)		MPASS(__VA_ARGS__)
+#define	PJDLOG_RASSERT(expr, ...)	KASSERT(expr, (__VA_ARGS__))
+#define	PJDLOG_ABORT(...)		panic(__VA_ARGS__)
+#else
 #include <assert.h>
 #define	PJDLOG_ASSERT(...)		assert(__VA_ARGS__)
 #define	PJDLOG_RASSERT(expr, ...)	assert(expr)
 #define	PJDLOG_ABORT(...)		abort()
+#endif
 #endif
 
 void
@@ -146,10 +163,12 @@ nvpair_clone(const nvpair_t *nvp)
 	case NV_TYPE_NVLIST:
 		newnvp = nvpair_create_nvlist(name, nvpair_get_nvlist(nvp));
 		break;
+#ifndef _KERNEL
 	case NV_TYPE_DESCRIPTOR:
 		newnvp = nvpair_create_descriptor(name,
 		    nvpair_get_descriptor(nvp));
 		break;
+#endif
 	case NV_TYPE_BINARY:
 		data = nvpair_get_binary(nvp, &datasize);
 		newnvp = nvpair_create_binary(name, data, datasize);
@@ -287,7 +306,7 @@ nvpair_pack_nvlist(const nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
 	PJDLOG_ASSERT(*leftp >= nvp->nvp_datasize);
 
 	memcpy(ptr, data, nvp->nvp_datasize);
-	free(data);
+	nv_free(data);
 
 	ptr += nvp->nvp_datasize;
 	*leftp -= nvp->nvp_datasize;
@@ -350,9 +369,11 @@ nvpair_pack(nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp, size_t *leftp)
 	case NV_TYPE_NVLIST:
 		ptr = nvpair_pack_nvlist(nvp, ptr, fdidxp, leftp);
 		break;
+#ifndef _KERNEL
 	case NV_TYPE_DESCRIPTOR:
 		ptr = nvpair_pack_descriptor(nvp, ptr, fdidxp, leftp);
 		break;
+#endif
 	case NV_TYPE_BINARY:
 		ptr = nvpair_pack_binary(nvp, ptr, leftp);
 		break;
@@ -419,7 +440,7 @@ nvpair_unpack_header(int flags, nvpair_t *nvp, const unsigned char *ptr,
 
 	return (ptr);
 failed:
-	errno = EINVAL;
+	RESTORE_ERRNO(EINVAL);
 	return (NULL);
 }
 
@@ -431,7 +452,7 @@ nvpair_unpack_null(int flags __unused, nvpair_t *nvp, const unsigned char *ptr,
 	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_NULL);
 
 	if (nvp->nvp_datasize != 0) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -447,11 +468,11 @@ nvpair_unpack_bool(int flags __unused, nvpair_t *nvp, const unsigned char *ptr,
 	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_BOOL);
 
 	if (nvp->nvp_datasize != sizeof(value)) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 	if (*leftp < sizeof(value)) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -460,7 +481,7 @@ nvpair_unpack_bool(int flags __unused, nvpair_t *nvp, const unsigned char *ptr,
 	*leftp -= sizeof(value);
 
 	if (value != 0 && value != 1) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -477,11 +498,11 @@ nvpair_unpack_number(int flags, nvpair_t *nvp, const unsigned char *ptr,
 	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_NUMBER);
 
 	if (nvp->nvp_datasize != sizeof(uint64_t)) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 	if (*leftp < sizeof(uint64_t)) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -503,17 +524,17 @@ nvpair_unpack_string(int flags __unused, nvpair_t *nvp,
 	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_STRING);
 
 	if (*leftp < nvp->nvp_datasize || nvp->nvp_datasize == 0) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
 	if (strnlen((const char *)ptr, nvp->nvp_datasize) !=
 	    nvp->nvp_datasize - 1) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
-	nvp->nvp_data = (uint64_t)(uintptr_t)strdup((const char *)ptr);
+	nvp->nvp_data = (uint64_t)(uintptr_t)nv_strdup((const char *)ptr);
 	if (nvp->nvp_data == 0)
 		return (NULL);
 
@@ -533,7 +554,7 @@ nvpair_unpack_nvlist(int flags __unused, nvpair_t *nvp,
 	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_NVLIST);
 
 	if (*leftp < nvp->nvp_datasize || nvp->nvp_datasize == 0) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -558,11 +579,11 @@ nvpair_unpack_binary(int flags __unused, nvpair_t *nvp,
 	PJDLOG_ASSERT(nvp->nvp_type == NV_TYPE_BINARY);
 
 	if (*leftp < nvp->nvp_datasize || nvp->nvp_datasize == 0) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
-	value = malloc(nvp->nvp_datasize);
+	value = nv_malloc(nvp->nvp_datasize);
 	if (value == NULL)
 		return (NULL);
 
@@ -581,7 +602,7 @@ nvpair_unpack(int flags, const unsigned char *ptr, size_t *leftp,
 {
 	nvpair_t *nvp, *tmp;
 
-	nvp = calloc(1, sizeof(*nvp) + NV_NAME_MAX);
+	nvp = nv_calloc(1, sizeof(*nvp) + NV_NAME_MAX);
 	if (nvp == NULL)
 		return (NULL);
 	nvp->nvp_name = (char *)(nvp + 1);
@@ -589,7 +610,7 @@ nvpair_unpack(int flags, const unsigned char *ptr, size_t *leftp,
 	ptr = nvpair_unpack_header(flags, nvp, ptr, leftp);
 	if (ptr == NULL)
 		goto failed;
-	tmp = realloc(nvp, sizeof(*nvp) + strlen(nvp->nvp_name) + 1);
+	tmp = nv_realloc(nvp, sizeof(*nvp) + strlen(nvp->nvp_name) + 1);
 	if (tmp == NULL)
 		goto failed;
 	nvp = tmp;
@@ -613,10 +634,12 @@ nvpair_unpack(int flags, const unsigned char *ptr, size_t *leftp,
 		ptr = nvpair_unpack_nvlist(flags, nvp, ptr, leftp, fds,
 		    nfds, level);
 		break;
+#ifndef _KERNEL
 	case NV_TYPE_DESCRIPTOR:
 		ptr = nvpair_unpack_descriptor(flags, nvp, ptr, leftp, fds,
 		    nfds);
 		break;
+#endif
 	case NV_TYPE_BINARY:
 		ptr = nvpair_unpack_binary(flags, nvp, ptr, leftp);
 		break;
@@ -631,7 +654,7 @@ nvpair_unpack(int flags, const unsigned char *ptr, size_t *leftp,
 	*nvpp = nvp;
 	return (ptr);
 failed:
-	free(nvp);
+	nv_free(nvp);
 	return (NULL);
 }
 
@@ -663,18 +686,18 @@ nvpair_allocv(int type, uint64_t data, size_t datasize, const char *namefmt,
 
 	PJDLOG_ASSERT(type >= NV_TYPE_FIRST && type <= NV_TYPE_LAST);
 
-	namelen = vasprintf(&name, namefmt, nameap);
+	namelen = nv_vasprintf(&name, namefmt, nameap);
 	if (namelen < 0)
 		return (NULL);
 
 	PJDLOG_ASSERT(namelen > 0);
 	if (namelen >= NV_NAME_MAX) {
-		free(name);
-		errno = ENAMETOOLONG;
+		nv_free(name);
+		RESTORE_ERRNO(ENAMETOOLONG);
 		return (NULL);
 	}
 
-	nvp = calloc(1, sizeof(*nvp) + namelen + 1);
+	nvp = nv_calloc(1, sizeof(*nvp) + namelen + 1);
 	if (nvp != NULL) {
 		nvp->nvp_name = (char *)(nvp + 1);
 		memcpy(nvp->nvp_name, name, namelen + 1);
@@ -683,7 +706,7 @@ nvpair_allocv(int type, uint64_t data, size_t datasize, const char *namefmt,
 		nvp->nvp_datasize = datasize;
 		nvp->nvp_magic = NVPAIR_MAGIC;
 	}
-	free(name);
+	nv_free(name);
 
 	return (nvp);
 };
@@ -736,12 +759,12 @@ nvpair_create_stringv(const char *name, const char *valuefmt, va_list valueap)
 	char *str;
 	int len;
 
-	len = vasprintf(&str, valuefmt, valueap);
+	len = nv_vasprintf(&str, valuefmt, valueap);
 	if (len < 0)
 		return (NULL);
 	nvp = nvpair_create_string(name, str);
 	if (nvp == NULL)
-		free(str);
+		nv_free(str);
 	return (nvp);
 }
 
@@ -868,11 +891,11 @@ nvpair_createv_string(const char *value, const char *namefmt, va_list nameap)
 	char *data;
 
 	if (value == NULL) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
-	data = strdup(value);
+	data = nv_strdup(value);
 	if (data == NULL)
 		return (NULL);
 	size = strlen(value) + 1;
@@ -880,7 +903,7 @@ nvpair_createv_string(const char *value, const char *namefmt, va_list nameap)
 	nvp = nvpair_allocv(NV_TYPE_STRING, (uint64_t)(uintptr_t)data, size,
 	    namefmt, nameap);
 	if (nvp == NULL)
-		free(data);
+		nv_free(data);
 
 	return (nvp);
 }
@@ -893,7 +916,7 @@ nvpair_createv_nvlist(const nvlist_t *value, const char *namefmt,
 	nvpair_t *nvp;
 
 	if (value == NULL) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -917,11 +940,11 @@ nvpair_createv_binary(const void *value, size_t size, const char *namefmt,
 	void *data;
 
 	if (value == NULL || size == 0) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
-	data = malloc(size);
+	data = nv_malloc(size);
 	if (data == NULL)
 		return (NULL);
 	memcpy(data, value, size);
@@ -929,7 +952,7 @@ nvpair_createv_binary(const void *value, size_t size, const char *namefmt,
 	nvp = nvpair_allocv(NV_TYPE_BINARY, (uint64_t)(uintptr_t)data, size,
 	    namefmt, nameap);
 	if (nvp == NULL)
-		free(data);
+		nv_free(data);
 
 	return (nvp);
 }
@@ -1000,14 +1023,14 @@ nvpair_movev_string(char *value, const char *namefmt, va_list nameap)
 	nvpair_t *nvp;
 
 	if (value == NULL) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
 	nvp = nvpair_allocv(NV_TYPE_STRING, (uint64_t)(uintptr_t)value,
 	    strlen(value) + 1, namefmt, nameap);
 	if (nvp == NULL)
-		free(value);
+		nv_free(value);
 
 	return (nvp);
 }
@@ -1018,12 +1041,12 @@ nvpair_movev_nvlist(nvlist_t *value, const char *namefmt, va_list nameap)
 	nvpair_t *nvp;
 
 	if (value == NULL) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
 	if (nvlist_error(value) != 0) {
-		errno = nvlist_error(value);
+		RESTORE_ERRNO(nvlist_error(value));
 		nvlist_destroy(value);
 		return (NULL);
 	}
@@ -1042,7 +1065,7 @@ nvpair_movev_binary(void *value, size_t size, const char *namefmt,
 {
 
 	if (value == NULL || size == 0) {
-		errno = EINVAL;
+		RESTORE_ERRNO(EINVAL);
 		return (NULL);
 	}
 
@@ -1108,20 +1131,22 @@ nvpair_free(nvpair_t *nvp)
 
 	nvp->nvp_magic = 0;
 	switch (nvp->nvp_type) {
+#ifndef _KERNEL
 	case NV_TYPE_DESCRIPTOR:
 		close((int)nvp->nvp_data);
 		break;
+#endif
 	case NV_TYPE_NVLIST:
 		nvlist_destroy((nvlist_t *)(intptr_t)nvp->nvp_data);
 		break;
 	case NV_TYPE_STRING:
-		free((char *)(intptr_t)nvp->nvp_data);
+		nv_free((char *)(intptr_t)nvp->nvp_data);
 		break;
 	case NV_TYPE_BINARY:
-		free((void *)(intptr_t)nvp->nvp_data);
+		nv_free((void *)(intptr_t)nvp->nvp_data);
 		break;
 	}
-	free(nvp);
+	nv_free(nvp);
 }
 
 void
@@ -1132,7 +1157,7 @@ nvpair_free_structure(nvpair_t *nvp)
 	PJDLOG_ASSERT(nvp->nvp_list == NULL);
 
 	nvp->nvp_magic = 0;
-	free(nvp);
+	nv_free(nvp);
 }
 
 const char *
