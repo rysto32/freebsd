@@ -36,7 +36,7 @@
 #include <stdint.h>
 #endif
 
-#include "nv.h"
+#include <sys/nv.h>
 
 TAILQ_HEAD(nvl_head, nvpair);
 
@@ -46,6 +46,7 @@ struct nvlist {
 	int		nvl_error;
 	int		nvl_flags;
 	struct nvl_head	nvl_head;
+	struct nvpair	*nvl_parent;
 };
 
 #define	NVLIST_HEADER_MAGIC	0x6c

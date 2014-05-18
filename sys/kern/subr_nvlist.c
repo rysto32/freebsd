@@ -54,11 +54,11 @@ __FBSDID("$FreeBSD$");
 #include <pjdlog.h>
 #endif
 
-#include "nv.h"
-#include "nv_impl.h"
-#include "nvlist_getters.h"
-#include "nvlist_impl.h"
-#include "nvpair_impl.h"
+#include <sys/nv.h>
+#include <sys/nv_impl.h>
+#include <sys/nvlist_getters.h>
+#include <sys/nvlist_impl.h>
+#include <sys/nvpair_impl.h>
 
 #ifndef	HAVE_PJDLOG
 #ifdef _KERNEL
