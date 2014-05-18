@@ -9,10 +9,13 @@ SHLIB_MAJOR= 0
 
 .include <src.opts.mk>
 
-SRCS=	dnvlist.c
+.PATH: ${.CURDIR}/../../sys/kern ${.CURDIR}/../../sys/sys
+CFLAGS+=-I${.CURDIR}/../../sys
+
+SRCS=	subr_dnvlist.c
 SRCS+=	msgio.c
-SRCS+=	nvlist.c
-SRCS+=	nvpair.c
+SRCS+=	subr_nvlist.c
+SRCS+=	subr_nvpair.c
 SRCS+=	nv_user.c
 
 INCS=	dnv.h

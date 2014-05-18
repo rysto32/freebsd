@@ -36,7 +36,7 @@
 #include <stdint.h>
 #endif
 
-#include "nv.h"
+#include <sys/nv.h>
 
 TAILQ_HEAD(nvl_head, nvpair);
 

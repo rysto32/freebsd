@@ -38,7 +38,7 @@
 #include <stdint.h>
 #endif
 
-#include "nv.h"
+#include <sys/nv.h>
 
 #define	NVPAIR_MAGIC	0x6e7670	/* "nvp" */
 struct nvpair {
