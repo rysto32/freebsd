@@ -370,7 +370,6 @@ nvlist_xdescriptors(const nvlist_t *nvl, int *descs, int level)
 
 	NVLIST_ASSERT(nvl);
 	PJDLOG_ASSERT(nvl->nvl_error == 0);
-	PJDLOG_ASSERT(level < 3);
 
 	for (nvp = nvlist_first_nvpair(nvl); nvp != NULL;
 	    nvp = nvlist_next_nvpair(nvl, nvp)) {
@@ -415,7 +414,6 @@ nvlist_xndescriptors(const nvlist_t *nvl, int level)
 
 	NVLIST_ASSERT(nvl);
 	PJDLOG_ASSERT(nvl->nvl_error == 0);
-	PJDLOG_ASSERT(level < 3);
 
 	ndescs = 0;
 	for (nvp = nvlist_first_nvpair(nvl); nvp != NULL;
