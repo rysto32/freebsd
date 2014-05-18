@@ -76,8 +76,6 @@ nvlist_xdump(const nvlist_t *nvl, int fd, int level)
 {
 	nvpair_t *nvp;
 
-	PJDLOG_ASSERT(level < 3);
-
 	if (nvlist_error(nvl) != 0) {
 		dprintf(fd, "%*serror: %d\n", level * 4, "",
 		    nvlist_error(nvl));

@@ -53,8 +53,6 @@ nvpair_t *nvlist_first_nvpair(const nvlist_t *nvl);
 nvpair_t *nvlist_next_nvpair(const nvlist_t *nvl, const nvpair_t *nvp);
 nvpair_t *nvlist_prev_nvpair(const nvlist_t *nvl, const nvpair_t *nvp);
 
-void nvlist_add_nvpair(nvlist_t *nvl, const nvpair_t *nvp);
-
 void nvlist_move_nvpair(nvlist_t *nvl, nvpair_t *nvp);
 
 void nvlist_set_parent(nvlist_t *nvl, nvpair_t *parent);
@@ -125,7 +123,5 @@ nvpair_t *nvpair_movev_binary(void *value, size_t size, const char *namefmt, va_
 
 unsigned char *nvpair_pack_descriptor(const nvpair_t *nvp, unsigned char *ptr,
     int64_t *fdidxp, size_t *leftp);
-const unsigned char *nvpair_unpack_descriptor(int flags, nvpair_t *nvp,
-    const unsigned char *ptr, size_t *leftp, const int *fds, size_t nfds);
 
 #endif	/* !_NV_IMPL_H_ */
