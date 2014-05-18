@@ -71,7 +71,7 @@ size_t nvpair_size(const nvpair_t *nvp);
 unsigned char *nvpair_pack(nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
     size_t *leftp);
 const unsigned char *nvpair_unpack(int flags, const unsigned char *ptr,
-    size_t *leftp, const int *fds, size_t nfds, nvpair_t **nvpp);
+    size_t *leftp, const int *fds, size_t nfds, nvpair_t **nvpp, int level);
 void nvpair_free_structure(nvpair_t *nvp);
 const char *nvpair_type_string(int type);
 nvpair_t *nvpair_allocv(int type, uint64_t data, size_t datasize,
