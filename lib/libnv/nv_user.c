@@ -146,9 +146,9 @@ nvlist_fdump(const nvlist_t *nvl, FILE *fp)
 	nvlist_dump(nvl, fileno(fp));
 }
 
-NVLIST_EXISTS(descriptor)
+NVLIST_EXISTS(descriptor, DESCRIPTOR)
 NVLIST_EXISTSF(descriptor)
-NVLIST_EXISTSV(descriptor, DESCRIPTOR)
+NVLIST_EXISTSV(descriptor)
 
 void
 nvlist_add_descriptor(nvlist_t *nvl, const char *name, int value)
@@ -206,13 +206,13 @@ nvlist_movev_descriptor(nvlist_t *nvl, int value, const char *namefmt,
 
 NVLIST_MOVE(int, descriptor)
 NVLIST_MOVEF(int, descriptor)
-NVLIST_GET(int, descriptor)
+NVLIST_GET(int, descriptor, DESCRIPTOR)
 NVLIST_GETF(int, descriptor)
 NVLIST_GETV(int, descriptor, DESCRIPTOR)
-NVLIST_TAKE(int, descriptor)
+NVLIST_TAKE(int, descriptor, DESCRIPTOR)
 NVLIST_TAKEF(int, descriptor)
 NVLIST_TAKEV(int, descriptor, DESCRIPTOR)
-NVLIST_FREE(descriptor)
+NVLIST_FREE(descriptor, DESCRIPTOR)
 NVLIST_FREEF(descriptor)
 NVLIST_FREEV(descriptor, DESCRIPTOR)
 

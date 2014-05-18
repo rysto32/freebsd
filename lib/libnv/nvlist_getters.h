@@ -32,16 +32,18 @@
 #ifndef _NVLIST_GETTERS_H
 #define _NVLIST_GETTERS_H
 
-nvpair_t *	nvlist_findv(const nvlist_t *nvl, int type, const char *namefmt,
-		    va_list nameap);
-void	nvlist_report_missing(int type, const char *namefmt, va_list nameap);
+nvpair_t *	nvlist_find(const nvlist_t *nvl, int type, const char *name);
+void		nvlist_report_missing(int type, const char *name);
 
 #define	DNVLIST_GET(ftype, type)					\
 ftype									\
 dnvlist_get_##type(const nvlist_t *nvl, const char *name, ftype defval)	\
 {									\
 									\
-	return (dnvlist_getf_##type(nvl, defval, "%s", name));		\
+	if (nvlist_exists_##type(nvl, name))				\
+		return (nvlist_get_##type(nvl, name));			\
+	else								\
+		return (defval);					\
 }
 
 #define	DNVLIST_GETF(ftype, type)					\
@@ -64,15 +66,14 @@ ftype									\
 dnvlist_getv_##type(const nvlist_t *nvl, ftype defval,			\
     const char *namefmt, va_list nameap)				\
 {									\
-	va_list cnameap;						\
+	char *name;							\
 	ftype value;							\
 									\
-	va_copy(cnameap, nameap);					\
-	if (nvlist_existsv_##type(nvl, namefmt, cnameap))		\
-		value = nvlist_getv_##type(nvl, namefmt, nameap);	\
-	else								\
-		value = defval;						\
-	va_end(cnameap);						\
+	vasprintf(&name, namefmt, nameap);				\
+	if (name == NULL)						\
+		return (defval);					\
+	value = dnvlist_get_##type(nvl, name, defval);			\
+	free(name);							\
 	return (value);							\
 }
 
@@ -81,7 +82,10 @@ ftype									\
 dnvlist_take_##type(nvlist_t *nvl, const char *name, ftype defval)	\
 {									\
 									\
-	return (dnvlist_takef_##type(nvl, defval, "%s", name));		\
+	if (nvlist_exists_##type(nvl, name))				\
+		return (nvlist_take_##type(nvl, name));			\
+	else								\
+		return (defval);					\
 }
 
 #define	DNVLIST_TAKEF(ftype, type)					\
@@ -104,24 +108,23 @@ ftype									\
 dnvlist_takev_##type(nvlist_t *nvl, ftype defval, const char *namefmt,	\
     va_list nameap)							\
 {									\
-	va_list cnameap;						\
+	char *name;							\
 	ftype value;							\
 									\
-	va_copy(cnameap, nameap);					\
-	if (nvlist_existsv_##type(nvl, namefmt, cnameap))		\
-		value = nvlist_takev_##type(nvl, namefmt, nameap);	\
-	else								\
-		value = defval;						\
-	va_end(cnameap);						\
+	vasprintf(&name, namefmt, nameap);				\
+	if (name == NULL)						\
+		return (defval);					\
+	value = dnvlist_take_##type(nvl, name, defval);			\
+	free(name);							\
 	return (value);							\
 }
 
-#define	NVLIST_EXISTS(type)						\
+#define	NVLIST_EXISTS(type, TYPE)					\
 bool									\
 nvlist_exists_##type(const nvlist_t *nvl, const char *name)		\
 {									\
 									\
-	return (nvlist_existsf_##type(nvl, "%s", name));		\
+	return (nvlist_find(nvl, NV_TYPE_##TYPE, name) != NULL);	\
 }
 
 #define	NVLIST_EXISTSF(type)						\
@@ -137,14 +140,20 @@ nvlist_existsf_##type(const nvlist_t *nvl, const char *namefmt, ...)	\
 	return (ret);							\
 }
 
-#define	NVLIST_EXISTSV(type, TYPE)					\
+#define	NVLIST_EXISTSV(type)						\
 bool									\
 nvlist_existsv_##type(const nvlist_t *nvl, const char *namefmt,		\
     va_list nameap)							\
 {									\
+	char *name;							\
+	bool exists;							\
 									\
-	return (nvlist_findv(nvl, NV_TYPE_##TYPE, namefmt, nameap) !=	\
-	    NULL);							\
+	vasprintf(&name, namefmt, nameap);				\
+	if (name == NULL)						\
+		return (0);						\
+	exists = nvlist_exists_##type(nvl, name);			\
+	free(name);							\
+	return (exists);						\
 }
 
 #define	NVLIST_MOVE(vtype, type)					\
@@ -167,12 +176,16 @@ nvlist_movef_##type(nvlist_t *nvl, vtype value, const char *namefmt,	\
 	va_end(nameap);							\
 }
 
-#define	NVLIST_GET(ftype, type)						\
+#define	NVLIST_GET(ftype, type, TYPE)					\
 ftype									\
 nvlist_get_##type(const nvlist_t *nvl, const char *name)		\
 {									\
+	const nvpair_t *nvp;						\
 									\
-	return (nvlist_getf_##type(nvl, "%s", name));			\
+	nvp = nvlist_find(nvl, NV_TYPE_##TYPE, name);			\
+	if (nvp == NULL)						\
+		nvlist_report_missing(NV_TYPE_##TYPE, name);		\
+	return (nvpair_get_##type(nvp));				\
 }
 
 #define	NVLIST_GETF(ftype, type)					\
@@ -194,23 +207,32 @@ ftype									\
 nvlist_getv_##type(const nvlist_t *nvl, const char *namefmt,		\
     va_list nameap)							\
 {									\
-	va_list cnameap;						\
-	const nvpair_t *nvp;						\
+	char *name;							\
+	ftype value;							\
 									\
-	va_copy(cnameap, nameap);					\
-	nvp = nvlist_findv(nvl, NV_TYPE_##TYPE, namefmt, cnameap);	\
-	va_end(cnameap);						\
-	if (nvp == NULL)						\
-		nvlist_report_missing(NV_TYPE_##TYPE, namefmt, nameap);	\
-	return (nvpair_get_##type(nvp));				\
+	vasprintf(&name, namefmt, nameap);				\
+	if (name == NULL)						\
+		nvlist_report_missing(NV_TYPE_##TYPE, "<unknown>");	\
+	value = nvlist_get_##type(nvl, name);				\
+	free(name);							\
+									\
+	return (value);							\
 }
 
-#define	NVLIST_TAKE(ftype, type)					\
+#define	NVLIST_TAKE(ftype, type, TYPE)					\
 ftype									\
 nvlist_take_##type(nvlist_t *nvl, const char *name)			\
 {									\
+	nvpair_t *nvp;							\
+	ftype value;							\
 									\
-	return (nvlist_takef_##type(nvl, "%s", name));			\
+	nvp = nvlist_find(nvl, NV_TYPE_##TYPE, name);			\
+	if (nvp == NULL)						\
+		nvlist_report_missing(NV_TYPE_##TYPE, name);		\
+	value = (ftype)(intptr_t)nvpair_get_##type(nvp);		\
+	nvlist_remove_nvpair(nvl, nvp);					\
+	nvpair_free_structure(nvp);					\
+	return (value);							\
 }
 
 #define	NVLIST_TAKEF(ftype, type)					\
@@ -231,27 +253,23 @@ nvlist_takef_##type(nvlist_t *nvl, const char *namefmt, ...)		\
 ftype									\
 nvlist_takev_##type(nvlist_t *nvl, const char *namefmt, va_list nameap)	\
 {									\
-	va_list cnameap;						\
-	nvpair_t *nvp;							\
+	char *name;							\
 	ftype value;							\
 									\
-	va_copy(cnameap, nameap);					\
-	nvp = nvlist_findv(nvl, NV_TYPE_##TYPE, namefmt, cnameap);	\
-	va_end(cnameap);						\
-	if (nvp == NULL)						\
-		nvlist_report_missing(NV_TYPE_##TYPE, namefmt, nameap);	\
-	value = (ftype)(intptr_t)nvpair_get_##type(nvp);		\
-	nvlist_remove_nvpair(nvl, nvp);					\
-	nvpair_free_structure(nvp);					\
+	vasprintf(&name, namefmt, nameap);				\
+	if (name == NULL)						\
+		nvlist_report_missing(NV_TYPE_##TYPE, "<unknown>");	\
+	value = nvlist_take_##type(nvl, name);				\
+	free(name);							\
 	return (value);							\
 }
 
-#define	NVLIST_FREE(type)						\
+#define	NVLIST_FREE(type, TYPE)						\
 void									\
 nvlist_free_##type(nvlist_t *nvl, const char *name)			\
 {									\
 									\
-	nvlist_freef_##type(nvl, "%s", name);				\
+	nvlist_free_type(nvl, name, NV_TYPE_##TYPE);			\
 }
 
 #define	NVLIST_FREEF(type)						\
@@ -269,8 +287,13 @@ nvlist_freef_##type(nvlist_t *nvl, const char *namefmt, ...)		\
 void									\
 nvlist_freev_##type(nvlist_t *nvl, const char *namefmt, va_list nameap)	\
 {									\
+	char *name;							\
 									\
-	nvlist_freev_type(nvl, NV_TYPE_##TYPE, namefmt, nameap);	\
+	vasprintf(&name, namefmt, nameap);				\
+	if (name == NULL)						\
+		nvlist_report_missing(NV_TYPE_##TYPE, "<unknown>");	\
+	nvlist_free_##type(nvl, name);					\
+	free(name);							\
 }
 
 #endif
