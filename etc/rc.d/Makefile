@@ -56,6 +56,7 @@ FILES=	DAEMON \
 	hostname \
 	inetd \
 	initrandom \
+	iovctl \
 	ip6addrctl \
 	ipfilter \
 	ipfs \
