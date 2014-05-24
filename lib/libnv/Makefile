@@ -7,6 +7,8 @@ SHLIBDIR?= /lib
 LIB=	nv
 SHLIB_MAJOR= 0
 
+.include <src.opts.mk>
+
 SRCS=	dnvlist.c
 SRCS+=	msgio.c
 SRCS+=	nvlist.c
@@ -165,4 +167,10 @@ WARNS?=	6
 SUBDIR+=	tests
 .endif
 
+.if ${MK_TESTS} != "no"
+SUBDIR+=	tests
+.endif
+
+.include <bsd.own.mk>
 .include <bsd.lib.mk>
+.include <bsd.subdir.mk>
