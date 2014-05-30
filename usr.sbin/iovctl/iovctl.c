@@ -366,7 +366,7 @@ print_subsystem_schema(const nvlist_t * subsystem_schema)
 		else if (nvlist_exists(parameter, DEFAULT_SCHEMA_NAME))
 			print_default_value(parameter, type);
 		else
-			printf(" (optional)";
+			printf(" (optional)");
 		printf("\n");
 	}
 }
