@@ -27,6 +27,7 @@
 #include <atf-c++.hpp>
 #include <nv.h>
 
+#include <errno.h>
 #include <limits>
 #include <set>
 #include <sstream>
