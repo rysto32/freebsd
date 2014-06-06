@@ -453,14 +453,14 @@ This function should be called during the
 .Xr DEVICE_ATTACH 9
 method.
 If this function returns an error, it is recommended that the device driver
-still succeed to attach and run with SR-IOV disabled.
+still successfully attaches, but runs with SR-IOV disabled.
 The
 .Fa pf_schema
 and
 .Fa vf_schema
 parameters are used to define what device-specific configuration parameters the
-device driver accepts when SR-IOV is enabled for the PF and for individual VFs
-respectively.
+device driver accepts when SR-IOV is enabled for the Physical Function (PF) and
+for individual Virtual Functions (VFs) respectively.
 See
 .Xr pci_iov_schema 9
 for details on how to construct the schema.
