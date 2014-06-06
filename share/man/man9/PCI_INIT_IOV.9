@@ -43,8 +43,10 @@
 The
 .Fn PCI_INIT_IOV
 method is called by the PCI Single-Root I/O Virtualization (SR-IOV)
-infrastucture when the user requests that SR-IOV be enabled on a PF device.
-The number of VFs that will be created is passed to this method in the
+infrastucture when the user requests that SR-IOV be enabled on a Physical
+Function (PF).
+The number of Virtual Functions (VFs) that will be created is passed to this
+method in the
 .Fa num_vfs
 argument.
 .Pp
