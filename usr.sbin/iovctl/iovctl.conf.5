@@ -58,7 +58,7 @@ There are three types of sections in the
 .Nm
 file.
 A section is a key at the top level of the file with a list as its value.
-The list may contain the keys specified in the 
+The list may contain the keys specified in the
 .Sx OPTIONS
 section of this manual page.
 Individual PF driver implementations may specify additional device-specific
@@ -66,8 +66,8 @@ configuration keys that they will accept.
 The order in which sections appear in
 .Nm
 is ignored.
-No two sections may have the same key (e.g. two sections for VF-1 may not be
-defined).
+No two sections may have the same key.
+For example, two sections for VF-1 must not be defined.
 .Pp
 The first section type is the PF section.
 This section always has the key "PF"; therefore, only one such section may be
@@ -76,8 +76,8 @@ This section defines configuration parameters that apply to the PF as a whole.
 .Pp
 The second section type is the VF section.
 This section has the key "VF-" followed by a VF index.
-VF indicies start at 0 and always increment by 1.
-Valid VF indicies are in the range of 0 to (num_vfs-1).
+VF indices start at 0 and always increment by 1.
+Valid VF indices are in the range of 0 to (num_vfs-1).
 The VF index must be given as a decimal integer with no leading zeros.
 This section defines configuration parameters that apply to a single VF.
 .Pp
@@ -163,8 +163,8 @@ VF-0 {
 }
 .Ed
 .Sh SEE ALSO
-.Xr iovctl 8
-.Sh AUTHORS
+.Xr iovctl 8 ,
 .Xr rc.conf 5
+.Sh AUTHORS
 This manual page was written by
 .An Ryan Stone Aq rstone@FreeBSD.org .
