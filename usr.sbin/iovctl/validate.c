@@ -145,10 +145,10 @@ apply_subsystem_defaults(nvlist_t *device_config, const char *subsystem,
 }
 
 /*
- * Apply default values for parameters that have been been configured to every
- * subsystem in given VF device.
+ * Iterate over every subsystem in the given VF device and apply default values
+ * for parameters that were not configured with a value.
  *
- * This function assumes that the values specified in defaults has already been
+ * This function assumes that the values specified in defaults have already been
  * validated.
  */
 static void
