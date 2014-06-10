@@ -155,7 +155,7 @@ static void
 usage(void)
 {
 
-	warnx("Usage: iovctl -E -f <config file> [-n]");
+	warnx("Usage: iovctl -C -f <config file> [-n]");
 	warnx("       iovctl -D [-d <PF device> | -f <config file>] [-n]");
 	warnx("       iovctl -S [-d <PF device> | -f <config file>]");
 	exit(1);
@@ -182,26 +182,26 @@ main(int argc, char **argv)
 	dryrun = 0;
 	action = NONE;
 
-	while ((ch = getopt(argc, argv, "d:DEf:nS")) != -1) {
+	while ((ch = getopt(argc, argv, "Cd:Df:nS")) != -1) {
 		switch (ch) {
+		case 'C':
+			if (action != NONE) {
+				warnx(
+				   "Only one of -C, -D or -S may be specified");
+				usage();
+			}
+			action = CONFIG;
+			break;
 		case 'd':
 			device = strdup(optarg);
 			break;
 		case 'D':
 			if (action != NONE) {
 				warnx(
-				   "Only one of -D, -E or -S may be specified");
+				   "Only one of -C, -D or -S may be specified");
 				usage();
 			}
 			action = DELETE;
-			break;
-		case 'E':
-			if (action != NONE) {
-				warnx(
-				   "Only one of -D, -E or -S may be specified");
-				usage();
-			}
-			action = CONFIG;
 			break;
 		case 'f':
 			filename = optarg;
@@ -212,7 +212,7 @@ main(int argc, char **argv)
 		case 'S':
 			if (action != NONE) {
 				warnx(
-				   "Only one of -D, -E or -S may be specified");
+				   "Only one of -C, -D or -S may be specified");
 				usage();
 			}
 			action = PRINT_SCHEMA;
@@ -237,7 +237,7 @@ main(int argc, char **argv)
 	switch (action) {
 	case CONFIG:
 		if (filename == NULL) {
-			warnx("-d flag cannot be used with the -E flag");
+			warnx("-d flag cannot be used with the -C flag");
 			usage();
 		}
 		config_action(filename, dryrun);
