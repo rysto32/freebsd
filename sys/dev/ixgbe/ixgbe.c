@@ -1146,6 +1146,8 @@ ixgbe_init_locked(struct adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32		k, txdctl, mhadd, gpie;
 	u32		rxdctl, rxctrl, ctrl_ext;
+	struct tx_ring	*txr;
+	struct rx_ring	*rxr;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
 	INIT_DEBUGOUT("ixgbe_init_locked: begin");
@@ -1244,7 +1246,8 @@ ixgbe_init_locked(struct adapter *adapter)
 	/* Now enable all the queues */
 
 	for (int i = 0; i < adapter->num_queues; i++) {
-		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(i));
+		txr = &adapter->tx_rings[i];
+		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
 		txdctl |= IXGBE_TXDCTL_ENABLE;
 		/* Set WTHRESH to 8, burst writeback */
 		txdctl |= (8 << 16);
@@ -1256,11 +1259,12 @@ ixgbe_init_locked(struct adapter *adapter)
 		 * Prefetching enables tx line rate even with 1 queue.
 		 */
 		txdctl |= (32 << 0) | (1 << 8);
-		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(i), txdctl);
+		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
 	}
 
 	for (int i = 0; i < adapter->num_queues; i++) {
-		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(i));
+		rxr = &adapter->rx_rings[i];
+		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
 		if (hw->mac.type == ixgbe_mac_82598EB) {
 			/*
 			** PTHRESH = 21
@@ -1271,9 +1275,9 @@ ixgbe_init_locked(struct adapter *adapter)
 			rxdctl |= 0x080420;
 		}
 		rxdctl |= IXGBE_RXDCTL_ENABLE;
-		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(i), rxdctl);
+		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
 		for (k = 0; k < 10; k++) {
-			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(i)) &
+			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me)) &
 			    IXGBE_RXDCTL_ENABLE)
 				break;
 			else
@@ -1302,10 +1306,11 @@ ixgbe_init_locked(struct adapter *adapter)
 			struct netmap_kring *kring = &na->rx_rings[i];
 			int t = na->num_rx_desc - 1 - nm_kr_rxspace(kring);
 
-			IXGBE_WRITE_REG(hw, IXGBE_RDT(i), t);
+			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me), t);
 		} else
 #endif /* DEV_NETMAP */
-		IXGBE_WRITE_REG(hw, IXGBE_RDT(i), adapter->num_rx_desc - 1);
+			IXGBE_WRITE_REG(hw, IXGBE_RDT(rxr->me),
+			    adapter->num_rx_desc - 1);
 	}
 
 	/* Enable Receive engine */
@@ -4826,9 +4831,9 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 		rxr = &adapter->rx_rings[i];
 		/* On 82599 the VLAN enable is per/queue in RXDCTL */
 		if (hw->mac.type != ixgbe_mac_82598EB) {
-			ctrl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(i));
+			ctrl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
 			ctrl |= IXGBE_RXDCTL_VME;
-			IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(i), ctrl);
+			IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), ctrl);
 		}
 		rxr->vtag_strip = TRUE;
 	}
@@ -6346,11 +6351,13 @@ static void
 ixgbe_enable_rx_drop(struct adapter *adapter)
 {
         struct ixgbe_hw *hw = &adapter->hw;
+	struct rx_ring *rxr;
 
 	for (int i = 0; i < adapter->num_queues; i++) {
-        	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
+		rxr = &adapter->rx_rings[i];
+		u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(rxr->me));
         	srrctl |= IXGBE_SRRCTL_DROP_EN;
-        	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
+		IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(rxr->me), srrctl);
 	}
 }
 
@@ -6358,11 +6365,13 @@ static void
 ixgbe_disable_rx_drop(struct adapter *adapter)
 {
         struct ixgbe_hw *hw = &adapter->hw;
+	struct rx_ring *rxr;
 
 	for (int i = 0; i < adapter->num_queues; i++) {
-        	u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
+		rxr = &adapter->rx_rings[i];
+		u32 srrctl = IXGBE_READ_REG(hw, IXGBE_SRRCTL(rxr->me));
         	srrctl &= ~IXGBE_SRRCTL_DROP_EN;
-        	IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(i), srrctl);
+		IXGBE_WRITE_REG(hw, IXGBE_SRRCTL(rxr->me), srrctl);
 	}
 }
 
