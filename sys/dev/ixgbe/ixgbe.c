@@ -565,7 +565,7 @@ ixgbe_attach(device_t dev)
 	}
 
 	/* Allocate multicast array memory. */
-	adapter->mta = malloc(sizeof(u8) * IXGBE_ETH_LENGTH_OF_ADDRESS *
+	adapter->mta = malloc(sizeof(*adapter->mta) *
 	    MAX_NUM_MULTICAST_ADDRESSES, M_DEVBUF, M_NOWAIT);
 	if (adapter->mta == NULL) {
 		device_printf(dev, "Can not allocate multicast setup array\n");
@@ -2025,7 +2025,7 @@ static void
 ixgbe_set_multi(struct adapter *adapter)
 {
 	u32	fctrl;
-	u8	*mta;
+	struct ixgbe_multicast_addr *mta;
 	u8	*update_ptr;
 	struct	ifmultiaddr *ifma;
 	int	mcnt = 0;
@@ -2034,8 +2034,7 @@ ixgbe_set_multi(struct adapter *adapter)
 	IOCTL_DEBUGOUT("ixgbe_set_multi: begin");
 
 	mta = adapter->mta;
-	bzero(mta, sizeof(u8) * IXGBE_ETH_LENGTH_OF_ADDRESS *
-	    MAX_NUM_MULTICAST_ADDRESSES);
+	bzero(mta, sizeof(*mta) * MAX_NUM_MULTICAST_ADDRESSES);
 
 #if __FreeBSD_version < 800000
 	IF_ADDR_LOCK(ifp);
@@ -2048,8 +2047,8 @@ ixgbe_set_multi(struct adapter *adapter)
 		if (mcnt == MAX_NUM_MULTICAST_ADDRESSES)
 			break;
 		bcopy(LLADDR((struct sockaddr_dl *) ifma->ifma_addr),
-		    &mta[mcnt * IXGBE_ETH_LENGTH_OF_ADDRESS],
-		    IXGBE_ETH_LENGTH_OF_ADDRESS);
+		    mta[mcnt].addr, IXGBE_ETH_LENGTH_OF_ADDRESS);
+		mta[mcnt].vmdq = adapter->pf_rx_pool;
 		mcnt++;
 	}
 #if __FreeBSD_version < 800000
@@ -2072,7 +2071,7 @@ ixgbe_set_multi(struct adapter *adapter)
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, fctrl);
 
 	if (mcnt < MAX_NUM_MULTICAST_ADDRESSES) {
-		update_ptr = mta;
+		update_ptr = (u8*)mta;
 		ixgbe_update_mc_addr_list(&adapter->hw,
 		    update_ptr, mcnt, ixgbe_mc_array_itr, TRUE);
 	}
@@ -2088,13 +2087,13 @@ ixgbe_set_multi(struct adapter *adapter)
 static u8 *
 ixgbe_mc_array_itr(struct ixgbe_hw *hw, u8 **update_ptr, u32 *vmdq)
 {
-	u8 *addr = *update_ptr;
-	u8 *newptr;
-	*vmdq = 0;
+	struct ixgbe_multicast_addr *mta;
 
-	newptr = addr + IXGBE_ETH_LENGTH_OF_ADDRESS;
-	*update_ptr = newptr;
-	return addr;
+	mta = (struct ixgbe_multicast_addr *)*update_ptr;
+	*vmdq = mta->vmdq;
+
+	*update_ptr = (u8*)(mta + 1);;
+	return (mta->addr);
 }
 
 static void

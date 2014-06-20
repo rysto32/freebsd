@@ -411,6 +411,12 @@ struct ixgbe_vf {
 	uint16_t		api_ver;
 };
 
+struct ixgbe_multicast_addr
+{
+        u8 addr[IXGBE_ETH_LENGTH_OF_ADDRESS];
+        u32 vmdq;
+};
+
 /* Our adapter structure */
 struct adapter {
 	struct ifnet		*ifp;
@@ -501,7 +507,7 @@ struct adapter {
 	u32			num_rx_desc;
 
 	/* Multicast array memory */
-	u8			*mta;
+	struct ixgbe_multicast_addr *mta;
 
 
 	/* Misc stats maintained by the driver */
@@ -519,7 +525,6 @@ struct adapter {
 	struct ixgbe_vf		*vfs;
 	int			vf_max_frame_size;
 };
-
 
 /* Precision Time Sync (IEEE 1588) defines */
 #define ETHERTYPE_IEEE1588      0x88F7
