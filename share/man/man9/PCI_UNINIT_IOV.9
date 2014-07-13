@@ -47,8 +47,7 @@ When this method is called, the PF driver must release any SR-IOV-related
 resources that it has allocated and disable any device-specific SR-IOV
 configuration in the device.
 .Pp
-It is guaranteed that this method will only be called following a successful
-call to
+This method will only be called following a successful call to
 .Xr PCI_INIT_IOV .
 It is not guaranteed that
 .Xr PCI_ADD_VF

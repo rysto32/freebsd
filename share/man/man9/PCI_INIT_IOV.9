@@ -62,22 +62,21 @@ had a default value set in the PF schema are guaranteed to be present in
 Configuration parameters that were neither set as required nor were given a
 default value are optional and may or may not be present in
 .Fa pf_config .
-It is guaranteed that
 .Fa pf_config
 will not contain any configuration parameters that were not specified in the PF
 schema.
-It is guaranteed that all configuration parameters will have the correct type
-and are in the range of valid values specified in the schema.
+All configuration parameters will have the correct type and are in the range of
+valid values specified in the schema.
 .Pp
-If this method returns successfully, then it is guaranteed that this method will
-not be called again on the same device until after a call to
+If this method returns successfully, then this method will not be called again
+on the same device until after a call to
 .Xr PCI_UNINIT_IOV .
 .Sh RETURN VALUES
-This method returns 0 on success, otherwise an appropriate error is returned.
+Returns 0 on success, otherwise an appropriate error is returned.
 If this method returns an error then the SR-IOV configuration will be aborted
 and no VFs will be created.
 .Sh SEE ALSO
-.Xr nv 3,
+.Xr nv 9 ,
 .Xr pci 9 ,
 .Xr pci_iov_schema 9 ,
 .Xr PCI_ADD_VF 9 ,
