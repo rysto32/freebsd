@@ -47,8 +47,8 @@ struct pcicfg_iov {
 	uint32_t iov_flags;
 };
 
-#define	IOV_RMAN_INITED	(1 << 0)
-#define	IOV_BUSY	(1 << 1)
+#define	IOV_RMAN_INITED		0x0001
+#define	IOV_BUSY		0x0002
 
 #endif
 
