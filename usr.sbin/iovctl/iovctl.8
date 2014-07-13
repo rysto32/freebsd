@@ -46,14 +46,17 @@
 .Sh DESCRIPTION
 The
 .Nm
-utility creates or destroys PCI Single-Root I/O Virtualization (SR-IOV) Virtual
-Functions (VFs).
+utility creates or destroys PCI Single-Root I/O Virtualization
+.Pq SR-IOV
+Virtual Functions
+.Po VFs Pc .
 When invoked with the
 .Fl C
 flag,
 .Nm
-creates VFs as children of the Physical Function (PF) configured in the
-specified configuration file.
+creates VFs as children of the Physical Function
+.Pq PF
+configured in the specified configuration file.
 When invoked with the
 .Fl D
 flag,
@@ -117,4 +120,4 @@ a given PF device.
 .Xr rc.conf 5
 .Sh AUTHORS
 This manual page was written by
-.An Ryan Stone Aq rstone@FreeBSD.org .
+.An Ryan Stone Aq Mt rstone@FreeBSD.org .
