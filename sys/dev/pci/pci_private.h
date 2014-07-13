@@ -51,6 +51,8 @@ extern int 	pci_do_power_suspend;
 void		pci_add_children(device_t dev, int domain, int busno,
 		    size_t dinfo_size);
 void		pci_add_child(device_t bus, struct pci_devinfo *dinfo);
+device_t	pci_add_iov_child(device_t bus, size_t dinfo_size,
+		    uint16_t rid, uint16_t vid, uint16_t did);
 void		pci_add_resources(device_t bus, device_t dev, int force,
 		    uint32_t prefetchmask);
 int		pci_attach_common(device_t dev);
@@ -159,8 +161,5 @@ struct resource *pci_vf_alloc_mem_resource(device_t dev, device_t child,
 		    u_int flags);
 int		pci_vf_release_mem_resource(device_t dev, device_t child,
 		    int rid, struct resource *r);
-
-device_t	pci_add_iov_child(device_t bus, size_t size, uint16_t rid,
-		    uint16_t vid, uint16_t did, const char *driver);
 
 #endif /* _PCI_PRIVATE_H_ */
