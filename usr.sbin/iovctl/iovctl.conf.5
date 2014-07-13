@@ -30,9 +30,7 @@
 .Os
 .Sh NAME
 .Nm iovctl.conf
-.Nd
-.Xr iovctl 8
-configuration file
+.Nd IOVCTL configuration file
 .Sh DESCRIPTION
 The
 .Nm
@@ -137,8 +135,8 @@ passthrough device and it will not be accessible from the host OS.
 The default value of this parameter is false.
 .El
 .Pp
-See the manual page of the PF driver for your device for documentation of
-device-specific configuration parameters.
+See the PF driver manual page for configuration parameters specific to
+particular hardware.
 .Sh EXAMPLES
 This sample file will create 3 VFs as children of the ix0 device.
 VF-1 and VF-2 are set as
