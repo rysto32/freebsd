@@ -52,13 +52,13 @@ When invoked with the
 .Fl C
 flag,
 .Nm
-will create VFs as children of the
-Physical Function (PF) configured in the specified configuration file.
+creates VFs as children of the Physical Function (PF) configured in the
+specified configuration file.
 When invoked with the
 .Fl D
 flag,
 .Nm
-will destroy all VFs that are children of the specified device.
+destroys all VFs that are children of the specified device.
 Available PF devices can be seen in
 .Pa /dev/iov/ .
 .Pp
@@ -97,8 +97,8 @@ See
 .Xr iovctl.conf
 for a description of the config file format and documentation of the
 configuration parameters that apply to all PF drivers.
-See the manual page for your PF driver for documentation of configuration
-parameters that are specific to your hardware.
+See the PF driver manual page for configuration parameters specific to
+particular hardware.
 .It Fl n
 Perform a dry-run.
 Perform all validation of the specified action and print what would be done,
