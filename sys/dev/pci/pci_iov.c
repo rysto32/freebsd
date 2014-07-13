@@ -560,7 +560,6 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const nvlist_t *config,
 	struct pcicfg_iov *iov;
 	struct pci_devinfo *vfinfo;
 	size_t size;
-	const char *driver;
 	int i, error;
 	uint16_t vid, did, next_rid;
 
@@ -586,9 +585,7 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const nvlist_t *config,
 		 * VFs.
 		 */
 		if (nvlist_get_bool(iov_config, "passthrough"))
-			driver = "ppt";
-		else
-			driver = NULL;
+			device_set_devclass(vf, "ppt");
 
 		vfinfo = device_get_ivars(vf);
 
