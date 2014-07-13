@@ -49,7 +49,7 @@ struct pcicfg_iov {
 };
 
 #define	IOV_RMAN_INITED		0x0001
-#define	IOV_BUSY	(1 << 1)
+#define	IOV_BUSY		0x0002
 
 #endif
 
