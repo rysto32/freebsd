@@ -40,9 +40,11 @@
 .Sh DESCRIPTION
 The
 .Fn PCI_UNINIT_IOV
-method is called by the PCI Single-Root I/O Virtualization (SR-IOV)
+method is called by the PCI Single-Root I/O Virtualization
+.Pq SR-IOV
 infrastructure when the user requests that SR-IOV be disabled on a Physical
-Function (PF).
+Function
+.Po PF Pc .
 When this method is called, the PF driver must release any SR-IOV-related
 resources that it has allocated and disable any device-specific SR-IOV
 configuration in the device.
@@ -51,7 +53,9 @@ This method will only be called following a successful call to
 .Xr PCI_INIT_IOV .
 It is not guaranteed that
 .Xr PCI_ADD_VF
-will have been called for any Virtual Function (VF) after the call to
+will have been called for any Virtual Function
+.Pq VF
+after the call to
 .Xr PCI_INIT_IOV
 and before the call to
 .Nm .
