@@ -253,8 +253,9 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const char *driver,
 	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
 
 	for (i = 0; i < iov->iov_num_vfs; i++, next_rid += rid_stride) {
-		vf = pci_add_iov_child(bus, sizeof(*vfinfo), next_rid, vid, did,
-		    driver);
+		vf = PCI_CREATE_IOV_CHILD(bus, next_rid, vid, did);
+		if (vf == NULL)
+			break;
 
 		vfinfo = device_get_ivars(vf);
 
@@ -352,7 +353,7 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	IOV_WRITE(dinfo, PCIR_SRIOV_CTL, iov_ctl, 2);
 
 	/* Per specification, we must wait 100ms before accessing VFs. */
-	msleep(iov, &Giant, 0, "iov", hz/10);
+	pause("iov", roundup(hz, 10));
 	pci_iov_enumerate_vfs(dinfo, driver, first_rid, rid_stride);
 	mtx_unlock(&Giant);
 
