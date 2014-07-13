@@ -41,15 +41,12 @@
 .Fn PCI_INIT_IOV "device_t dev" "uint16_t num_vfs" "const nvlist_t *pf_config"
 .Sh DESCRIPTION
 The
-.Nm
-method is called by the PCI Single-Root I/O Virtualization
-.Pq SR-IOV
+.Fn PCI_INIT_IOV
+method is called by the PCI Single-Root I/O Virtualization (SR-IOV)
 infrastucture when the user requests that SR-IOV be enabled on a Physical
-Function
-.Po PF Pc .
-The number of Virtual Functions
-.Pq VFs
-that will be created is passed to this method in the
+Function (PF).
+The number of Virtual Functions (VFs) that will be created is passed to this
+method in the
 .Fa num_vfs
 argument.
 .Pp
@@ -86,4 +83,4 @@ and no VFs will be created.
 .Xr PCI_UNINIT_IOV 9
 .Sh AUTHORS
 This manual page was written by
-.An Ryan Stone Aq rstone@FreeBSD.org .
+.An Ryan Stone Aq Mt rstone@FreeBSD.org .
