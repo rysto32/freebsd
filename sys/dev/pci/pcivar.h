@@ -149,7 +149,7 @@ struct pcicfg_vf {
        int index;
 };
 
-#define PCICFG_VF (1 << 0) /* Device is an SR-IOV Virtual Function */
+#define	PCICFG_VF	0x0001 /* Device is an SR-IOV Virtual Function */
 
 /* config header information common to all header types */
 typedef struct pcicfg {
