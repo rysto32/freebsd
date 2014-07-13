@@ -441,8 +441,11 @@ then the function will fail with
 .Pp
 The
 .Fn pci_iov_attach
-function is used to advertise that the given device (and associated device
-driver) supports PCI Single-Root I/O Virtualization (SR-IOV).
+function is used to advertise that the given device
+.Pq and associated device driver
+supports PCI Single-Root I/O Virtualization
+.Pq SR-IOV
+.
 A driver that supports SR-IOV must implement the
 .Xr PCI_INIT_IOV 9 ,
 .Xr PCI_ADD_VF 9
@@ -459,8 +462,11 @@ The
 and
 .Fa vf_schema
 parameters are used to define what device-specific configuration parameters the
-device driver accepts when SR-IOV is enabled for the Physical Function (PF) and
-for individual Virtual Functions (VFs) respectively.
+device driver accepts when SR-IOV is enabled for the Physical Function
+.Pq PF
+and for individual Virtual Functions
+.Pq VFs
+respectively.
 See
 .Xr pci_iov_schema 9
 for details on how to construct the schema.
