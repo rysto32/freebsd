@@ -444,8 +444,7 @@ The
 function is used to advertise that the given device
 .Pq and associated device driver
 supports PCI Single-Root I/O Virtualization
-.Pq SR-IOV
-.
+.Po SR-IOV Pc .
 A driver that supports SR-IOV must implement the
 .Xr PCI_INIT_IOV 9 ,
 .Xr PCI_ADD_VF 9
@@ -471,20 +470,20 @@ See
 .Xr pci_iov_schema 9
 for details on how to construct the schema.
 If either the
-.pa pf_schema
+.Pa pf_schema
 or
-.pa vf_schema
+.Pa vf_schema
 is invalid or specifies parameter names that conflict with parameter names that
 are already in use,
 .Fn pci_iov_attach
 will return an error and SR-IOV will not be available on the PF device.
 If a driver does not accept configuration parameters for either the PF device
 or the VF devices, the driver must pass an empty schema for that device.
-The SR-IOV always takes ownership of the
+The SR-IOV instructure takes ownership of the
 .Fa pf_schema
 and
 .Fa vf_schema
-and is always responsible for freeing them.
+and is responsible for freeing them.
 The driver must never free the schemas itself.
 .Pp
 The
