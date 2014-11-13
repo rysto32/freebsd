@@ -47,7 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mount.h>
 #include <sys/namei.h>
 #include <sys/proc.h>
-#include <sys/rwlock.h>
+#include <sys/rmlock.h>
 #include <sys/sdt.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
@@ -148,14 +148,24 @@ SYSCTL_UINT(_vfs, OID_AUTO, ncsizefactor, CTLFLAG_RW, &ncsizefactor, 0,
 
 struct nchstats	nchstats;		/* cache effectiveness statistics */
 
-static struct rwlock cache_lock;
-RW_SYSINIT(vfscache, &cache_lock, "Name Cache");
+static struct rmlock cache_lock;
+RM_SYSINIT(vfscache, &cache_lock, "Name Cache");
 
-#define	CACHE_UPGRADE_LOCK()	rw_try_upgrade(&cache_lock)
-#define	CACHE_RLOCK()		rw_rlock(&cache_lock)
-#define	CACHE_RUNLOCK()		rw_runlock(&cache_lock)
-#define	CACHE_WLOCK()		rw_wlock(&cache_lock)
-#define	CACHE_WUNLOCK()		rw_wunlock(&cache_lock)
+/*
+ * The abstract way to assert that the write lock is held by the caller in routines that require it to be held.
+ */
+#define	CACHE_WASSERT(remark_string)	KASSERT(rm_wowned(&cache_lock), (remark_string));
+/*
+ * Using rm_lock (read mostly) so that priority elevation will be possible.
+ * An rmlock cannot be upgraded at this rev of the OS. 
+ * Report the inability to upgrade so that the existing legacy code in this file will do it the slow way.
+ */
+#define	CACHE_UPGRADE_LOCK()	(0)
+
+#define	CACHE_RLOCK(tracker)	rm_rlock(&cache_lock, (tracker))
+#define	CACHE_RUNLOCK(tracker)	rm_runlock(&cache_lock, (tracker))
+#define	CACHE_WLOCK()		rm_wlock(&cache_lock)
+#define	CACHE_WUNLOCK()		rm_wunlock(&cache_lock)
 
 /*
  * UMA zones for the VFS cache.
@@ -227,8 +237,13 @@ SYSCTL_OPAQUE(_vfs_cache, OID_AUTO, nchstats, CTLFLAG_RD | CTLFLAG_MPSAFE,
 
 
 static void cache_zap(struct namecache *ncp);
+/*
+ * If vn_vptocnp_locked returns 0, the lock is still held. If it returns an error code,
+ * then it has released the lock.
+ * It might release and re-acquire the lock.
+ */
 static int vn_vptocnp_locked(struct vnode **vp, struct ucred *cred, char *buf,
-    u_int *buflen);
+    u_int *buflen, struct rm_priotracker *parent_rm_tracker);
 static int vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
     char *buf, char **retbuf, u_int buflen);
 
@@ -249,6 +264,7 @@ SYSCTL_NODE(_debug, OID_AUTO, hashstat, CTLFLAG_RW, NULL, "hash table stats");
 static int
 sysctl_debug_hashstat_rawnchash(SYSCTL_HANDLER_ARGS)
 {
+	struct rm_priotracker rm_tracker;
 	int error;
 	struct nchashhead *ncpp;
 	struct namecache *ncp;
@@ -261,12 +277,12 @@ sysctl_debug_hashstat_rawnchash(SYSCTL_HANDLER_ARGS)
 
 	/* Scan hash tables for applicable entries */
 	for (ncpp = nchashtbl; n_nchash > 0; n_nchash--, ncpp++) {
-		CACHE_RLOCK();
+		CACHE_RLOCK(&rm_tracker);
 		count = 0;
 		LIST_FOREACH(ncp, ncpp, nc_hash) {
 			count++;
 		}
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(&rm_tracker);
 		error = SYSCTL_OUT(req, &count, sizeof(count));
 		if (error)
 			return (error);
@@ -280,6 +296,7 @@ SYSCTL_PROC(_debug_hashstat, OID_AUTO, rawnchash, CTLTYPE_INT|CTLFLAG_RD|
 static int
 sysctl_debug_hashstat_nchash(SYSCTL_HANDLER_ARGS)
 {
+	struct rm_priotracker rm_tracker;
 	int error;
 	struct nchashhead *ncpp;
 	struct namecache *ncp;
@@ -296,11 +313,11 @@ sysctl_debug_hashstat_nchash(SYSCTL_HANDLER_ARGS)
 	/* Scan hash tables for applicable entries */
 	for (ncpp = nchashtbl; n_nchash > 0; n_nchash--, ncpp++) {
 		count = 0;
-		CACHE_RLOCK();
+		CACHE_RLOCK(&rm_tracker);
 		LIST_FOREACH(ncp, ncpp, nc_hash) {
 			count++;
 		}
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(&rm_tracker);
 		if (count)
 			used++;
 		if (maxlength < count)
@@ -339,7 +356,8 @@ cache_zap(ncp)
 {
 	struct vnode *vp;
 
-	rw_assert(&cache_lock, RA_WLOCKED);
+	CACHE_WASSERT("Attempt to zap vfs cache without wlock");
+
 	CTR2(KTR_VFS, "cache_zap(%p) vp %p", ncp, ncp->nc_vp);
 #ifdef KDTRACE_HOOKS
 	if (ncp->nc_vp != NULL) {
@@ -399,6 +417,7 @@ cache_lookup(dvp, vpp, cnp)
 	struct vnode **vpp;
 	struct componentname *cnp;
 {
+	struct rm_priotracker rm_tracker;
 	struct namecache *ncp;
 	u_int32_t hash;
 	int error, ltype, wlocked;
@@ -408,7 +427,7 @@ cache_lookup(dvp, vpp, cnp)
 		return (0);
 	}
 retry:
-	CACHE_RLOCK();
+	CACHE_RLOCK(&rm_tracker);
 	wlocked = 0;
 	numcalls++;
 	error = 0;
@@ -538,7 +557,7 @@ wlock:
 	 * We need to update the cache after our lookup, so upgrade to
 	 * a write lock and retry the operation.
 	 */
-	CACHE_RUNLOCK();
+	CACHE_RUNLOCK(&rm_tracker);
 	CACHE_WLOCK();
 	numupgrades++;
 	wlocked = 1;
@@ -554,7 +573,7 @@ success:
 		if (wlocked)
 			CACHE_WUNLOCK();
 		else
-			CACHE_RUNLOCK();
+			CACHE_RUNLOCK(&rm_tracker);
 		/*
 		 * When we lookup "." we still can be asked to lock it
 		 * differently...
@@ -583,7 +602,7 @@ success:
 	if (wlocked)
 		CACHE_WUNLOCK();
 	else
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(&rm_tracker);
 	error = vget(*vpp, cnp->cn_lkflags | LK_INTERLOCK, cnp->cn_thread);
 	if (cnp->cn_flags & ISDOTDOT) {
 		vn_lock(dvp, ltype | LK_RETRY);
@@ -608,7 +627,7 @@ unlock:
 	if (wlocked)
 		CACHE_WUNLOCK();
 	else
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(&rm_tracker);
 	return (0);
 }
 
@@ -1065,10 +1084,11 @@ vn_fullpath_global(struct thread *td, struct vnode *vn,
 int
 vn_vptocnp(struct vnode **vp, struct ucred *cred, char *buf, u_int *buflen)
 {
+	struct rm_priotracker rm_tracker;
 	int error;
 
-	CACHE_RLOCK();
-	error = vn_vptocnp_locked(vp, cred, buf, buflen);
+	CACHE_RLOCK(&rm_tracker);
+	error = vn_vptocnp_locked(vp, cred, buf, buflen, &rm_tracker);
 	if (error == 0) {
 		/*
 		 * vn_vptocnp_locked() dropped hold acquired by
@@ -1077,14 +1097,18 @@ vn_vptocnp(struct vnode **vp, struct ucred *cred, char *buf, u_int *buflen)
 		 * re-hold the result.
 		 */
 		vhold(*vp);
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(&rm_tracker);
 	}
 	return (error);
 }
 
+/*
+ * If vn_vptocnp_locked returns an error code, the RLOCK has already been released.
+ * If it returns 0, the RLOCK is still held.
+ */
 static int
 vn_vptocnp_locked(struct vnode **vp, struct ucred *cred, char *buf,
-    u_int *buflen)
+    u_int *buflen, struct rm_priotracker *parent_rm_tracker)
 {
 	struct vnode *dvp;
 	struct namecache *ncp;
@@ -1096,7 +1120,7 @@ vn_vptocnp_locked(struct vnode **vp, struct ucred *cred, char *buf,
 	}
 	if (ncp != NULL) {
 		if (*buflen < ncp->nc_nlen) {
-			CACHE_RUNLOCK();
+			CACHE_RUNLOCK(parent_rm_tracker);
 			numfullpathfail4++;
 			error = ENOMEM;
 			SDT_PROBE(vfs, namecache, fullpath, return, error,
@@ -1113,7 +1137,7 @@ vn_vptocnp_locked(struct vnode **vp, struct ucred *cred, char *buf,
 	SDT_PROBE(vfs, namecache, fullpath, miss, vp, 0, 0, 0, 0);
 
 	vhold(*vp);
-	CACHE_RUNLOCK();
+	CACHE_RUNLOCK(parent_rm_tracker);
 	vfslocked = VFS_LOCK_GIANT((*vp)->v_mount);
 	vn_lock(*vp, LK_SHARED | LK_RETRY);
 	error = VOP_VPTOCNP(*vp, &dvp, cred, buf, buflen);
@@ -1128,10 +1152,10 @@ vn_vptocnp_locked(struct vnode **vp, struct ucred *cred, char *buf,
 	}
 
 	*vp = dvp;
-	CACHE_RLOCK();
+	CACHE_RLOCK(parent_rm_tracker);
 	if ((*vp)->v_iflag & VI_DOOMED) {
 		/* forced unmount */
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(parent_rm_tracker);
 		vdrop(*vp);
 		error = ENOENT;
 		SDT_PROBE(vfs, namecache, fullpath, return, error, vp,
@@ -1150,6 +1174,7 @@ static int
 vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
     char *buf, char **retbuf, u_int buflen)
 {
+	struct rm_priotracker rm_tracker;
 	int error, slash_prefixed;
 #ifdef KDTRACE_HOOKS
 	struct vnode *startvp = vp;
@@ -1162,13 +1187,13 @@ vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
 
 	SDT_PROBE(vfs, namecache, fullpath, entry, vp, 0, 0, 0, 0);
 	numfullpathcalls++;
-	CACHE_RLOCK();
+	CACHE_RLOCK(&rm_tracker);
 	if (vp->v_type != VDIR) {
-		error = vn_vptocnp_locked(&vp, td->td_ucred, buf, &buflen);
+		error = vn_vptocnp_locked(&vp, td->td_ucred, buf, &buflen, &rm_tracker);
 		if (error)
 			return (error);
 		if (buflen == 0) {
-			CACHE_RUNLOCK();
+			CACHE_RUNLOCK(&rm_tracker);
 			return (ENOMEM);
 		}
 		buf[--buflen] = '/';
@@ -1177,7 +1202,7 @@ vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
 	while (vp != rdir && vp != rootvnode) {
 		if (vp->v_vflag & VV_ROOT) {
 			if (vp->v_iflag & VI_DOOMED) {	/* forced unmount */
-				CACHE_RUNLOCK();
+				CACHE_RUNLOCK(&rm_tracker);
 				error = ENOENT;
 				SDT_PROBE(vfs, namecache, fullpath, return,
 				    error, vp, NULL, 0, 0);
@@ -1187,18 +1212,18 @@ vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
 			continue;
 		}
 		if (vp->v_type != VDIR) {
-			CACHE_RUNLOCK();
+			CACHE_RUNLOCK(&rm_tracker);
 			numfullpathfail1++;
 			error = ENOTDIR;
 			SDT_PROBE(vfs, namecache, fullpath, return,
 			    error, vp, NULL, 0, 0);
 			break;
 		}
-		error = vn_vptocnp_locked(&vp, td->td_ucred, buf, &buflen);
+		error = vn_vptocnp_locked(&vp, td->td_ucred, buf, &buflen, &rm_tracker);
 		if (error)
 			break;
 		if (buflen == 0) {
-			CACHE_RUNLOCK();
+			CACHE_RUNLOCK(&rm_tracker);
 			error = ENOMEM;
 			SDT_PROBE(vfs, namecache, fullpath, return, error,
 			    startvp, NULL, 0, 0);
@@ -1211,7 +1236,7 @@ vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
 		return (error);
 	if (!slash_prefixed) {
 		if (buflen == 0) {
-			CACHE_RUNLOCK();
+			CACHE_RUNLOCK(&rm_tracker);
 			numfullpathfail4++;
 			SDT_PROBE(vfs, namecache, fullpath, return, ENOMEM,
 			    startvp, NULL, 0, 0);
@@ -1220,7 +1245,7 @@ vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
 		buf[--buflen] = '/';
 	}
 	numfullpathfound++;
-	CACHE_RUNLOCK();
+	CACHE_RUNLOCK(&rm_tracker);
 
 	SDT_PROBE(vfs, namecache, fullpath, return, 0, startvp, buf + buflen,
 	    0, 0);
@@ -1231,20 +1256,22 @@ vn_fullpath1(struct thread *td, struct vnode *vp, struct vnode *rdir,
 int
 vn_commname(struct vnode *vp, char *buf, u_int buflen)
 {
+	struct rm_priotracker rm_tracker;
 	struct namecache *ncp;
+
 	int l;
 
-	CACHE_RLOCK();
+	CACHE_RLOCK(&rm_tracker);
 	TAILQ_FOREACH(ncp, &vp->v_cache_dst, nc_dst)
 		if ((ncp->nc_flag & NCF_ISDOTDOT) == 0)
 			break;
 	if (ncp == NULL) {
-		CACHE_RUNLOCK();
+		CACHE_RUNLOCK(&rm_tracker);
 		return (ENOENT);
 	}
 	l = min(ncp->nc_nlen, buflen - 1);
 	memcpy(buf, ncp->nc_name, l);
-	CACHE_RUNLOCK();
+	CACHE_RUNLOCK(&rm_tracker);
 	buf[l] = '\0';
 	return (0);
 }
