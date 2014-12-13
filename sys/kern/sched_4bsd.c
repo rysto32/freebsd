@@ -1251,6 +1251,17 @@ sched_pickcpu(struct thread *td)
 }
 #endif
 
+static void
+sched_add_to_runq(struct thread *td, struct td_sched *ts, int cpu, int flags)
+{
+
+	if ((td->td_flags & TDF_NOLOAD) == 0)
+		sched_load_add();
+	runq_add(ts->ts_runq, td, flags);
+	if (cpu != NOCPU)
+		runq_length[cpu]++;
+}
+
 void
 sched_add(struct thread *td, int flags)
 #ifdef SMP
@@ -1325,7 +1336,9 @@ sched_add(struct thread *td, int flags)
 
 	cpuid = PCPU_GET(cpuid);
 	if (single_cpu && cpu != cpuid) {
+		sched_add_to_runq(td, ts, cpu, flags);
 	        kick_other_cpu(td->td_priority, cpu);
+		return;
 	} else {
 		if (!single_cpu) {
 			tidlemsk = idle_cpus_mask;
@@ -1346,11 +1359,7 @@ sched_add(struct thread *td, int flags)
 		}
 	}
 
-	if ((td->td_flags & TDF_NOLOAD) == 0)
-		sched_load_add();
-	runq_add(ts->ts_runq, td, flags);
-	if (cpu != NOCPU)
-		runq_length[cpu]++;
+	sched_add_to_runq(td, ts, cpu, flags);
 }
 #else /* SMP */
 {
