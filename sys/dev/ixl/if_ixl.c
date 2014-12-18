@@ -3156,6 +3156,30 @@ ixl_add_vsi_sysctls(struct ixl_pf *pf, struct ixl_vsi *vsi,
 	ixl_add_sysctls_eth_stats(ctx, vsi_list, &vsi->eth_stats);
 }
 
+static int
+ixl_sysctl_tx_avail(SYSCTL_HANDLER_ARGS)
+{
+	struct tx_ring *txr;
+	int avail;
+
+	txr = arg1;
+	avail = txr->avail;
+
+	return (sysctl_handle_int(oidp, &avail, 0, req));
+}
+
+static int
+ixl_sysctl_reg(SYSCTL_HANDLER_ARGS)
+{
+	struct ixl_queue *que;
+	int tail;
+
+	que = arg1;
+	tail = rd32(que->ifx->hw, arg2);
+
+	return (sysctl_handle_int(oidp, &tail, 0, req));
+}
+
 static void
 ixl_add_hw_stats(struct ixl_pf *pf)
 {
@@ -3231,6 +3255,21 @@ ixl_add_hw_stats(struct ixl_pf *pf)
 		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "rx_bytes",
 				CTLFLAG_RD, &(rxr->rx_bytes),
 				"Queue Bytes Received");
+
+		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "tx_avail",
+		    CTLFLAG_RD | CTLTYPE_INT, txr, 0,
+		    ixl_sysctl_tx_avail, "I",
+		    "Number of available tx descriptors");
+
+		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "tx_tail",
+		    CTLFLAG_RD | CTLTYPE_INT, &queues[q],
+		    I40E_QTX_TAIL(txr->que->me), ixl_sysctl_reg, "I",
+		    "Value of TX queue tail");
+
+		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "rx_tail",
+		    CTLFLAG_RD | CTLTYPE_INT, &queues[q],
+		    I40E_QRX_TAIL(rxr->que->me), ixl_sysctl_reg, "I",
+		    "Value of RX queue tail");
 	}
 
 	/* MAC stats */
