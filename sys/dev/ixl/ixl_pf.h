@@ -67,13 +67,14 @@ struct ixl_pf {
 	int			advertised_speed;
 
 	/*
-	** VSI - Stations: 
+	** Network interfaces
 	**   These are the traffic class holders, and
 	**   will have a stack interface and queues 
 	**   associated with them.
-	** NOTE: for now using just one, so embed it.
+	** NOTE: The PF has only a single interface,
+	**   so it is embedded in the PF struct.
 	*/
-	struct ixl_vsi		vsi;
+	struct ixl_ifx		ifx;
 
 	/* Misc stats maintained by the driver */
 	u64			watchdog_events;
