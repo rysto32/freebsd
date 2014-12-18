@@ -443,6 +443,7 @@ struct ixl_queue {
 	u64			dropped_pkts;
 };
 
+SLIST_HEAD(i40e_ftl_head, ixl_mac_filter);
 struct ixl_vsi {
 	void			*back;
 	uint16_t		seid;
