@@ -76,8 +76,6 @@ nvlist_xdump(const nvlist_t *nvl, int fd, int level)
 {
 	nvpair_t *nvp;
 
-	PJDLOG_ASSERT(level < NVLIST_MAX_LEVEL);
-
 	if (nvlist_error(nvl) != 0) {
 		dprintf(fd, "%*serror: %d\n", level * 4, "",
 		    nvlist_error(nvl));
@@ -297,7 +295,7 @@ nvlist_recv(int sock)
 			goto out;
 	}
 
-	nvl = nvlist_xunpack(buf, size, fds, nfds, 0);
+	nvl = nvlist_xunpack(buf, size, fds, nfds);
 	if (nvl == NULL)
 		goto out;
 
