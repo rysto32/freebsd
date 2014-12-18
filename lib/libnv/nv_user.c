@@ -374,7 +374,7 @@ nvpair_pack_descriptor(const nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
 }
 
 const unsigned char *
-nvpair_unpack_descriptor(int flags, nvpair_t *nvp, const unsigned char *ptr,
+nvpair_unpack_descriptor(bool isbe, nvpair_t *nvp, const unsigned char *ptr,
     size_t *leftp, const int *fds, size_t nfds)
 {
 	int64_t idx;
@@ -390,7 +390,7 @@ nvpair_unpack_descriptor(int flags, nvpair_t *nvp, const unsigned char *ptr,
 		return (NULL);
 	}
 
-	if ((flags & NV_FLAG_BIG_ENDIAN) != 0)
+	if (isbe)
 		idx = be64dec(ptr);
 	else
 		idx = le64dec(ptr);
