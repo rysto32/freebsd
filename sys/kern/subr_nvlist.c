@@ -341,19 +341,6 @@ nvlist_clone(const nvlist_t *nvl)
 	return (newnvl);
 }
 
-static bool
-nvlist_dump_error_check(const nvlist_t *nvl, int fd, int level)
-{
-
-	if (nvlist_error(nvl) != 0) {
-		dprintf(fd, "%*serror: %d\n", level * 4, "",
-		    nvlist_error(nvl));
-		return (true);
-	}
-
-	return (false);
-}
-
 /*
  * The function obtains size of the nvlist after nvlist_pack().
  */
