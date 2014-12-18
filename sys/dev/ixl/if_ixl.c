@@ -590,7 +590,7 @@ ixl_attach(device_t dev)
 	}
 
 	/* Set up host memory cache */
-	error = i40e_init_lan_hmc(hw, vsi->num_queues, vsi->num_queues, 0, 0);
+	error = i40e_init_lan_hmc(hw, ifx->vsi.num_queues, ifx->vsi.num_queues, 0, 0);
 	if (error) {
 		device_printf(dev, "init_lan_hmc failed: %d\n", error);
 		goto err_get_cap;
@@ -2337,32 +2337,32 @@ early:
 }
 
 static void
-ixl_add_ifmedia(struct ixl_vsi *vsi, u32 phy_type)
+ixl_add_ifmedia(struct ixl_ifx *ifx, u32 phy_type)
 {
 	/* Display supported media types */
 	if (phy_type & (1 << I40E_PHY_TYPE_100BASE_TX))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_100_TX, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_100_TX, 0, NULL);
 
 	if (phy_type & (1 << I40E_PHY_TYPE_1000BASE_T))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_1000_T, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_1000_T, 0, NULL);
 
 	if (phy_type & (1 << I40E_PHY_TYPE_10GBASE_CR1_CU) ||
 	    phy_type & (1 << I40E_PHY_TYPE_10GBASE_SFPP_CU))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_10G_TWINAX, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_10G_TWINAX, 0, NULL);
 	if (phy_type & (1 << I40E_PHY_TYPE_10GBASE_SR))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_10G_SR, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_10G_SR, 0, NULL);
 	if (phy_type & (1 << I40E_PHY_TYPE_10GBASE_LR))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_10G_LR, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_10G_LR, 0, NULL);
 	if (phy_type & (1 << I40E_PHY_TYPE_10GBASE_T))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_10G_T, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_10G_T, 0, NULL);
 
 	if (phy_type & (1 << I40E_PHY_TYPE_40GBASE_CR4_CU) ||
 	    phy_type & (1 << I40E_PHY_TYPE_40GBASE_CR4))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_40G_CR4, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_40G_CR4, 0, NULL);
 	if (phy_type & (1 << I40E_PHY_TYPE_40GBASE_SR4))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_40G_SR4, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_40G_SR4, 0, NULL);
 	if (phy_type & (1 << I40E_PHY_TYPE_40GBASE_LR4))
-		ifmedia_add(&vsi->media, IFM_ETHER | IFM_40G_LR4, 0, NULL);
+		ifmedia_add(&ifx->media, IFM_ETHER | IFM_40G_LR4, 0, NULL);
 }
 
 /*********************************************************************
@@ -2452,12 +2452,12 @@ ixl_setup_interface(device_t dev, struct ixl_ifx *ifx)
 		if (aq_error == I40E_ERR_UNKNOWN_PHY)
 			device_printf(dev, "Unknown PHY type detected!\n");
 		else
-			ixl_add_ifmedia(vsi, abilities_resp.phy_type);
+			ixl_add_ifmedia(ifx, abilities_resp.phy_type);
 	} else if (aq_error) {
 		device_printf(dev, "Error getting supported media types, err %d,"
 		    " AQ error %d\n", aq_error, hw->aq.asq_last_status);
 	} else
-		ixl_add_ifmedia(vsi, abilities_resp.phy_type);
+		ixl_add_ifmedia(ifx, abilities_resp.phy_type);
 
 	/* Use autoselect media by default */
 	ifmedia_add(&ifx->media, IFM_ETHER | IFM_AUTO, 0, NULL);
@@ -2489,7 +2489,6 @@ ixl_config_link(struct i40e_hw *hw)
 static int
 ixl_setup_vsi(struct ixl_ifx *ifx)
 {
-	struct ixl_pf	*pf;
 	struct i40e_hw	*hw = ifx->hw;
 	device_t 	dev = ifx->dev;
 	struct i40e_aqc_get_switch_config_resp *sw_config;
@@ -3334,7 +3333,6 @@ ixl_unregister_vlan(void *arg, struct ifnet *ifp, u16 vtag)
 	struct ixl_ifx	*ifx = ifp->if_softc;
 	struct i40e_hw	*hw = ifx->hw;
 	struct ixl_pf	*pf = (struct ixl_pf *)ifx->back;
-	fp_index_t fp_index;
 
 	if (ifp->if_softc !=  arg)
 		return;
