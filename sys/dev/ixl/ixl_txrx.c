@@ -61,22 +61,22 @@ static __inline void ixl_rx_input(struct rx_ring *, struct ifnet *,
 int
 ixl_mq_start(struct ifnet *ifp, struct mbuf *m)
 {
-	struct ixl_vsi		*vsi = ifp->if_softc;
+	struct ixl_ifx		*ifx = ifp->if_softc;
 	struct ixl_queue	*que;
 	struct tx_ring		*txr;
 	int 			err, i;
 
 	/* check if flowid is set */
 	if (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
-		i = m->m_pkthdr.flowid % vsi->num_queues;
+		i = m->m_pkthdr.flowid % ifx->vsi.num_queues;
 	else
-		i = curcpu % vsi->num_queues;
+		i = curcpu % ifx->vsi.num_queues;
 
 	/* Check for a hung queue and pick alternative */
-	if (((1 << i) & vsi->active_queues) == 0)
-		i = ffsl(vsi->active_queues);
+	if (((1 << i) & ifx->active_queues) == 0)
+		i = ffsl(ifx->active_queues);
 
-	que = &vsi->queues[i];
+	que = &ifx->queues[i];
 	txr = &que->txr;
 
 	err = drbr_enqueue(ifp, txr->br, m);
@@ -95,13 +95,13 @@ int
 ixl_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 {
 	struct ixl_queue	*que = txr->que;
-	struct ixl_vsi		*vsi = que->vsi;
+	struct ixl_ifx		*ifx = que->ifx;
         struct mbuf		*next;
         int			err = 0;
 
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
-	    vsi->link_active == 0)
+	    ifx->link_active == 0)
 		return (ENETDOWN);
 
 	/* Process the transmit queue */
@@ -134,8 +134,8 @@ ixl_deferred_mq_start(void *arg, int pending)
 {
 	struct ixl_queue	*que = arg;
         struct tx_ring		*txr = &que->txr;
-	struct ixl_vsi		*vsi = que->vsi;
-        struct ifnet		*ifp = vsi->ifp;
+	struct ixl_ifx		*ifx = que->ifx;
+        struct ifnet		*ifp = ifx->ifp;
         
 	IXL_TX_LOCK(txr);
 	if (!drbr_empty(ifp, txr->br))
@@ -149,10 +149,10 @@ ixl_deferred_mq_start(void *arg, int pending)
 void
 ixl_qflush(struct ifnet *ifp)
 {
-	struct ixl_vsi	*vsi = ifp->if_softc;
+	struct ixl_ifx	*ifx = ifp->if_softc;
 
-        for (int i = 0; i < vsi->num_queues; i++) {
-		struct ixl_queue *que = &vsi->queues[i];
+        for (int i = 0; i < ifx->vsi.num_queues; i++) {
+		struct ixl_queue *que = &ifx->queues[i];
 		struct tx_ring	*txr = &que->txr;
 		struct mbuf	*m;
 		IXL_TX_LOCK(txr);
@@ -203,8 +203,8 @@ ixl_tso_detect_sparse(struct mbuf *mp)
 static int
 ixl_xmit(struct ixl_queue *que, struct mbuf **m_headp)
 {
-	struct ixl_vsi		*vsi = que->vsi;
-	struct i40e_hw		*hw = vsi->hw;
+	struct ixl_ifx		*ifx = que->ifx;
+	struct i40e_hw		*hw = ifx->hw;
 	struct tx_ring		*txr = &que->txr;
 	struct ixl_tx_buf	*buf;
 	struct i40e_tx_desc	*txd = NULL;
@@ -383,8 +383,8 @@ int
 ixl_allocate_tx_data(struct ixl_queue *que)
 {
 	struct tx_ring		*txr = &que->txr;
-	struct ixl_vsi		*vsi = que->vsi;
-	device_t		dev = vsi->dev;
+	struct ixl_ifx		*ifx = que->ifx;
+	device_t		dev = ifx->dev;
 	struct ixl_tx_buf	*buf;
 	int			error = 0;
 
@@ -793,9 +793,7 @@ ixl_txeof(struct ixl_queue *que)
 	struct ixl_tx_buf	*buf;
 	struct i40e_tx_desc	*tx_desc, *eop_desc;
 
-
 	mtx_assert(&txr->mtx, MA_OWNED);
-
 
 	/* These are not the descriptors you seek, move along :) */
 	if (txr->avail == que->num_desc) {
@@ -915,7 +913,7 @@ ixl_txeof(struct ixl_queue *que)
 static void
 ixl_refresh_mbufs(struct ixl_queue *que, int limit)
 {
-	struct ixl_vsi		*vsi = que->vsi;
+	struct ixl_ifx		*ifx = que->ifx;
 	struct rx_ring		*rxr = &que->rxr;
 	bus_dma_segment_t	hseg[1];
 	bus_dma_segment_t	pseg[1];
@@ -997,7 +995,7 @@ no_split:
 	}
 update:
 	if (refreshed) /* Update hardware tail index */
-		wr32(vsi->hw, rxr->tail, rxr->next_refresh);
+		wr32(ifx->hw, rxr->tail, rxr->next_refresh);
 	return;
 }
 
@@ -1014,8 +1012,8 @@ int
 ixl_allocate_rx_data(struct ixl_queue *que)
 {
 	struct rx_ring		*rxr = &que->rxr;
-	struct ixl_vsi		*vsi = que->vsi;
-	device_t 		dev = vsi->dev;
+	struct ixl_ifx		*ifx = que->ifx;
+	device_t 		dev = ifx->dev;
 	struct ixl_rx_buf 	*buf;
 	int             	i, bsize, error;
 
@@ -1089,9 +1087,9 @@ int
 ixl_init_rx_ring(struct ixl_queue *que)
 {
 	struct	rx_ring 	*rxr = &que->rxr;
-	struct ixl_vsi		*vsi = que->vsi;
+	struct ixl_ifx		*ifx = que->ifx;
 #if defined(INET6) || defined(INET)
-	struct ifnet		*ifp = vsi->ifp;
+	struct ifnet		*ifp = ifx->ifp;
 	struct lro_ctrl		*lro = &rxr->lro;
 #endif
 	struct ixl_rx_buf	*buf;
@@ -1207,7 +1205,7 @@ skip_head:
 		}
 		INIT_DBG_IF(ifp, "queue %d: RX Soft LRO Initialized", que->me);
 		rxr->lro_enabled = TRUE;
-		lro->ifp = vsi->ifp;
+		lro->ifp = ifx->ifp;
 	}
 #endif
 
@@ -1360,9 +1358,9 @@ ixl_rx_discard(struct rx_ring *rxr, int i)
 bool
 ixl_rxeof(struct ixl_queue *que, int count)
 {
-	struct ixl_vsi		*vsi = que->vsi;
+	struct ixl_ifx		*ifx = que->ifx;
 	struct rx_ring		*rxr = &que->rxr;
-	struct ifnet		*ifp = vsi->ifp;
+	struct ifnet		*ifp = ifx->ifp;
 #if defined(INET6) || defined(INET)
 	struct lro_ctrl		*lro = &rxr->lro;
 	struct lro_entry	*queued;
