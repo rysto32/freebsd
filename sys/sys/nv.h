@@ -125,7 +125,9 @@ void nvlist_add_bool(nvlist_t *nvl, const char *name, bool value);
 void nvlist_add_number(nvlist_t *nvl, const char *name, uint64_t value);
 void nvlist_add_string(nvlist_t *nvl, const char *name, const char *value);
 void nvlist_add_stringf(nvlist_t *nvl, const char *name, const char *valuefmt, ...) __printflike(3, 4);
+#ifdef _VA_LIST_DECLARED
 void nvlist_add_stringv(nvlist_t *nvl, const char *name, const char *valuefmt, va_list valueap) __printflike(3, 0);
+#endif
 void nvlist_add_nvlist(nvlist_t *nvl, const char *name, const nvlist_t *value);
 #ifndef _KERNEL
 void nvlist_add_descriptor(nvlist_t *nvl, const char *name, int value);
@@ -235,6 +237,7 @@ void nvlist_addf_descriptor(nvlist_t *nvl, int value, const char *namefmt, ...) 
 #endif
 void nvlist_addf_binary(nvlist_t *nvl, const void *value, size_t size, const char *namefmt, ...) __printflike(4, 5);
 
+#if !defined(_KERNEL) || defined(_VA_LIST_DECLARED)
 void nvlist_addv_null(nvlist_t *nvl, const char *namefmt, va_list nameap) __printflike(2, 0);
 void nvlist_addv_bool(nvlist_t *nvl, bool value, const char *namefmt, va_list nameap) __printflike(3, 0);
 void nvlist_addv_number(nvlist_t *nvl, uint64_t value, const char *namefmt, va_list nameap) __printflike(3, 0);
@@ -244,6 +247,7 @@ void nvlist_addv_nvlist(nvlist_t *nvl, const nvlist_t *value, const char *namefm
 void nvlist_addv_descriptor(nvlist_t *nvl, int value, const char *namefmt, va_list nameap) __printflike(3, 0);
 #endif
 void nvlist_addv_binary(nvlist_t *nvl, const void *value, size_t size, const char *namefmt, va_list nameap) __printflike(4, 0);
+#endif
 
 void nvlist_movef_string(nvlist_t *nvl, char *value, const char *namefmt, ...) __printflike(3, 4);
 void nvlist_movef_nvlist(nvlist_t *nvl, nvlist_t *value, const char *namefmt, ...) __printflike(3, 4);
@@ -252,12 +256,14 @@ void nvlist_movef_descriptor(nvlist_t *nvl, int value, const char *namefmt, ...)
 #endif
 void nvlist_movef_binary(nvlist_t *nvl, void *value, size_t size, const char *namefmt, ...) __printflike(4, 5);
 
+#if !defined(_KERNEL) || defined(_VA_LIST_DECLARED)
 void nvlist_movev_string(nvlist_t *nvl, char *value, const char *namefmt, va_list nameap) __printflike(3, 0);
 void nvlist_movev_nvlist(nvlist_t *nvl, nvlist_t *value, const char *namefmt, va_list nameap) __printflike(3, 0);
 #ifndef _KERNEL
 void nvlist_movev_descriptor(nvlist_t *nvl, int value, const char *namefmt, va_list nameap) __printflike(3, 0);
 #endif
 void nvlist_movev_binary(nvlist_t *nvl, void *value, size_t size, const char *namefmt, va_list nameap) __printflike(4, 0);
+#endif
 
 #ifndef _KERNEL
 bool		 nvlist_getf_bool(const nvlist_t *nvl, const char *namefmt, ...) __printflike(2, 3);
