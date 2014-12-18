@@ -813,9 +813,7 @@ ixl_txeof(struct ixl_queue *que)
 	struct ixl_tx_buf	*buf;
 	struct i40e_tx_desc	*tx_desc, *eop_desc;
 
-
 	mtx_assert(&txr->mtx, MA_OWNED);
-
 
 	/* These are not the descriptors you seek, move along :) */
 	if (txr->avail == que->num_desc) {

@@ -459,13 +459,17 @@ struct ixl_vsi {
 	struct ifmedia		media;
 	u64			que_mask;
 	int			id;
+	u16			vsi_num;
 	u16			msix_base;	/* station base MSIX vector */
+	u16			first_queue;
 	u16			num_queues;
 	u16			rx_itr_setting;
 	u16			tx_itr_setting;
 	struct ixl_queue	*queues;	/* head of queues */
 	bool			link_active;
 	u16			seid;
+	u16			uplink_seid;
+	u16			downlink_seid;
 	u16			max_frame_size;
 	u32			link_speed;
 	bool			link_up;
@@ -473,6 +477,7 @@ struct ixl_vsi {
 
 	/* MAC/VLAN Filter list */
 	struct ixl_ftl_head ftl;
+	u16			num_macs;
 
 	struct i40e_aqc_vsi_properties_data info;
 
@@ -501,9 +506,11 @@ struct ixl_vsi {
 	u64			hw_filters_del;
 	u64			hw_filters_add;
 
+
 	/* Misc. */
 	u64 			active_queues;
 	u64 			flags;
+	struct sysctl_oid	*vsi_node;
 };
 
 /*
