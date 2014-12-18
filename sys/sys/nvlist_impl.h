@@ -45,7 +45,6 @@ struct nvlist {
 	int		nvl_magic;
 	int		nvl_error;
 	int		nvl_flags;
-	int		nvl_depth;
 	struct nvl_head	nvl_head;
 };
 
@@ -61,7 +60,7 @@ struct nvlist_header {
 
 void *nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep);
 nvlist_t *nvlist_xunpack(const void *buf, size_t size, const int *fds,
-    size_t nfds, int level);
+    size_t nfds);
 bool nvlist_check_header(struct nvlist_header *nvlhdrp);
 
 nvpair_t *nvlist_get_nvpair_parent(const nvlist_t *nvl);

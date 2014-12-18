@@ -49,7 +49,6 @@ typedef struct nvlist nvlist_t;
 #endif
 
 #define	NV_NAME_MAX	2048
-#define	NVLIST_MAX_LEVEL		10
 
 #define	NV_TYPE_NONE			0
 

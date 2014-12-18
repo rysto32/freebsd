@@ -154,7 +154,5 @@ nvpair_t *nvpair_movev_binary(void *value, size_t size, const char *namefmt, va_
 
 unsigned char *nvpair_pack_descriptor(const nvpair_t *nvp, unsigned char *ptr,
     int64_t *fdidxp, size_t *leftp);
-const unsigned char *nvpair_unpack_descriptor(int flags, nvpair_t *nvp,
-    const unsigned char *ptr, size_t *leftp, const int *fds, size_t nfds);
 
 #endif	/* !_NV_IMPL_H_ */
