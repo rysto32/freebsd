@@ -516,11 +516,7 @@ pci_msix_count(device_t dev)
 static __inline uint16_t
 pci_get_rid(device_t dev)
 {
-	return (PCI_GET_RID(device_get_parent(dev), d
-METHOD int iov_attach {
-	device_t	dev;
-	device_t	child;
-};ev));
+	return (PCI_GET_RID(device_get_parent(dev), dev));
 }
 
 static __inline void
