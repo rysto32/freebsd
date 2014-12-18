@@ -84,6 +84,8 @@ struct ixl_pf {
 	struct i40e_hw_port_stats 	stats;
 	struct i40e_hw_port_stats	stats_offsets;
 	bool 				stat_offsets_loaded;
+
+	int			num_vfs;
 };
 
 

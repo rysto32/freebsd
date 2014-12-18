@@ -186,6 +186,14 @@ static int	ixl_sysctl_switch_config(SYSCTL_HANDLER_ARGS);
 static int	ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS);
 #endif
 
+#ifdef PCI_IOV
+static int	ixl_adminq_err_to_errno(enum i40e_admin_queue_err err);
+
+static int	ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t*);
+static void	ixl_uninit_iov(device_t dev);
+static int	ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t*);
+#endif
+
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
  *********************************************************************/
@@ -196,6 +204,11 @@ static device_method_t ixl_methods[] = {
 	DEVMETHOD(device_attach, ixl_attach),
 	DEVMETHOD(device_detach, ixl_detach),
 	DEVMETHOD(device_shutdown, ixl_shutdown),
+#ifdef PCI_IOV
+	DEVMETHOD(pci_init_iov, ixl_init_iov),
+	DEVMETHOD(pci_uninit_iov, ixl_uninit_iov),
+	DEVMETHOD(pci_add_vf, ixl_add_vf),
+#endif
 	{0, 0}
 };
 
@@ -282,6 +295,7 @@ int ixl_atr_rate = 20;
 TUNABLE_INT("hw.ixl.atr_rate", &ixl_atr_rate);
 #endif
 
+static MALLOC_DEFINE(M_IXL, "ixl", "ixl driver allocations");
 
 static uint8_t ixl_bcast_addr[ETHER_ADDR_LEN] =
     {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -371,6 +385,9 @@ ixl_attach(device_t dev)
 	struct ixl_ifx *ifx;
 	u16		bus;
 	int             error = 0;
+#ifdef PCI_IOV
+	int		iov_error;
+#endif
 
 	INIT_DEBUGOUT("ixl_attach: begin");
 
@@ -678,6 +695,16 @@ ixl_attach(device_t dev)
 	ifx->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
 	    ixl_unregister_vlan, ifx, EVENTHANDLER_PRI_FIRST);
 
+#ifdef PCI_IOV
+	/* Do not enable SR-IOV on A0 silicon. */
+	if (hw->revision_id > 0) {
+		iov_error = pci_iov_attach(dev, NULL, NULL);
+		if (iov_error != 0)
+			device_printf(dev,
+			    "Failed to initialize SR-IOV (error=%d)\n",
+			    iov_error);
+	}
+#endif
 
 	INIT_DEBUGOUT("ixl_attach: end");
 	return (0);
@@ -714,6 +741,9 @@ ixl_detach(device_t dev)
 	struct ixl_ifx		*ifx = &pf->ifx;
 	struct ixl_queue	*que = ifx->queues;
 	i40e_status		status;
+#ifdef PCI_IOV
+	int error;
+#endif
 
 	INIT_DEBUGOUT("ixl_detach: begin");
 
@@ -722,6 +752,14 @@ ixl_detach(device_t dev)
 		device_printf(dev,"Vlan in use, detach first\n");
 		return (EBUSY);
 	}
+
+#ifdef PCI_IOV
+	error = pci_iov_detach(dev);
+	if (error != 0) {
+		device_printf(dev, "SR-IOV in use; detach first.\n");
+		return (error);
+	}
+#endif
 
 	IXL_PF_LOCK(pf);
 	ixl_stop(pf);
@@ -4955,3 +4993,89 @@ ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS)
 }
 #endif
 
+#ifdef PCI_IOV
+static int
+ixl_adminq_err_to_errno(enum i40e_admin_queue_err err)
+{
+
+	switch (err) {
+	case I40E_AQ_RC_EPERM:
+		return (EPERM);
+	case I40E_AQ_RC_ENOENT:
+		return (ENOENT);
+	case I40E_AQ_RC_ESRCH:
+		return (ESRCH);
+	case I40E_AQ_RC_EINTR:
+		return (EINTR);
+	case I40E_AQ_RC_EIO:
+		return (EIO);
+	case I40E_AQ_RC_ENXIO:
+		return (ENXIO);
+	case I40E_AQ_RC_E2BIG:
+		return (E2BIG);
+	case I40E_AQ_RC_EAGAIN:
+		return (EAGAIN);
+	case I40E_AQ_RC_ENOMEM:
+		return (ENOMEM);
+	case I40E_AQ_RC_EACCES:
+		return (EACCES);
+	case I40E_AQ_RC_EFAULT:
+		return (EFAULT);
+	case I40E_AQ_RC_EBUSY:
+		return (EBUSY);
+	case I40E_AQ_RC_EEXIST:
+		return (EEXIST);
+	case I40E_AQ_RC_EINVAL:
+		return (EINVAL);
+	case I40E_AQ_RC_ENOTTY:
+		return (ENOTTY);
+	case I40E_AQ_RC_ENOSPC:
+		return (ENOSPC);
+	case I40E_AQ_RC_ENOSYS:
+		return (ENOSYS);
+	case I40E_AQ_RC_ERANGE:
+		return (ERANGE);
+	case I40E_AQ_RC_EFLUSHED:
+		return (EINVAL);	/* No exact equivalent in errno.h */
+	case I40E_AQ_RC_BAD_ADDR:
+		return (EFAULT);
+	case I40E_AQ_RC_EMODE:
+		return (EPERM);
+	case I40E_AQ_RC_EFBIG:
+		return (EFBIG);
+	default:
+		return (EINVAL);
+	}
+}
+
+static int
+ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
+{
+	struct ixl_pf *pf;
+
+	pf = device_get_softc(dev);
+
+	IXL_PF_LOCK(pf);
+	pf->num_vfs = num_vfs;
+	IXL_PF_UNLOCK(pf);
+	return (0);
+}
+
+static void
+ixl_uninit_iov(device_t dev)
+{
+	struct ixl_pf *pf;
+
+	pf = device_get_softc(dev);
+	IXL_PF_LOCK(pf);
+	pf->num_vfs = 0;
+	IXL_PF_UNLOCK(pf);
+}
+
+static int
+ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
+{
+
+	return (0);
+}
+#endif /* PCI_IOV */
