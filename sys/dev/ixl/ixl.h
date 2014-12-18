@@ -257,6 +257,10 @@
 #define IXL_FLAGS_KEEP_TSO4	(1 << 0)
 #define IXL_FLAGS_KEEP_TSO6	(1 << 1)
 
+#define IXL_VSI_DATA_PORT	0x01
+
+#define IXL_MAX_QUEUES_PER_VF	1
+
 #define IXL_TX_LOCK(_sc)                mtx_lock(&(_sc)->mtx)
 #define IXL_TX_UNLOCK(_sc)              mtx_unlock(&(_sc)->mtx)
 #define IXL_TX_LOCK_DESTROY(_sc)        mtx_destroy(&(_sc)->mtx)

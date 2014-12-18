@@ -36,6 +36,15 @@
 #ifndef _IXL_PF_H_
 #define _IXL_PF_H_
 
+#define	VF_FLAG_ENABLED			0x01
+
+struct ixl_vf {
+	struct ixl_vsi		vsi;
+	uint32_t		vf_flags;
+
+	uint16_t		vf_num;
+};
+
 /* Physical controller structure */
 struct ixl_pf {
 	struct i40e_hw		hw;
@@ -85,7 +94,10 @@ struct ixl_pf {
 	struct i40e_hw_port_stats	stats_offsets;
 	bool 				stat_offsets_loaded;
 
+	struct ixl_vf		*vfs;
 	int			num_vfs;
+
+	uint16_t		veb_seid;
 };
 
 
