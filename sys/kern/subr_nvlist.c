@@ -102,7 +102,6 @@ nvlist_create(int flags)
 	nvl->nvl_error = 0;
 	nvl->nvl_flags = flags;
 	nvl->nvl_parent = NULL;
-	nvl->nvl_depth = 0;
 	TAILQ_INIT(&nvl->nvl_head);
 	nvl->nvl_magic = NVLIST_MAGIC;
 
@@ -228,26 +227,6 @@ nvlist_find(const nvlist_t *nvl, int type, const char *name)
 		RESTORE_ERRNO(ENOENT);
 
 	return (nvp);
-}
-
-static void
-nvlist_update_depth(nvlist_t *nvl)
-{
-	const nvlist_t *list;
-	nvpair_t *nvp;
-	int depth;
-
-	depth = 0;
-	for (nvp = nvlist_first_nvpair(nvl); nvp != NULL;
-	    nvp = nvlist_next_nvpair(nvl, nvp)) {
-		if (nvpair_type(nvp) != NV_TYPE_NVLIST)
-			continue;
-		list = nvpair_get_nvlist(nvp);
-
-		if (depth < (list->nvl_depth + 1))
-			depth = list->nvl_depth + 1;
-	}
-	nvl->nvl_depth = depth;
 }
 
 bool
@@ -422,7 +401,6 @@ nvlist_xdescriptors(const nvlist_t *nvl, int *descs, int level)
 
 	NVLIST_ASSERT(nvl);
 	PJDLOG_ASSERT(nvl->nvl_error == 0);
-	PJDLOG_ASSERT(level < NVLIST_MAX_LEVEL);
 
 	for (nvp = nvlist_first_nvpair(nvl); nvp != NULL;
 	    nvp = nvlist_next_nvpair(nvl, nvp)) {
@@ -469,7 +447,6 @@ nvlist_xndescriptors(const nvlist_t *nvl, int level)
 
 	NVLIST_ASSERT(nvl);
 	PJDLOG_ASSERT(nvl->nvl_error == 0);
-	PJDLOG_ASSERT(level < NVLIST_MAX_LEVEL);
 
 	ndescs = 0;
 	for (nvp = nvlist_first_nvpair(nvl); nvp != NULL;
@@ -685,8 +662,7 @@ failed:
 }
 
 nvlist_t *
-nvlist_xunpack(const void *buf, size_t size, const int *fds, size_t nfds,
-    int level)
+nvlist_xunpack(const void *buf, size_t size, const int *fds, size_t nfds)
 {
 	const unsigned char *ptr;
 	nvlist_t *nvl, *retnvl, *tmpnvl;
@@ -697,12 +673,8 @@ nvlist_xunpack(const void *buf, size_t size, const int *fds, size_t nfds,
 	left = size;
 	ptr = buf;
 
-	if (level > NVLIST_MAX_LEVEL)
-		return (NULL);
-
 	tmpnvl = NULL;
 	nvl = retnvl = nvlist_create(0);
-
 	if (nvl == NULL)
 		goto failed;
 
@@ -711,7 +683,7 @@ nvlist_xunpack(const void *buf, size_t size, const int *fds, size_t nfds,
 		goto failed;
 
 	while (left > 0) {
-		ptr = nvpair_unpack(isbe, ptr, &left, &nvp, level);
+		ptr = nvpair_unpack(isbe, ptr, &left, &nvp);
 		if (ptr == NULL)
 			goto failed;
 		switch (nvpair_type(nvp)) {
@@ -766,7 +738,7 @@ nvlist_t *
 nvlist_unpack(const void *buf, size_t size)
 {
 
-	return (nvlist_xunpack(buf, size, NULL, 0, 0));
+	return (nvlist_xunpack(buf, size, NULL, 0));
 }
 
 nvpair_t *
@@ -1135,8 +1107,6 @@ nvlist_addv_binary(nvlist_t *nvl, const void *value, size_t size,
 void
 nvlist_move_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 {
-	const nvlist_t *value;
-	int depth;
 
 	NVPAIR_ASSERT(nvp);
 	PJDLOG_ASSERT(nvpair_nvlist(nvp) == NULL);
@@ -1151,19 +1121,6 @@ nvlist_move_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 		nvl->nvl_error = EEXIST;
 		RESTORE_ERRNO(nvl->nvl_error);
 		return;
-	}
-	if (nvp->nvp_type == NV_TYPE_NVLIST) {
-		value = nvpair_get_nvlist(nvp);
-		depth = value->nvl_depth + 1;
-		if (depth > NVLIST_MAX_LEVEL) {
-			nvpair_free(nvp);
-			nvl->nvl_error = EINVAL;
-			RESTORE_ERRNO(EINVAL);
-			return;
-		}
-
-		if (depth > nvl->nvl_depth)
-			nvl->nvl_depth = depth;
 	}
 
 	nvpair_insert(&nvl->nvl_head, nvp, nvl);
@@ -1409,18 +1366,12 @@ nvlist_takev_binary(nvlist_t *nvl, size_t *sizep, const char *namefmt,
 void
 nvlist_remove_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 {
-	const nvlist_t *child;
 
 	NVLIST_ASSERT(nvl);
 	NVPAIR_ASSERT(nvp);
 	PJDLOG_ASSERT(nvpair_nvlist(nvp) == nvl);
 
 	nvpair_remove(&nvl->nvl_head, nvp, nvl);
-	if (nvp->nvp_type == NV_TYPE_NVLIST) {
-		child = nvpair_get_nvlist(nvp);
-		if (nvl->nvl_depth == (child->nvl_depth + 1))
-			nvlist_update_depth(nvl);
-	}
 }
 
 void
