@@ -591,8 +591,6 @@ nvpair_unpack(bool isbe, const unsigned char *ptr, size_t *leftp,
 	/* Update nvp_name after realloc(). */
 	nvp->nvp_name = (char *)(nvp + 1);
 	nvp->nvp_data = 0x00;
-#ifndef _KERNEL
-#endif
 	nvp->nvp_magic = NVPAIR_MAGIC;
 	*nvpp = nvp;
 	return (ptr);

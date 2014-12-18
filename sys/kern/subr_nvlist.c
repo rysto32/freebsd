@@ -513,7 +513,7 @@ nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep)
 		nvpair_init_datasize(nvp);
 		ptr = nvpair_pack_header(nvp, ptr, &left);
 		if (ptr == NULL) {
-			free(buf);
+			nv_free(buf);
 			return (NULL);
 		}
 		switch (nvpair_type(nvp)) {
@@ -534,9 +534,11 @@ nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep)
 			nvp = nvlist_first_nvpair(nvl);
 			ptr = nvlist_pack_header(nvl, ptr, &left);
 			continue;
+#ifndef _KERNEL
 		case NV_TYPE_DESCRIPTOR:
 			ptr = nvpair_pack_descriptor(nvp, ptr, fdidxp, &left);
 			break;
+#endif
 		case NV_TYPE_BINARY:
 			ptr = nvpair_pack_binary(nvp, ptr, &left);
 			break;
@@ -691,10 +693,12 @@ nvlist_xunpack(const void *buf, size_t size, const int *fds, size_t nfds)
 			    &tmpnvl);
 			nvlist_set_parent(tmpnvl, nvp);
 			break;
+#ifndef _KERNEL
 		case NV_TYPE_DESCRIPTOR:
 			ptr = nvpair_unpack_descriptor(isbe, nvp, ptr, &left,
 			    fds, nfds);
 			break;
+#endif
 		case NV_TYPE_BINARY:
 			ptr = nvpair_unpack_binary(isbe, nvp, ptr, &left);
 			break;
