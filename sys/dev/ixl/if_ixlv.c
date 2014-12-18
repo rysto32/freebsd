@@ -2416,23 +2416,23 @@ hung:
 void
 ixlv_update_link_status(struct ixlv_sc *sc)
 {
-	struct ixl_vsi		*vsi = &sc->vsi;
-	struct ifnet		*ifp = vsi->ifp;
+	struct ixl_ifx		*ifx = &sc->ifx;
+	struct ifnet		*ifp = ifx->ifp;
 
-	if (vsi->link_up){ 
-		if (vsi->link_active == FALSE) {
+	if (ifx->link_up) {
+		if (ifx->link_active == FALSE) {
 			if (bootverbose)
 				if_printf(ifp,"Link is Up, %d Gbps\n",
-				    (vsi->link_speed == I40E_LINK_SPEED_40GB) ? 40:10);
-			vsi->link_active = TRUE;
+				    (ifx->link_speed == I40E_LINK_SPEED_40GB) ? 40:10);
+			ifx->link_active = TRUE;
 			if_link_state_change(ifp, LINK_STATE_UP);
 		}
 	} else { /* Link down */
-		if (vsi->link_active == TRUE) {
+		if (ifx->link_active == TRUE) {
 			if (bootverbose)
 				if_printf(ifp,"Link is Down\n");
 			if_link_state_change(ifp, LINK_STATE_DOWN);
-			vsi->link_active = FALSE;
+			ifx->link_active = FALSE;
 		}
 	}
 
@@ -2452,7 +2452,7 @@ ixlv_stop(struct ixlv_sc *sc)
 	struct ifnet *ifp;
 	int start;
 
-	ifp = sc->vsi.ifp;
+	ifp = sc->ifx.ifp;
 	INIT_DBG_IF(ifp, "begin");
 
 	IXLV_CORE_LOCK_ASSERT(sc);
@@ -2478,12 +2478,12 @@ ixlv_stop(struct ixlv_sc *sc)
  *
  **********************************************************************/
 static void
-ixlv_free_queues(struct ixl_vsi *vsi)
+ixlv_free_queues(struct ixl_ifx *ifx)
 {
-	struct ixlv_sc	*sc = (struct ixlv_sc *)vsi->back;
-	struct ixl_queue	*que = vsi->queues;
+	struct ixlv_sc	*sc = (struct ixlv_sc *)ifx->back;
+	struct ixl_queue	*que = ifx->queues;
 
-	for (int i = 0; i < vsi->num_queues; i++, que++) {
+	for (int i = 0; i < ifx->vsi.num_queues; i++, que++) {
 		struct tx_ring *txr = &que->txr;
 		struct rx_ring *rxr = &que->rxr;
 	
@@ -2506,7 +2506,7 @@ ixlv_free_queues(struct ixl_vsi *vsi)
 		IXL_RX_LOCK_DESTROY(rxr);
 		
 	}
-	free(vsi->queues, M_DEVBUF);
+	free(ifx->queues, M_DEVBUF);
 }
 
 
@@ -2519,7 +2519,7 @@ static void
 ixlv_config_rss(struct ixlv_sc *sc)
 {
 	struct i40e_hw	*hw = &sc->hw;
-	struct ixl_vsi	*vsi = &sc->vsi;
+	struct ixl_ifx	*ifx = &sc->ifx;
 	u32		lut = 0;
 	u64		set_hena, hena;
 	int		i, j;
@@ -2565,7 +2565,7 @@ ixlv_config_rss(struct ixlv_sc *sc)
 
 	/* Populate the LUT with max no. of queues in round robin fashion */
 	for (i = 0, j = 0; i <= I40E_VFQF_HLUT_MAX_INDEX; j++) {
-                if (j == vsi->num_queues)
+                if (j == ifx->vsi.num_queues)
                         j = 0;
                 /* lut = 4-byte sliding window of 4 lut entries */
                 lut = (lut << 8) | (j & 0xF);
@@ -2587,11 +2587,11 @@ ixlv_config_rss(struct ixlv_sc *sc)
 static void
 ixlv_setup_vlan_filters(struct ixlv_sc *sc)
 {
-	struct ixl_vsi			*vsi = &sc->vsi;
+	struct ixl_ifx			*ifx = &sc->ifx;
 	struct ixlv_vlan_filter	*f;
 	int				cnt = 0;
 
-	if (vsi->num_vlans == 0)
+	if (ifx->vsi.num_vlans == 0)
 		return;
 	/*
 	** Scan the filter table for vlan entries,
@@ -2717,7 +2717,7 @@ ixlv_add_sysctls(struct ixlv_sc *sc)
 #define QUEUE_NAME_LEN 32
 	char queue_namebuf[QUEUE_NAME_LEN];
 
-	struct ixl_queue *queues = vsi->queues;
+	struct ixl_queue *queues = ifx->queues;
 	struct tx_ring *txr;
 	struct rx_ring *rxr;
 
@@ -2765,7 +2765,7 @@ ixlv_add_sysctls(struct ixlv_sc *sc)
 	}
 
 	/* Queue sysctls */
-	for (int q = 0; q < vsi->num_queues; q++) {
+	for (int q = 0; q < ifx->vsi.num_queues; q++) {
 		snprintf(queue_namebuf, QUEUE_NAME_LEN, "que%d", q);
 		queue_node = SYSCTL_ADD_NODE(ctx, vsi_list, OID_AUTO, queue_namebuf,
 					     CTLFLAG_RD, NULL, "Queue Name");
