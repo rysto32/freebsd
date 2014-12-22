@@ -6211,6 +6211,51 @@ i40e_vf_del_vlan_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 }
 
 static void
+i40e_vf_config_promisc_msg(struct ixl_pf *pf, struct ixl_vf *vf,
+    void *msg, uint16_t msg_size)
+{
+	struct i40e_virtchnl_promisc_info *info;
+	enum i40e_status_code code;
+
+	if (msg_size != sizeof(*info)) {
+		i40e_send_vf_nack(pf, vf,
+		    I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE, I40E_ERR_PARAM);
+		return;
+	}
+
+	if (!vf->vf_flags & VF_FLAG_PROMISC_CAP) {
+		i40e_send_vf_nack(pf, vf,
+		    I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE, I40E_ERR_PARAM);
+		return;
+	}
+
+	info = msg;
+	if (info->vsi_id != vf->vsi.vsi_num) {
+		i40e_send_vf_nack(pf, vf,
+		    I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE, I40E_ERR_PARAM);
+		return;
+	}
+
+	code = i40e_aq_set_vsi_unicast_promiscuous(&pf->hw, info->vsi_id,
+	    info->flags & I40E_FLAG_VF_UNICAST_PROMISC, NULL);
+	if (code != I40E_SUCCESS) {
+		i40e_send_vf_nack(pf, vf,
+		    I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE, code);
+		return;
+	}
+
+	code = i40e_aq_set_vsi_multicast_promiscuous(&pf->hw, info->vsi_id,
+	    info->flags & I40E_FLAG_VF_MULTICAST_PROMISC, NULL);
+	if (code != I40E_SUCCESS) {
+		i40e_send_vf_nack(pf, vf,
+		    I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE, code);
+		return;
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE);
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -6272,6 +6317,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_DEL_VLAN:
 		i40e_vf_del_vlan_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE:
+		i40e_vf_config_promisc_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
