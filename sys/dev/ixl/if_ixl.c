@@ -5450,6 +5450,22 @@ i40e_vf_version_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 }
 
 static void
+i40e_vf_reset_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+
+	if (msg_size != 0) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_RESET_VF,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	ixl_reset_vf(pf, vf);
+
+	/* No response to a reset message. */
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -5475,6 +5491,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 	switch (opcode) {
 	case I40E_VIRTCHNL_OP_VERSION:
 		i40e_vf_version_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_RESET_VF:
+		i40e_vf_reset_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
