@@ -198,6 +198,7 @@ static int	ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t*);
 
 static void	ixl_handle_vf_msg(struct ixl_pf *,
 		    struct i40e_arq_event_info *);
+static void	ixl_handle_vflr(void *arg, int pending);
 
 static void	ixl_reset_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 static void	ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf);
@@ -1289,6 +1290,11 @@ ixl_intr(void *arg)
 
         mask = rd32(hw, I40E_PFINT_ICR0_ENA);
 
+#ifdef PCI_IOV
+	if (icr0 & I40E_PFINT_ICR0_VFLR_MASK)
+		taskqueue_enqueue(pf->tq, &pf->vflr_task);
+#endif
+
 	if (icr0 & I40E_PFINT_ICR0_ADMINQ_MASK) {
 		taskqueue_enqueue(pf->tq, &pf->adminq);
 		return;
@@ -1392,8 +1398,12 @@ ixl_msix_adminq(void *arg)
 		mask &= ~I40E_PFINT_ICR0_ENA_MAL_DETECT_MASK;
 	}
 
-	if (reg & I40E_PFINT_ICR0_VFLR_MASK)
+#ifdef PCI_IOV
+	if (reg & I40E_PFINT_ICR0_VFLR_MASK) {
 		mask &= ~I40E_PFINT_ICR0_ENA_VFLR_MASK;
+		taskqueue_enqueue(pf->tq, &pf->vflr_task);
+	}
+#endif
 
 	reg = rd32(hw, I40E_PFINT_DYN_CTL0);
 	reg = reg | I40E_PFINT_DYN_CTL0_CLEARPBA_MASK;
@@ -1913,6 +1923,11 @@ ixl_assign_vsi_legacy(struct ixl_pf *pf)
 	taskqueue_start_threads(&que->tq, 1, PI_NET, "%s que",
 	    device_get_nameunit(dev));
 	TASK_INIT(&pf->adminq, 0, ixl_do_adminq, pf);
+
+#ifdef PCI_IOV
+	TASK_INIT(&pf->vflr_task, 0, ixl_handle_vflr, pf);
+#endif
+
 	pf->tq = taskqueue_create_fast("ixl_adm", M_NOWAIT,
 	    taskqueue_thread_enqueue, &pf->tq);
 	taskqueue_start_threads(&pf->tq, 1, PI_NET, "%s adminq",
@@ -1958,6 +1973,11 @@ ixl_assign_vsi_msix(struct ixl_pf *pf)
 	pf->admvec = vector;
 	/* Tasklet for Admin Queue */
 	TASK_INIT(&pf->adminq, 0, ixl_do_adminq, pf);
+
+#ifdef PCI_IOV
+	TASK_INIT(&pf->vflr_task, 0, ixl_handle_vflr, pf);
+#endif
+
 	pf->tq = taskqueue_create_fast("ixl_adm", M_NOWAIT,
 	    taskqueue_thread_enqueue, &pf->tq);
 	taskqueue_start_threads(&pf->tq, 1, PI_NET, "%s adminq",
@@ -4201,7 +4221,9 @@ ixl_do_adminq(void *context, int pending)
 			ixl_update_link_status(pf);
 			break;
 		case i40e_aqc_opc_send_msg_to_pf:
+#ifdef PCI_IOV
 			ixl_handle_vf_msg(pf, &event);
+#endif
 			break;
 		case i40e_aqc_opc_event_lan_overflow:
 			break;
@@ -6385,6 +6407,42 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
 		break;
 	}
+}
+
+/* Handle any VFs that have reset themselves via a Function Level Reset(FLR). */
+static void
+ixl_handle_vflr(void *arg, int pending)
+{
+	struct ixl_pf *pf;
+	struct i40e_hw *hw;
+	uint16_t global_vf_num;
+	uint32_t vflrstat_index, vflrstat_mask, vflrstat, icr0;
+	int i;
+
+	pf = arg;
+	hw = &pf->hw;
+
+	IXL_PF_LOCK(pf);
+	for (i = 0; i < pf->num_vfs; i++) {
+		global_vf_num = hw->func_caps.vf_base_id + i;
+
+		vflrstat_index = IXL_GLGEN_VFLRSTAT_INDEX(global_vf_num);
+		vflrstat_mask = IXL_GLGEN_VFLRSTAT_MASK(global_vf_num);
+		vflrstat = rd32(hw, I40E_GLGEN_VFLRSTAT(vflrstat_index));
+		if (vflrstat & vflrstat_mask) {
+			wr32(hw, I40E_GLGEN_VFLRSTAT(vflrstat_index),
+			    vflrstat_mask);
+
+			ixl_reinit_vf(pf, &pf->vfs[i]);
+		}
+	}
+
+	icr0 = rd32(hw, I40E_PFINT_ICR0_ENA);
+	icr0 |= I40E_PFINT_ICR0_ENA_VFLR_MASK;
+	wr32(hw, I40E_PFINT_ICR0_ENA, icr0);
+	ixl_flush(hw);
+
+	IXL_PF_UNLOCK(pf);
 }
 
 static int
