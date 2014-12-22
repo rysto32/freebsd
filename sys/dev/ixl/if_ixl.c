@@ -5432,6 +5432,24 @@ ixl_send_vf_nack_msg(struct ixl_pf *pf, struct ixl_vf *vf, uint16_t op,
 }
 
 static void
+i40e_vf_version_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_version_info reply;
+
+	if (msg_size != sizeof(struct i40e_virtchnl_version_info)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_VERSION,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	reply.major = I40E_VIRTCHNL_VERSION_MAJOR;
+	reply.minor = I40E_VIRTCHNL_VERSION_MINOR;
+	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_VERSION, I40E_SUCCESS, &reply,
+	    sizeof(reply));
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -5455,6 +5473,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 	    ixl_vc_opcode_str(opcode), opcode, vf_num, msg_size);
 
 	switch (opcode) {
+	case I40E_VIRTCHNL_OP_VERSION:
+		i40e_vf_version_msg(pf, vf, msg, msg_size);
+		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
 		break;
