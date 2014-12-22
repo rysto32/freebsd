@@ -280,6 +280,10 @@
 
 #define IXL_PF_PCI_CIAD_VF_TRANS_PENDING_MASK	0x20
 
+#define IXL_MAX_ITR_IDX		3
+
+#define IXL_END_OF_INTR_LNKLST	0x7FF
+
 #define IXL_TX_LOCK(_sc)                mtx_lock(&(_sc)->mtx)
 #define IXL_TX_UNLOCK(_sc)              mtx_unlock(&(_sc)->mtx)
 #define IXL_TX_LOCK_DESTROY(_sc)        mtx_destroy(&(_sc)->mtx)

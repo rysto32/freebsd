@@ -5677,6 +5677,164 @@ i40e_vf_config_vsi_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 }
 
 static void
+i40e_vf_set_qctl(struct ixl_pf *pf,
+    const struct i40e_virtchnl_vector_map *vector,
+    enum i40e_queue_type cur_type, uint16_t cur_queue,
+    enum i40e_queue_type *last_type, uint16_t *last_queue)
+{
+	uint32_t offset, qctl;
+	uint16_t itr_indx;
+
+	if (cur_type == I40E_QUEUE_TYPE_RX) {
+		offset = I40E_QINT_RQCTL(cur_queue);
+		itr_indx = vector->rxitr_idx;
+	} else {
+		offset = I40E_QINT_TQCTL(cur_queue);
+		itr_indx = vector->txitr_idx;
+	}
+
+	qctl = htole32((vector->vector_id << I40E_QINT_RQCTL_MSIX_INDX_SHIFT) |
+	    (*last_type << I40E_QINT_RQCTL_NEXTQ_TYPE_SHIFT) |
+	    (*last_queue << I40E_QINT_RQCTL_NEXTQ_INDX_SHIFT) |
+	    I40E_QINT_RQCTL_CAUSE_ENA_MASK |
+	    (itr_indx << I40E_QINT_RQCTL_ITR_INDX_SHIFT));
+
+	wr32(&pf->hw, offset, qctl);
+
+	*last_type = cur_type;
+	*last_queue = cur_queue;
+}
+
+static void
+i40e_vf_config_vector(struct ixl_pf *pf, struct ixl_vf *vf,
+    const struct i40e_virtchnl_vector_map *vector)
+{
+	struct i40e_hw *hw;
+	u_int qindex;
+	enum i40e_queue_type type, last_type;
+	uint32_t lnklst_reg;
+	uint16_t rxq_map, txq_map, cur_queue, last_queue;
+
+	hw = &pf->hw;
+
+	rxq_map = vector->rxq_map;
+	txq_map = vector->txq_map;
+
+	last_queue = IXL_END_OF_INTR_LNKLST;
+	last_type = I40E_QUEUE_TYPE_RX;
+
+	/*
+	 * The datasheet says to optimize performance, RX queues and TX queues
+	 * should be interleaved in the interrupt linked list, so we process
+	 * both at once here.
+	 */
+	while ((rxq_map != 0) || (txq_map != 0)) {
+		if (txq_map != 0) {
+			qindex = ffs(txq_map) - 1;
+			type = I40E_QUEUE_TYPE_TX;
+			cur_queue = vf->vsi.first_queue + qindex;
+			i40e_vf_set_qctl(pf, vector, type, cur_queue,
+			    &last_type, &last_queue);
+			txq_map &= ~(1 << qindex);
+		}
+
+		if (rxq_map != 0) {
+			qindex = ffs(rxq_map) - 1;
+			type = I40E_QUEUE_TYPE_RX;
+			cur_queue = vf->vsi.first_queue + qindex;
+			i40e_vf_set_qctl(pf, vector, type, cur_queue,
+			    &last_type, &last_queue);
+			rxq_map &= ~(1 << qindex);
+		}
+	}
+
+	if (vector->vector_id == 0)
+		lnklst_reg = I40E_VPINT_LNKLST0(vf->vf_num);
+	else
+		lnklst_reg = IXL_VPINT_LNKLSTN_REG(hw, vector->vector_id,
+		    vf->vf_num);
+	wr32(hw, lnklst_reg,
+	    (last_queue << I40E_VPINT_LNKLST0_FIRSTQ_INDX_SHIFT) |
+	    (last_type << I40E_VPINT_LNKLST0_FIRSTQ_TYPE_SHIFT));
+
+	ixl_flush(hw);
+}
+
+static void
+i40e_vf_config_irq_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_irq_map_info *map;
+	struct i40e_virtchnl_vector_map *vector;
+	struct i40e_hw *hw;
+	int i, largest_txq, largest_rxq;
+
+	hw = &pf->hw;
+
+	if (msg_size < sizeof(*map)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	map = msg;
+	if (map->num_vectors == 0) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	if (msg_size != sizeof(*map) + map->num_vectors * sizeof(*vector)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	for (i = 0; i < map->num_vectors; i++) {
+		vector = &map->vecmap[i];
+
+		if ((vector->vector_id >= hw->func_caps.num_msix_vectors_vf) ||
+		    vector->vsi_id != vf->vsi.vsi_num) {
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP, I40E_ERR_PARAM);
+			return;
+		}
+
+		if (vector->rxq_map != 0) {
+			largest_rxq = fls(vector->rxq_map) - 1;
+			if (largest_rxq >= vf->vsi.num_queues) {
+				i40e_send_vf_nack(pf, vf,
+				    I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP,
+				    I40E_ERR_PARAM);
+				return;
+			}
+		}
+
+		if (vector->txq_map != 0) {
+			largest_txq = fls(vector->txq_map) - 1;
+			if (largest_txq >= vf->vsi.num_queues) {
+				i40e_send_vf_nack(pf, vf,
+				    I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP,
+				    I40E_ERR_PARAM);
+				return;
+			}
+		}
+
+		if (vector->rxitr_idx > IXL_MAX_ITR_IDX ||
+		    vector->txitr_idx > IXL_MAX_ITR_IDX) {
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP,
+			    I40E_ERR_PARAM);
+			return;
+		}
+
+		i40e_vf_config_vector(pf, vf, vector);
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP);
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -5717,6 +5875,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES:
 		i40e_vf_config_vsi_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP:
+		i40e_vf_config_irq_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
