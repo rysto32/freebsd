@@ -78,7 +78,7 @@
 #define I40E_MAX_PF_UDP_OFFLOAD_PORTS	16
 
 /* something less than 1 minute */
-#define I40E_HEARTBEAT_TIMEOUT		(HZ * 50)
+#define I40E_HEARTBEAT_TIMEOUT		(hz * 50)
 
 /* Max default timeout in ms, */
 #define I40E_MAX_NVM_TIMEOUT		18000
