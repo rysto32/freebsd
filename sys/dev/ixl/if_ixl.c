@@ -4060,6 +4060,8 @@ ixl_update_stats_counters(struct ixl_pf *pf)
 
 	struct i40e_hw_port_stats *nsd = &pf->stats;
 	struct i40e_hw_port_stats *osd = &pf->stats_offsets;
+	struct ixl_vf *vf;
+	int i;
 
 	/* Update hw stats */
 	ixl_stat_update32(hw, I40E_GLPRT_CRCERRS(hw->port),
@@ -4220,9 +4222,11 @@ ixl_update_stats_counters(struct ixl_pf *pf)
 	/* Update ifx stats */
 	ixl_update_ifx_stats(ifx);
 
-	/* OS statistics */
-	// ERJ - these are per-port, update all vsis?
-	IXL_SET_IERRORS(ifx, nsd->crc_errors + nsd->illegal_bytes);
+	for (i = 0; i < pf->num_vfs; i++) {
+		vf = &pf->vfs[i];
+		if (vf->vf_flags & VF_FLAG_ENABLED)
+			ixl_update_eth_stats(&pf->vfs[i].vsi);
+	}
 }
 
 /*
@@ -4450,6 +4454,9 @@ ixl_update_ifx_stats(struct ixl_ifx *ifx)
 	IXL_SET_IMCASTS(ifx, es->rx_multicast);
 	IXL_SET_OMCASTS(ifx, es->tx_multicast);
 
+	IXL_SET_IERRORS(ifx, nsd->crc_errors + nsd->illegal_bytes +
+	    nsd->rx_undersize + nsd->rx_oversize + nsd->rx_fragments +
+	    nsd->rx_jabber);
 	IXL_SET_OERRORS(ifx, es->tx_errors);
 	IXL_SET_IQDROPS(ifx, es->rx_discards + nsd->eth.rx_discards);
 	IXL_SET_OQDROPS(ifx, tx_discards);
@@ -6282,6 +6289,31 @@ i40e_vf_config_promisc_msg(struct ixl_pf *pf, struct ixl_vf *vf,
 }
 
 static void
+i40e_vf_get_stats_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_queue_select *queue;
+
+	if (msg_size != sizeof(*queue)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_GET_STATS,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	queue = msg;
+	if (queue->vsi_id != vf->vsi.vsi_num) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_GET_STATS,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	ixl_update_eth_stats(&vf->vsi);
+
+	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_GET_STATS,
+	    I40E_SUCCESS, &vf->vsi.eth_stats, sizeof(vf->vsi.eth_stats));
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -6346,6 +6378,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE:
 		i40e_vf_config_promisc_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_GET_STATS:
+		i40e_vf_get_stats_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
