@@ -596,9 +596,8 @@ pci_read_device(device_t pcib, int d, int b, int s, int f)
 
 	vid = REG(PCIR_VENDOR, 2);
 	did = REG(PCIR_DEVICE, 2);
-	if (vid != 0xffff || did != 0xffff) {
+	if (vid != 0xffff)
 		return (PCI_ALLOC_DEVINFO(pcib, d, b, s, f, vid, did));
-	}
 
 	return (NULL);
 }
@@ -617,7 +616,8 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
     uint16_t did, size_t size)
 {
 	struct pci_devinfo *devlist_entry;
-	pcicfgregs *cfg = NULL;
+	pcicfgregs *cfg;
+
 	devlist_entry = malloc(size, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	cfg = &devlist_entry->cfg;
