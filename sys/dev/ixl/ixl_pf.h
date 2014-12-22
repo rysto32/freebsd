@@ -37,6 +37,7 @@
 #define _IXL_PF_H_
 
 #define	VF_FLAG_ENABLED			0x01
+#define	VF_FLAG_SET_MAC_CAP		0x02
 
 struct ixl_vf {
 	struct ixl_vsi		vsi;
