@@ -133,6 +133,7 @@ static void	ixl_unregister_vlan(void *, struct ifnet *, u16);
 static void	ixl_setup_vlan_filters(struct ixl_vsi *);
 
 static void	ixl_init_filters(struct ixl_vsi *);
+static void	ixl_reconfigure_filters(struct ixl_vsi *vsi);
 static void	ixl_add_filter(struct ixl_vsi *, u8 *, s16 vlan);
 static void	ixl_del_filter(struct ixl_vsi *, u8 *, s16 vlan);
 static void	ixl_add_hw_filters(struct ixl_vsi *, int, int);
@@ -1192,6 +1193,7 @@ ixl_init_locked(struct ixl_pf *pf)
 
 	i40e_aq_set_default_vsi(hw, vsi->seid, NULL);
 
+	ixl_reconfigure_filters(vsi);
 
 	/* Set MTU in hardware*/
 	int aq_error = i40e_aq_set_mac_config(hw, vsi->max_frame_size,
@@ -3490,6 +3492,13 @@ ixl_add_mc_filter(struct ixl_vsi *vsi, u8 *macaddr)
 	return;
 }
 
+static void
+ixl_reconfigure_filters(struct ixl_vsi *vsi)
+{
+
+	ixl_add_hw_filters(vsi, IXL_FILTER_USED, vsi->num_macs);
+}
+
 /*
 ** This routine adds macvlan filters
 */
@@ -3532,6 +3541,8 @@ ixl_add_filter(struct ixl_vsi *vsi, u8 *macaddr, s16 vlan)
 	f->flags |= (IXL_FILTER_ADD | IXL_FILTER_USED);
 	if (f->vlan != IXL_VLAN_ANY)
 		f->flags |= IXL_FILTER_VLAN;
+	else
+		vsi->num_macs++;
 
 	ixl_add_hw_filters(vsi, f->flags, 1);
 	return;
@@ -3548,6 +3559,7 @@ ixl_del_filter(struct ixl_vsi *vsi, u8 *macaddr, s16 vlan)
 
 	f->flags |= IXL_FILTER_DEL;
 	ixl_del_hw_filters(vsi, 1);
+	vsi->num_macs--;
 
 	/* Check if this is the last vlan removal */
 	if (vlan != IXL_VLAN_ANY && vsi->num_vlans == 0) {
@@ -3617,9 +3629,14 @@ ixl_add_hw_filters(struct ixl_vsi *vsi, int flags, int cnt)
 		if (f->flags == flags) {
 			b = &a[j]; // a pox on fvl long names :)
 			bcopy(f->macaddr, b->mac_addr, ETHER_ADDR_LEN);
-			b->vlan_tag =
-			    (f->vlan == IXL_VLAN_ANY ? 0 : f->vlan);
-			b->flags = I40E_AQC_MACVLAN_ADD_PERFECT_MATCH;
+			if (f->vlan == IXL_VLAN_ANY) {
+				b->vlan_tag = 0;
+				b->flags = I40E_AQC_MACVLAN_ADD_IGNORE_VLAN;
+			} else {
+				b->vlan_tag = f->vlan;
+				b->flags = 0;
+			}
+			b->flags |= I40E_AQC_MACVLAN_ADD_PERFECT_MATCH;
 			f->flags &= ~IXL_FILTER_ADD;
 			j++;
 		}
@@ -5204,6 +5221,11 @@ ixl_vf_setup_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	if (error != 0)
 		return (error);
 
+	vf->vsi.hw_filters_add = 0;
+	vf->vsi.hw_filters_del = 0;
+	ixl_add_filter(&vf->vsi, ixl_bcast_addr, IXL_VLAN_ANY);
+	ixl_reconfigure_filters(&vf->vsi);
+
 	return (0);
 }
 
@@ -5976,6 +5998,130 @@ ixl_vf_disable_queues_msg(struct ixl_pf *pf, struct ixl_vf *vf,
 	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_DISABLE_QUEUES);
 }
 
+static boolean_t
+ixl_zero_mac(const uint8_t *addr)
+{
+	uint8_t zero[ETHER_ADDR_LEN] = {0, 0, 0, 0, 0, 0};
+
+	return (cmp_etheraddr(addr, zero));
+}
+
+static boolean_t
+ixl_bcast_mac(const uint8_t *addr)
+{
+
+	return (cmp_etheraddr(addr, ixl_bcast_addr));
+}
+
+static int
+ixl_vf_mac_valid(struct ixl_vf *vf, const uint8_t *addr)
+{
+
+	if (ixl_zero_mac(addr) || ixl_bcast_mac(addr))
+		return (EINVAL);
+
+	/*
+	 * If the VF is not allowed to change its MAC address, don't let it
+	 * set a MAC filter for an address that is not a multicast address and
+	 * is not its assigned MAC.
+	 */
+	if (!(vf->vf_flags & VF_FLAG_SET_MAC_CAP) &&
+	    !(ETHER_IS_MULTICAST(addr) || cmp_etheraddr(addr, vf->mac)))
+		return (EPERM);
+
+	return (0);
+}
+
+static void
+ixl_vf_add_mac_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_ether_addr_list *addr_list;
+	struct i40e_virtchnl_ether_addr *addr;
+	struct ixl_vsi *vsi;
+	int i;
+	size_t expected_size;
+
+	vsi = &vf->vsi;
+
+	if (msg_size < sizeof(*addr_list)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	addr_list = msg;
+	expected_size = sizeof(*addr_list) +
+	    addr_list->num_elements * sizeof(*addr);
+
+	if (addr_list->num_elements == 0 ||
+	    addr_list->vsi_id != vsi->vsi_num ||
+	    msg_size != expected_size) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	for (i = 0; i < addr_list->num_elements; i++) {
+		if (ixl_vf_mac_valid(vf, addr_list->list[i].addr) != 0) {
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS, I40E_ERR_PARAM);
+			return;
+		}
+	}
+
+	for (i = 0; i < addr_list->num_elements; i++) {
+		addr = &addr_list->list[i];
+		ixl_add_filter(vsi, addr->addr, IXL_VLAN_ANY);
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS);
+}
+
+static void
+ixl_vf_del_mac_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_ether_addr_list *addr_list;
+	struct i40e_virtchnl_ether_addr *addr;
+	size_t expected_size;
+	int i;
+
+	if (msg_size < sizeof(*addr_list)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	addr_list = msg;
+	expected_size = sizeof(*addr_list) +
+	    addr_list->num_elements * sizeof(*addr);
+
+	if (addr_list->num_elements == 0 ||
+	    addr_list->vsi_id != vf->vsi.vsi_num ||
+	    msg_size != expected_size) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	for (i = 0; i < addr_list->num_elements; i++) {
+		addr = &addr_list->list[i];
+		if (ixl_zero_mac(addr->addr) || ixl_bcast_mac(addr->addr)) {
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS, I40E_ERR_PARAM);
+			return;
+		}
+	}
+
+	for (i = 0; i < addr_list->num_elements; i++) {
+		addr = &addr_list->list[i];
+		ixl_del_filter(&vf->vsi, addr->addr, IXL_VLAN_ANY);
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS);
+}
+
 static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
@@ -6027,6 +6173,12 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
 		ixl_vf_disable_queues_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS:
+		ixl_vf_add_mac_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS:
+		ixl_vf_del_mac_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
