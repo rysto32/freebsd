@@ -1190,8 +1190,8 @@ skip_head:
 	rxr->bytes = 0;
 	rxr->discard = FALSE;
 
-	wr32(vsi->hw, rxr->tail, que->num_desc - 1);
-	ixl_flush(vsi->hw);
+	wr32(ifx->hw, rxr->tail, que->num_desc - 1);
+	ixl_flush(ifx->hw);
 
 #if defined(INET6) || defined(INET)
 	/*
@@ -1633,36 +1633,36 @@ ixl_rx_checksum(struct mbuf * mp, u32 status, u32 error, u8 ptype)
 uint64_t
 ixl_get_counter(if_t ifp, ift_counter cnt)
 {
-	struct ixl_vsi *vsi;
+	struct ixl_ifx *ifx;
 
-	vsi = if_getsoftc(ifp);
+	ifx = if_getsoftc(ifp);
 
 	switch (cnt) {
 	case IFCOUNTER_IPACKETS:
-		return (vsi->ipackets);
+		return (ifx->ipackets);
 	case IFCOUNTER_IERRORS:
-		return (vsi->ierrors);
+		return (ifx->ierrors);
 	case IFCOUNTER_OPACKETS:
-		return (vsi->opackets);
+		return (ifx->opackets);
 	case IFCOUNTER_OERRORS:
-		return (vsi->oerrors);
+		return (ifx->oerrors);
 	case IFCOUNTER_COLLISIONS:
 		/* Collisions are by standard impossible in 40G/10G Ethernet */
 		return (0);
 	case IFCOUNTER_IBYTES:
-		return (vsi->ibytes);
+		return (ifx->ibytes);
 	case IFCOUNTER_OBYTES:
-		return (vsi->obytes);
+		return (ifx->obytes);
 	case IFCOUNTER_IMCASTS:
-		return (vsi->imcasts);
+		return (ifx->imcasts);
 	case IFCOUNTER_OMCASTS:
-		return (vsi->omcasts);
+		return (ifx->omcasts);
 	case IFCOUNTER_IQDROPS:
-		return (vsi->iqdrops);
+		return (ifx->iqdrops);
 	case IFCOUNTER_OQDROPS:
-		return (vsi->oqdrops);
+		return (ifx->oqdrops);
 	case IFCOUNTER_NOPROTO:
-		return (vsi->noproto);
+		return (ifx->noproto);
 	default:
 		return (if_get_counter_default(ifp, cnt));
 	}
