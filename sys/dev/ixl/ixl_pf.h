@@ -38,6 +38,7 @@
 
 #define	VF_FLAG_ENABLED			0x01
 #define	VF_FLAG_SET_MAC_CAP		0x02
+#define	VF_FLAG_VLAN_CAP		0x04
 
 struct ixl_vf {
 	struct ixl_vsi		vsi;
