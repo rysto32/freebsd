@@ -42,6 +42,7 @@ struct ixl_vf {
 	struct ixl_vsi		vsi;
 	uint32_t		vf_flags;
 
+	uint8_t			mac[ETHER_ADDR_LEN];
 	uint16_t		vf_num;
 };
 
