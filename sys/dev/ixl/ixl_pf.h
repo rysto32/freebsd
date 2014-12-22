@@ -98,8 +98,18 @@ struct ixl_pf {
 	int			num_vfs;
 
 	uint16_t		veb_seid;
+
+	int			vc_debug_lvl;
 };
 
+#define	I40E_VC_DEBUG(pf, level, ...) \
+	do { \
+		if ((pf)->vc_debug_lvl >= (level)) \
+			device_printf((pf)->dev, __VA_ARGS__); \
+	} while (0)
+
+#define	i40e_send_vf_nack(pf, vf, op, st) \
+	ixl_send_vf_nack_msg((pf), (vf), (op), (st), __FILE__, __LINE__)
 
 #define IXL_PF_LOCK_INIT(_sc, _name) \
         mtx_init(&(_sc)->pf_mtx, _name, "IXL PF Lock", MTX_DEF)
