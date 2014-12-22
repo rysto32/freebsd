@@ -272,6 +272,9 @@
 
 #define IXL_MAX_VSI_QUEUES	(2 * (I40E_VSILAN_QTABLE_MAX_INDEX + 1))
 
+#define IXL_RX_CTX_BASE_UNITS	128
+#define IXL_TX_CTX_BASE_UNITS	128
+
 #define IXL_VPINT_LNKLSTN_REG(hw, vector, vf_num) \
 	I40E_VPINT_LNKLSTN(((vector) - 1) + \
 	    (((hw)->func_caps.num_msix_vectors_vf - 1) * (vf_num)))
