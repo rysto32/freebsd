@@ -5561,6 +5561,34 @@ i40e_vf_reset_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 }
 
 static void
+i40e_vf_get_resources_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_vf_resource reply;
+
+	if (msg_size != 0) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_GET_VF_RESOURCES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	bzero(&reply, sizeof(reply));
+
+	reply.vf_offload_flags = I40E_VIRTCHNL_VF_OFFLOAD_L2;
+
+	reply.num_vsis = 1;
+	reply.num_queue_pairs = vf->vsi.num_queues;
+	reply.max_vectors = pf->hw.func_caps.num_msix_vectors_vf;
+	reply.vsi_res[0].vsi_id = vf->vsi.vsi_num;
+	reply.vsi_res[0].vsi_type = I40E_VSI_SRIOV;
+	reply.vsi_res[0].num_queue_pairs = vf->vsi.num_queues;
+	memcpy(reply.vsi_res[0].default_mac_addr, vf->mac, ETHER_ADDR_LEN);
+
+	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_GET_VF_RESOURCES,
+	    I40E_SUCCESS, &reply, sizeof(reply));
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -5589,6 +5617,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_RESET_VF:
 		i40e_vf_reset_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_GET_VF_RESOURCES:
+		i40e_vf_get_resources_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
