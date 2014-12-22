@@ -588,7 +588,7 @@ ixl_get_filter(struct ixl_vsi *vsi)
 ** Compare two ethernet addresses
 */
 static inline bool
-cmp_etheraddr(u8 *ea1, u8 *ea2)
+cmp_etheraddr(const u8 *ea1, const u8 *ea2)
 {       
 	bool cmp = FALSE;
 
