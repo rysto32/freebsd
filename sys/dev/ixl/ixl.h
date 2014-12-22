@@ -264,9 +264,25 @@
 #define IXL_FLAGS_KEEP_TSO4	(1 << 0)
 #define IXL_FLAGS_KEEP_TSO6	(1 << 1)
 
+#define IXL_VF_RESET_TIMEOUT	100
+
 #define IXL_VSI_DATA_PORT	0x01
 
 #define IXLV_MAX_QUEUES		16
+
+#define IXL_MAX_VSI_QUEUES	(2 * (I40E_VSILAN_QTABLE_MAX_INDEX + 1))
+
+#define IXL_VPINT_LNKLSTN_REG(hw, vector, vf_num) \
+	I40E_VPINT_LNKLSTN(((vector) - 1) + \
+	    (((hw)->func_caps.num_msix_vectors_vf - 1) * (vf_num)))
+
+#define IXL_VFINT_DYN_CTLN_REG(hw, vector, vf_num) \
+	I40E_VFINT_DYN_CTLN(((vector) - 1) + \
+	    (((hw)->func_caps.num_msix_vectors_vf - 1) * (vf_num)))
+
+#define IXL_PF_PCI_CIAA_VF_DEVICE_STATUS	0xAA
+
+#define IXL_PF_PCI_CIAD_VF_TRANS_PENDING_MASK	0x20
 
 #define IXL_TX_LOCK(_sc)                mtx_lock(&(_sc)->mtx)
 #define IXL_TX_UNLOCK(_sc)              mtx_unlock(&(_sc)->mtx)

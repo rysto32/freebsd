@@ -194,6 +194,9 @@ static int	ixl_adminq_err_to_errno(enum i40e_admin_queue_err err);
 static int	ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t*);
 static void	ixl_uninit_iov(device_t dev);
 static int	ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t*);
+
+static void	ixl_reset_vf(struct ixl_pf *pf, struct ixl_vf *vf);
+static void	ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 #endif
 
 /*********************************************************************
@@ -5190,6 +5193,207 @@ ixl_vf_setup_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	return (0);
 }
 
+static void
+ixl_vf_map_vsi_queue(struct i40e_hw *hw, struct ixl_vf *vf, int qnum,
+    uint32_t val)
+{
+	uint32_t qtable;
+	int index, shift;
+
+	/*
+	 * Two queues are mapped in a single register, so we have to do some
+	 * gymnastics to convert the queue number into a register index and
+	 * shift.
+	 */
+	index = qnum / 2;
+	shift = (qnum % 2) * I40E_VSILAN_QTABLE_QINDEX_1_SHIFT;
+
+	qtable = rd32(hw, I40E_VSILAN_QTABLE(index, vf->vsi.vsi_num));
+	qtable &= ~(I40E_VSILAN_QTABLE_QINDEX_0_MASK << shift);
+	qtable |= val << shift;
+	wr32(hw, I40E_VSILAN_QTABLE(index, vf->vsi.vsi_num), qtable);
+}
+
+static void
+ixl_vf_map_queues(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	uint32_t qtable;
+	int i;
+
+	hw = &pf->hw;
+
+	/*
+	 * Contiguous mappings aren't actually supported by the hardware,
+	 * so we have to use non-contiguous mappings.
+	 */
+	wr32(hw, I40E_VSILAN_QBASE(vf->vsi.vsi_num),
+	     I40E_VSILAN_QBASE_VSIQTABLE_ENA_MASK);
+
+	wr32(hw, I40E_VPLAN_MAPENA(vf->vf_num),
+	    I40E_VPLAN_MAPENA_TXRX_ENA_MASK);
+
+	for (i = 0; i < vf->vsi.num_queues; i++) {
+		qtable = (vf->vsi.first_queue + i) <<
+		    I40E_VPLAN_QTABLE_QINDEX_SHIFT;
+
+		wr32(hw, I40E_VPLAN_QTABLE(i, vf->vf_num), qtable);
+	}
+
+	/* Map queues allocated to VF to its VSI. */
+	for (i = 0; i < vf->vsi.num_queues; i++)
+		ixl_vf_map_vsi_queue(hw, vf, i, vf->vsi.first_queue + i);
+
+	/* Set rest of VSI queues as unused. */
+	for (; i < IXL_MAX_VSI_QUEUES; i++)
+		ixl_vf_map_vsi_queue(hw, vf, i,
+		    I40E_VSILAN_QTABLE_QINDEX_0_MASK);
+
+	ixl_flush(hw);
+}
+
+static void
+ixl_vf_vsi_release(struct ixl_pf *pf, struct ixl_vsi *vsi)
+{
+	struct i40e_hw *hw;
+
+	hw = &pf->hw;
+
+	if (vsi->seid == 0)
+		return;
+
+	i40e_aq_delete_element(hw, vsi->seid, NULL);
+}
+
+static void
+ixl_vf_disable_queue_intr(struct i40e_hw *hw, uint32_t vfint_reg)
+{
+
+	wr32(hw, vfint_reg, I40E_VFINT_DYN_CTLN_CLEARPBA_MASK);
+	ixl_flush(hw);
+}
+
+static void
+ixl_vf_unregister_intr(struct i40e_hw *hw, uint32_t vpint_reg)
+{
+
+	wr32(hw, vpint_reg, I40E_VPINT_LNKLSTN_FIRSTQ_TYPE_MASK |
+	    I40E_VPINT_LNKLSTN_FIRSTQ_INDX_MASK);
+	ixl_flush(hw);
+}
+
+static void
+ixl_vf_release_resources(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	uint32_t vfint_reg, vpint_reg;
+	int i;
+
+	hw = &pf->hw;
+
+	ixl_vf_vsi_release(pf, &vf->vsi);
+
+	/* Index 0 has a special register. */
+	ixl_vf_disable_queue_intr(hw, I40E_VFINT_DYN_CTL0(vf->vf_num));
+
+	for (i = 1; i < hw->func_caps.num_msix_vectors_vf; i++) {
+		vfint_reg = IXL_VFINT_DYN_CTLN_REG(hw, i , vf->vf_num);
+		ixl_vf_disable_queue_intr(hw, vfint_reg);
+	}
+
+	/* Index 0 has a special register. */
+	ixl_vf_unregister_intr(hw, I40E_VPINT_LNKLST0(vf->vf_num));
+
+	for (i = 1; i < hw->func_caps.num_msix_vectors_vf; i++) {
+		vpint_reg = IXL_VPINT_LNKLSTN_REG(hw, i, vf->vf_num);
+		ixl_vf_unregister_intr(hw, vpint_reg);
+	}
+
+	vf->vsi.num_queues = 0;
+}
+
+static int
+ixl_flush_pcie(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	int i;
+	uint16_t global_vf_num;
+	uint32_t ciad;
+
+	hw = &pf->hw;
+	global_vf_num = hw->func_caps.vf_base_id + vf->vf_num;
+
+	wr32(hw, I40E_PF_PCI_CIAA, IXL_PF_PCI_CIAA_VF_DEVICE_STATUS |
+	     (global_vf_num << I40E_PF_PCI_CIAA_VF_NUM_SHIFT));
+	for (i = 0; i < IXL_VF_RESET_TIMEOUT; i++) {
+		ciad = rd32(hw, I40E_PF_PCI_CIAD);
+		if ((ciad & IXL_PF_PCI_CIAD_VF_TRANS_PENDING_MASK) == 0)
+			return (0);
+		DELAY(1);
+	}
+
+	return (ETIMEDOUT);
+}
+
+static void
+ixl_reset_vf(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	uint32_t vfrtrig;
+
+	hw = &pf->hw;
+
+	vfrtrig = rd32(hw, I40E_VPGEN_VFRTRIG(vf->vf_num));
+	vfrtrig |= I40E_VPGEN_VFRTRIG_VFSWR_MASK;
+	wr32(hw, I40E_VPGEN_VFRTRIG(vf->vf_num), vfrtrig);
+	ixl_flush(hw);
+
+	ixl_reinit_vf(pf, vf);
+}
+
+static void
+ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	uint32_t vfrstat, vfrtrig;
+	int i, error;
+
+	hw = &pf->hw;
+
+	error = ixl_flush_pcie(pf, vf);
+	if (error != 0)
+		device_printf(pf->dev,
+		    "Timed out waiting for PCIe activity to stop on VF-%d\n",
+		    vf->vf_num);
+
+	for (i = 0; i < IXL_VF_RESET_TIMEOUT; i++) {
+		DELAY(10);
+
+		vfrstat = rd32(hw, I40E_VPGEN_VFRSTAT(vf->vf_num));
+		if (vfrstat & I40E_VPGEN_VFRSTAT_VFRD_MASK)
+			break;
+	}
+
+	if (i == IXL_VF_RESET_TIMEOUT)
+		device_printf(pf->dev, "VF %d failed to reset\n", vf->vf_num);
+
+	wr32(hw, I40E_VFGEN_RSTAT1(vf->vf_num), I40E_VFR_COMPLETED);
+
+	vfrtrig = rd32(hw, I40E_VPGEN_VFRTRIG(vf->vf_num));
+	vfrtrig &= ~I40E_VPGEN_VFRTRIG_VFSWR_MASK;
+	wr32(hw, I40E_VPGEN_VFRTRIG(vf->vf_num), vfrtrig);
+
+	if (vf->vsi.seid != 0)
+		ixl_disable_rings(&vf->vsi);
+
+	ixl_vf_release_resources(pf, vf);
+	ixl_vf_setup_vsi(pf, vf);
+	ixl_vf_map_queues(pf, vf);
+
+	wr32(hw, I40E_VFGEN_RSTAT1(vf->vf_num), I40E_VFR_VFACTIVE);
+	ixl_flush(hw);
+}
+
 static int
 ixl_adminq_err_to_errno(enum i40e_admin_queue_err err)
 {
@@ -5331,6 +5535,11 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 	SLIST_INIT(&vf->vsi.ftl);
 
 	error = ixl_vf_setup_vsi(pf, vf);
+	if (error != 0)
+		goto out;
+
+	ixl_reset_vf(pf, vf);
+out:
 	IXL_PF_UNLOCK(pf);
 	return (error);
 }
