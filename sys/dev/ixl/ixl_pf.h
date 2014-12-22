@@ -103,6 +103,8 @@ struct ixl_pf {
 
 	uint16_t		veb_seid;
 
+	struct task		vflr_task;
+
 	int			vc_debug_lvl;
 };
 

@@ -280,6 +280,9 @@
 
 #define IXL_PF_PCI_CIAD_VF_TRANS_PENDING_MASK	0x20
 
+#define IXL_GLGEN_VFLRSTAT_INDEX(glb_vf)	((glb_vf) / 32)
+#define IXL_GLGEN_VFLRSTAT_MASK(glb_vf)	(1 << ((glb_vf) % 32))
+
 #define IXL_MAX_ITR_IDX		3
 
 #define IXL_END_OF_INTR_LNKLST	0x7FF
