@@ -5835,6 +5835,68 @@ i40e_vf_config_irq_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 }
 
 static void
+i40e_vf_enable_queues_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_queue_select *select;
+	int error;
+
+	if (msg_size != sizeof(*select)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ENABLE_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	select = msg;
+	if (select->vsi_id != vf->vsi.vsi_num ||
+	    select->rx_queues == 0 || select->tx_queues == 0) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ENABLE_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	error = ixl_enable_rings(&vf->vsi);
+	if (error) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ENABLE_QUEUES,
+		    I40E_ERR_TIMEOUT);
+		return;
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_ENABLE_QUEUES);
+}
+
+static void
+i40e_vf_disable_queues_msg(struct ixl_pf *pf, struct ixl_vf *vf,
+    void *msg, uint16_t msg_size)
+{
+	struct i40e_virtchnl_queue_select *select;
+	int error;
+
+	if (msg_size != sizeof(*select)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_DISABLE_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	select = msg;
+	if (select->vsi_id != vf->vsi.vsi_num ||
+	    select->rx_queues == 0 || select->tx_queues == 0) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_DISABLE_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	error = ixl_disable_rings(&vf->vsi);
+	if (error) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_DISABLE_QUEUES,
+		    I40E_ERR_TIMEOUT);
+		return;
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_DISABLE_QUEUES);
+}
+
+static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
 	struct ixl_vf *vf;
@@ -5878,6 +5940,12 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP:
 		i40e_vf_config_irq_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_ENABLE_QUEUES:
+		i40e_vf_enable_queues_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
+		i40e_vf_disable_queues_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
