@@ -223,6 +223,10 @@
 #define IXL_QUEUE_HUNG		0x80000000
 #define IXL_KEYSZ		10
 
+#define IXL_VF_MAX_BUFFER	0x3F80
+#define IXL_VF_MAX_HDR_BUFFER	0x840
+#define IXL_VF_MAX_FRAME	0x3FFF
+
 /* ERJ: hardware can support ~1.5k filters between all functions */
 #define IXL_MAX_FILTERS	256
 #define IXL_MAX_TX_BUSY	10
@@ -271,6 +275,9 @@
 #define IXLV_MAX_QUEUES		16
 
 #define IXL_MAX_VSI_QUEUES	(2 * (I40E_VSILAN_QTABLE_MAX_INDEX + 1))
+
+#define IXL_RX_CTX_BASE_UNITS	128
+#define IXL_TX_CTX_BASE_UNITS	128
 
 #define IXL_VPINT_LNKLSTN_REG(hw, vector, vf_num) \
 	I40E_VPINT_LNKLSTN(((vector) - 1) + \
