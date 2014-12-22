@@ -207,3 +207,12 @@ METHOD void decode_rid {
 	int 		*func;
 } DEFAULT pcib_decode_rid;
 
+METHOD int alloc_devinfo {
+	device_t pcib;
+	int domain;
+	int bus;
+	int slot;
+	int func;
+	uint16_t vid;
+	uint16_t did;
+}

@@ -127,8 +127,8 @@ static uint16_t		pci_get_rid_method(device_t dev, device_t child);
 
 static void		pci_add_named_child(device_t bus,
 			    struct pci_devinfo *dinfo, const char *name);
-static struct pci_devinfo * pci_fill_devinfo(device_t pcib, int d, int b, int s,
-    int f, uint16_t vid, uint16_t did, size_t size);
+static struct pci_devinfo *pci_alloc_devinfo_method(device_t pcib, int d, int b,
+			    int s, int f, uint16_t vid, uint16_t did);
 
 static device_method_t pci_methods[] = {
 	/* Device interface */
@@ -189,6 +189,7 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_msi_count,	pci_msi_count_method),
 	DEVMETHOD(pci_msix_count,	pci_msix_count_method),
 	DEVMETHOD(pci_get_rid,		pci_get_rid_method),
+	DEVMETHOD(pci_alloc_devinfo,	pci_alloc_devinfo_method),
 #ifdef PCI_IOV
 	DEVMETHOD(pci_iov_attach,	pci_iov_attach_method),
 	DEVMETHOD(pci_iov_detach,	pci_iov_detach_method),
@@ -588,7 +589,7 @@ pci_hdrtypedata(device_t pcib, int b, int s, int f, pcicfgregs *cfg)
 
 /* read configuration header into pcicfgregs structure */
 struct pci_devinfo *
-pci_read_device(device_t pcib, int d, int b, int s, int f, size_t size)
+pci_read_device(device_t pcib, int d, int b, int s, int f)
 {
 #define	REG(n, w)	PCIB_READ_CONFIG(pcib, b, s, f, n, w)
 	uint16_t vid, did;
@@ -596,14 +597,22 @@ pci_read_device(device_t pcib, int d, int b, int s, int f, size_t size)
 	vid = REG(PCIR_VENDOR, 2);
 	did = REG(PCIR_DEVICE, 2);
 	if (vid != 0xffff || did != 0xffff) {
-		return (pci_fill_devinfo(pcib, d, b, s, f, vid, did, size));
+		return (PCI_ALLOC_DEVINFO(pcib, d, b, s, f, vid, did));
 	}
 
 	return (NULL);
 }
-	
 
 static struct pci_devinfo *
+pci_alloc_devinfo_method(device_t pcib, int d, int b, int s, int f,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_fill_devinfo(pcib, d, b, s, f, vid, did,
+	    sizeof(struct pci_devinfo));
+}
+
+struct pci_devinfo *
 pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
     uint16_t did, size_t size)
 {
@@ -3483,11 +3492,11 @@ pci_add_resources(device_t bus, device_t dev, int force, uint32_t prefetchmask)
 
 static struct pci_devinfo *
 pci_identify_function(device_t pcib, device_t dev, int domain, int busno,
-    int slot, int func, size_t dinfo_size)
+    int slot, int func)
 {
 	struct pci_devinfo *dinfo;
 
-	dinfo = pci_read_device(pcib, domain, busno, slot, func, dinfo_size);
+	dinfo = pci_read_device(pcib, domain, busno, slot, func);
 	if (dinfo != NULL)
 		pci_add_child(dev, dinfo);
 
@@ -3495,7 +3504,7 @@ pci_identify_function(device_t pcib, device_t dev, int domain, int busno,
 }
 
 void
-pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
+pci_add_children(device_t dev, int domain, int busno)
 {
 #define	REG(n, w)	PCIB_READ_CONFIG(pcib, busno, s, f, n, w)
 	device_t pcib = device_get_parent(dev);
@@ -3511,8 +3520,7 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 	 * functions on this bus as ARI changes the set of slots and functions
 	 * that are legal on this bus.
 	 */
-	dinfo = pci_identify_function(pcib, dev, domain, busno, 0, 0,
-	    dinfo_size);
+	dinfo = pci_identify_function(pcib, dev, domain, busno, 0, 0);
 	if (dinfo != NULL && pci_enable_ari)
 		PCIB_TRY_ENABLE_ARI(pcib, dinfo->cfg.dev);
 
@@ -3535,15 +3543,14 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 		if (hdrtype & PCIM_MFDEV)
 			pcifunchigh = PCIB_MAXFUNCS(pcib);
 		for (f = first_func; f <= pcifunchigh; f++)
-			pci_identify_function(pcib, dev, domain, busno, s, f,
-			    dinfo_size);
+			pci_identify_function(pcib, dev, domain, busno, s, f);
 	}
 #undef REG
 }
 
 #ifdef PCI_IOV
 device_t
-pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
+pci_add_iov_child(device_t bus, uint16_t rid, uint16_t vid,
     uint16_t did, const char *driver)
 {
 	struct pci_devinfo *dinfo;
@@ -3657,7 +3664,7 @@ pci_attach(device_t dev)
 	 */
 	domain = pcib_get_domain(dev);
 	busno = pcib_get_bus(dev);
-	pci_add_children(dev, domain, busno, sizeof(struct pci_devinfo));
+	pci_add_children(dev, domain, busno);
 	return (bus_generic_attach(dev));
 }
 

@@ -278,3 +278,12 @@ acpi_pcib_power_for_sleep(device_t pcib, device_t dev, int *pstate)
     acpi_device_pwr_for_sleep(acpi_dev, dev, pstate);
     return (0);
 }
+
+struct pci_devinfo *
+acpi_pcib_alloc_devinfo_method(device_t pcib, int d, int b, int s, int f,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_fill_devinfo(pcib, d, b, s, f, vid, did,
+	    sizeof(struct acpi_pci_devinfo));
+}

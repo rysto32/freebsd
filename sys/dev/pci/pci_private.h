@@ -48,8 +48,9 @@ struct pci_softc {
 extern int 	pci_do_power_resume;
 extern int 	pci_do_power_suspend;
 
-void		pci_add_children(device_t dev, int domain, int busno,
-		    size_t dinfo_size);
+void		pci_add_children(device_t dev, int domain, int busno);
+struct pci_devinfo *pci_fill_devinfo(device_t pcib, int d, int b, int s, int f,
+		    uint16_t vid, uint16_t did, size_t size);
 void		pci_add_child(device_t bus, struct pci_devinfo *dinfo);
 void		pci_add_resources(device_t bus, device_t dev, int force,
 		    uint32_t prefetchmask);
@@ -107,8 +108,7 @@ int		pci_deactivate_resource(device_t dev, device_t child, int type,
 void		pci_delete_resource(device_t dev, device_t child, 
 		    int type, int rid);
 struct resource_list *pci_get_resource_list (device_t dev, device_t child);
-struct pci_devinfo *pci_read_device(device_t pcib, int d, int b, int s, int f,
-		    size_t size);
+struct pci_devinfo *pci_read_device(device_t pcib, int d, int b, int s, int f);
 void		pci_print_verbose(struct pci_devinfo *dinfo);
 int		pci_freecfg(struct pci_devinfo *dinfo);
 void		pci_child_detached(device_t dev, device_t child);

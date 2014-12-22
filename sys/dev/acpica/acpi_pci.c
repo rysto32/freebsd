@@ -306,7 +306,7 @@ acpi_pci_attach(device_t dev)
 	 * pci_add_children() doesn't find.  We currently just ignore
 	 * these devices.
 	 */
-	pci_add_children(dev, domain, busno, sizeof(struct acpi_pci_devinfo));
+	pci_add_children(dev, domain, busno);
 	AcpiWalkNamespace(ACPI_TYPE_DEVICE, acpi_get_handle(dev), 1,
 	    acpi_pci_save_handle, NULL, dev, NULL);
 
@@ -337,3 +337,4 @@ acpi_pci_get_dma_tag(device_t bus, device_t child)
 	return (pci_get_dma_tag(bus, child));
 }
 #endif
+

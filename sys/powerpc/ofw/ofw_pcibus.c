@@ -63,6 +63,8 @@ static pci_assign_interrupt_t ofw_pcibus_assign_interrupt;
 static ofw_bus_get_devinfo_t ofw_pcibus_get_devinfo;
 static int ofw_pcibus_child_pnpinfo_str_method(device_t cbdev, device_t child,
     char *buf, size_t buflen);
+static struct pci_devinfo * ofw_pcibus_alloc_devinfo_method(device_t pcib,
+	    int d, int b, int s, int f, uint16_t vid, uint16_t did);
 
 static void ofw_pcibus_enum_devtree(device_t dev, u_int domain, u_int busno);
 static void ofw_pcibus_enum_bus(device_t dev, u_int domain, u_int busno);
@@ -77,6 +79,7 @@ static device_method_t ofw_pcibus_methods[] = {
 
 	/* PCI interface */
 	DEVMETHOD(pci_assign_interrupt, ofw_pcibus_assign_interrupt),
+	DEVMETHOD(pci_alloc_devinfo,	ofw_pcibus_alloc_devinfo_method),
 
 	/* ofw_bus interface */
 	DEVMETHOD(ofw_bus_get_devinfo,	ofw_pcibus_get_devinfo),
@@ -183,7 +186,7 @@ ofw_pcibus_enum_devtree(device_t dev, u_int domain, u_int busno)
 		 */
 
 		dinfo = (struct ofw_pcibus_devinfo *)pci_read_device(pcib,
-		    domain, busno, slot, func, sizeof(*dinfo));
+		    domain, busno, slot, func);
 		if (dinfo == NULL)
 			continue;
 		if (ofw_bus_gen_setup_devinfo(&dinfo->opd_obdinfo, child) !=
@@ -261,7 +264,7 @@ ofw_pcibus_enum_bus(device_t dev, u_int domain, u_int busno)
 				continue;
 
 			dinfo = (struct ofw_pcibus_devinfo *)pci_read_device(
-			    pcib, domain, busno, s, f, sizeof(*dinfo));
+			    pcib, domain, busno, s, f);
 			if (dinfo == NULL)
 				continue;
 
@@ -372,4 +375,14 @@ ofw_pcibus_get_devinfo(device_t bus, device_t dev)
 	dinfo = device_get_ivars(dev);
 	return (&dinfo->opd_obdinfo);
 }
+
+static struct pci_devinfo *
+ofw_pcibus_alloc_devinfo_method(device_t pcib, int d, int b, int s, int f,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_fill_devinfo(pcib, d, b, s, f, vid, did,
+	    sizeof(struct ofw_pcibus_devinfo));
+}
+
 

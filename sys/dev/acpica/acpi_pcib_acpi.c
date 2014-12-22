@@ -142,6 +142,7 @@ static device_method_t acpi_pcib_acpi_methods[] = {
     DEVMETHOD(pcib_release_msix,	pcib_release_msix),
     DEVMETHOD(pcib_map_msi,		acpi_pcib_map_msi),
     DEVMETHOD(pcib_power_for_sleep,	acpi_pcib_power_for_sleep),
+    DEVMETHOD(pcib_alloc_devinfo,	acpi_pcib_alloc_devinfo_method),
 
     DEVMETHOD_END
 };

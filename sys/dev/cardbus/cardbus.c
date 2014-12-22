@@ -191,8 +191,7 @@ cardbus_attach_card(device_t cbdev)
 		struct cardbus_devinfo *dinfo;
 
 		dinfo = (struct cardbus_devinfo *)
-		    pci_read_device(brdev, domain, bus, slot, func,
-			sizeof(struct cardbus_devinfo));
+		    pci_read_device(brdev, domain, bus, slot, func);
 		if (dinfo == NULL)
 			continue;
 		if (dinfo->pci.cfg.mfdev)
@@ -326,6 +325,15 @@ cardbus_read_ivar(device_t cbdev, device_t child, int which, uintptr_t *result)
 	return 0;
 }
 
+static struct pci_devinfo *
+cardbus_alloc_devinfo_method(device_t pcib, int d, int b, int s, int f,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_fill_devinfo(pcib, d, b, s, f, vid, did,
+	    sizeof(struct cardbus_devinfo));
+}
+
 static device_method_t cardbus_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		cardbus_probe),
@@ -343,7 +351,10 @@ static device_method_t cardbus_methods[] = {
 	DEVMETHOD(card_attach_card,	cardbus_attach_card),
 	DEVMETHOD(card_detach_card,	cardbus_detach_card),
 
-	{0,0}
+	/* PCI interface */
+	DEVMETHOD(pci_alloc_devinfo,	cardbus_alloc_devinfo_method),
+
+	DEVMETHOD_END
 };
 
 DEFINE_CLASS_1(cardbus, cardbus_driver, cardbus_methods,

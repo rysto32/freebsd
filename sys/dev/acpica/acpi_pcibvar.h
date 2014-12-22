@@ -40,6 +40,8 @@ int	acpi_pcib_route_interrupt(device_t pcib, device_t dev, int pin,
     ACPI_BUFFER *prtbuf);
 int	acpi_pcib_power_for_sleep(device_t pcib, device_t dev,
     int *pstate);
+struct pci_devinfo *acpi_pcib_alloc_devinfo_method(device_t pcib, int d, int b,
+    int s, int f, uint16_t vid, uint16_t did);
 
 #endif /* _KERNEL */
 

@@ -262,7 +262,7 @@ xlp_add_soc_child(device_t pcib, device_t dev, int b, int s, int f)
 			    (1 << 8) | irq);
 		}
 	}
-	dinfo = pci_read_device(pcib, domain, b, s, f, sizeof(*xlp_dinfo));
+	dinfo = pci_read_device(pcib, domain, b, s, f);
 	if (dinfo == NULL)
 		return;
 	xlp_dinfo = (struct xlp_devinfo *)dinfo;
@@ -320,6 +320,15 @@ xlp_pci_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+static struct pci_devinfo *
+xlp_pci_alloc_devinfo_method(device_t pcib, int d, int b, int s, int f,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_fill_devinfo(pcib, d, b, s, f, vid, did,
+	    sizeof(struct xlp_devinfo));
+}
+
 static devclass_t pci_devclass;
 static device_method_t xlp_pci_methods[] = {
 	/* Device interface */
@@ -327,6 +336,9 @@ static device_method_t xlp_pci_methods[] = {
 	DEVMETHOD(device_attach,	xlp_pci_attach),
 	DEVMETHOD(bus_alloc_resource,	xlp_pci_alloc_resource),
 	DEVMETHOD(bus_release_resource, xlp_pci_release_resource),
+
+	/* pci interface */
+	DEVMETHOD(pci_alloc_devinfo,	xlp_pci_alloc_devinfo_method),
 
 	DEVMETHOD_END
 };
