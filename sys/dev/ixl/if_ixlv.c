@@ -849,11 +849,19 @@ ixlv_init_locked(struct ixlv_sc *sc)
 	if (error)
 		goto init_done;
 
-	/* Remove existing MAC filter if new MAC addr is set */
 	if (bcmp(IF_LLADDR(ifp), hw->mac.addr, ETHER_ADDR_LEN) != 0) {
 		error = ixlv_del_mac_filter(sc, hw->mac.addr);
 		if (error == 0)
 			ixl_vc_enqueue(&sc->vc_mgr, &sc->del_mac_cmd, 
+			    IXLV_FLAG_AQ_DEL_MAC_FILTER, ixl_init_cmd_complete,
+			    sc);
+	}
+
+	/* Remove existing MAC filter if new MAC addr is set */
+	if (bcmp(IF_LLADDR(ifp), hw->mac.addr, ETHER_ADDR_LEN) != 0) {
+		error = ixlv_del_mac_filter(sc, hw->mac.addr);
+		if (error == 0)
+			ixl_vc_enqueue(&sc->vc_mgr, &sc->del_mac_cmd,
 			    IXLV_FLAG_AQ_DEL_MAC_FILTER, ixl_init_cmd_complete,
 			    sc);
 	}
