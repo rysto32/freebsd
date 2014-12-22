@@ -132,6 +132,12 @@ ppt_probe(device_t dev)
 	else if (vmm_is_pptdev(bus, slot, func))
 		return (0);
 	else
+		/*
+		 * Returning BUS_PROBE_NOWILDCARD here matches devices that the
+		 * SR-IOV infrastructure specified as "ppt" passthrough devices.
+		 * All normal devices that did not have "ppt" specified as their
+		 * driver will not be matched by this.
+		 */
 		return (BUS_PROBE_NOWILDCARD);
 }
 
