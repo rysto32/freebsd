@@ -2663,7 +2663,7 @@ ixl_initialize_vsi(struct ixl_ifx *ifx)
 		size = que->num_desc * sizeof(struct i40e_tx_desc);
 		memset(&tctx, 0, sizeof(struct i40e_hmc_obj_txq));
 		tctx.new_context = 1;
-		tctx.base = (txr->dma.pa/128);
+		tctx.base = (txr->dma.pa/IXL_TX_CTX_BASE_UNITS);
 		tctx.qlen = que->num_desc;
 		tctx.fc_ena = 0;
 		tctx.rdylist = ifx->vsi.info.qs_handle[0]; /* index is TC */
@@ -2710,7 +2710,7 @@ ixl_initialize_vsi(struct ixl_ifx *ifx)
 		rctx.dtype = 0;
 		rctx.dsize = 1;	/* do 32byte descriptors */
 		rctx.hsplit_0 = 0;  /* no HDR split initially */
-		rctx.base = (rxr->dma.pa/128);
+		rctx.base = (rxr->dma.pa/IXL_RX_CTX_BASE_UNITS);
 		rctx.qlen = que->num_desc;
 		rctx.tphrdesc_ena = 1;
 		rctx.tphwdesc_ena = 1;
@@ -5593,6 +5593,169 @@ ixl_vf_config_rx_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 	    I40E_ERR_NOT_IMPLEMENTED);
 }
 
+static int
+ixl_vf_config_tx_queue(struct ixl_pf *pf, struct ixl_vf *vf,
+    struct i40e_virtchnl_txq_info *info)
+{
+	struct i40e_hw *hw;
+	struct i40e_hmc_obj_txq txq;
+	uint16_t global_queue_num, global_vf_num;
+	enum i40e_status_code status;
+	uint32_t qtx_ctl;
+
+	hw = &pf->hw;
+	global_queue_num = vf->vsi.first_queue + info->queue_id;
+	global_vf_num = hw->func_caps.vf_base_id + vf->vf_num;
+	bzero(&txq, sizeof(txq));
+
+	status = i40e_clear_lan_tx_queue_context(hw, global_queue_num);
+	if (status != I40E_SUCCESS)
+		return (EINVAL);
+
+	txq.base = info->dma_ring_addr / IXL_TX_CTX_BASE_UNITS;
+
+	txq.head_wb_ena = info->headwb_enabled;
+	txq.head_wb_addr = info->dma_headwb_addr;
+	txq.qlen = info->ring_len;
+	txq.rdylist = le16_to_cpu(vf->vsi.info.qs_handle[0]);
+	txq.rdylist_act = 0;
+
+	status = i40e_set_lan_tx_queue_context(hw, global_queue_num, &txq);
+	if (status != I40E_SUCCESS)
+		return (EINVAL);
+
+	qtx_ctl = I40E_QTX_CTL_VF_QUEUE |
+	    (hw->pf_id << I40E_QTX_CTL_PF_INDX_SHIFT) |
+	    (global_vf_num << I40E_QTX_CTL_VFVM_INDX_SHIFT);
+	wr32(hw, I40E_QTX_CTL(global_queue_num), qtx_ctl);
+	ixl_flush(hw);
+
+	return (0);
+}
+
+static int
+ixl_vf_config_rx_queue(struct ixl_pf *pf, struct ixl_vf *vf,
+    struct i40e_virtchnl_rxq_info *info)
+{
+	struct i40e_hw *hw;
+	struct i40e_hmc_obj_rxq rxq;
+	uint16_t global_queue_num;
+	enum i40e_status_code status;
+
+	hw = &pf->hw;
+	global_queue_num = vf->vsi.first_queue + info->queue_id;
+	bzero(&rxq, sizeof(rxq));
+
+	if (info->databuffer_size > IXL_VF_MAX_BUFFER)
+		return (EINVAL);
+
+	if (info->max_pkt_size > IXL_VF_MAX_FRAME ||
+	    info->max_pkt_size < ETHER_MIN_LEN)
+		return (EINVAL);
+
+	if (info->splithdr_enabled) {
+		if (info->hdr_size > IXL_VF_MAX_HDR_BUFFER)
+			return (EINVAL);
+
+		rxq.hsplit_0 = info->rx_split_pos &
+		    (I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_L2 |
+		     I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_IP |
+		     I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_TCP_UDP |
+		     I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_SCTP);
+		rxq.hbuff = info->hdr_size >> I40E_RXQ_CTX_HBUFF_SHIFT;
+
+		rxq.dtype = 2;
+	}
+
+	status = i40e_clear_lan_rx_queue_context(hw, global_queue_num);
+	if (status != I40E_SUCCESS)
+		return (EINVAL);
+
+	rxq.base = info->dma_ring_addr / IXL_RX_CTX_BASE_UNITS;
+	rxq.qlen = info->ring_len;
+
+	rxq.dbuff = info->databuffer_size >> I40E_RXQ_CTX_DBUFF_SHIFT;
+
+	rxq.dsize = 1;
+	rxq.crcstrip = 1;
+
+	rxq.rxmax = info->max_pkt_size;
+	rxq.tphrdesc_ena = 1;
+	rxq.tphwdesc_ena = 1;
+	rxq.tphdata_ena = 1;
+	rxq.tphhead_ena = 1;
+	rxq.lrxqthresh = 2;
+	rxq.prefena = 1;
+
+	status = i40e_set_lan_rx_queue_context(hw, global_queue_num, &rxq);
+	if (status != I40E_SUCCESS)
+		return (EINVAL);
+
+	return (0);
+}
+
+static void
+ixl_vf_config_vsi_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
+    uint16_t msg_size)
+{
+	struct i40e_virtchnl_vsi_queue_config_info *info;
+	struct i40e_virtchnl_queue_pair_info *pair;
+	int i;
+
+	if (msg_size < sizeof(*info)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	info = msg;
+	if (info->num_queue_pairs == 0) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	if (msg_size != sizeof(*info) + info->num_queue_pairs * sizeof(*pair)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	if (info->vsi_id != vf->vsi.vsi_num) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	for (i = 0; i < info->num_queue_pairs; i++) {
+		pair = &info->qpair[i];
+
+		if (pair->txq.vsi_id != vf->vsi.vsi_num ||
+		    pair->rxq.vsi_id != vf->vsi.vsi_num ||
+		    pair->txq.queue_id != pair->rxq.queue_id ||
+		    pair->txq.queue_id >= vf->vsi.num_queues) {
+
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES, I40E_ERR_PARAM);
+			return;
+		}
+
+		if (ixl_vf_config_tx_queue(pf, vf, &pair->txq) != 0) {
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES, I40E_ERR_PARAM);
+			return;
+		}
+
+		if (ixl_vf_config_rx_queue(pf, vf, &pair->rxq) != 0) {
+			i40e_send_vf_nack(pf, vf,
+			    I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES, I40E_ERR_PARAM);
+			return;
+		}
+	}
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES);
+}
+
 static void
 ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 {
@@ -5632,6 +5795,9 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		break;
 	case I40E_VIRTCHNL_OP_CONFIG_RX_QUEUE:
 		ixl_vf_config_rx_msg(pf, vf, msg, msg_size);
+		break;
+	case I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES:
+		ixl_vf_config_vsi_msg(pf, vf, msg, msg_size);
 		break;
 	default:
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
