@@ -195,6 +195,9 @@ static int	ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t*);
 static void	ixl_uninit_iov(device_t dev);
 static int	ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t*);
 
+static void	ixl_handle_vf_msg(struct ixl_pf *,
+		    struct i40e_arq_event_info *);
+
 static void	ixl_reset_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 static void	ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 #endif
@@ -495,6 +498,8 @@ ixl_attach(device_t dev)
 
 	hw->bus.device = pci_get_slot(dev);
 	hw->bus.func = pci_get_function(dev);
+
+	pf->vc_debug_lvl = 1;
 
 	/* Do PCI setup - map BAR0, etc */
 	if (ixl_allocate_pci_resources(pf)) {
@@ -3121,6 +3126,9 @@ ixl_add_hw_stats(struct ixl_pf *pf)
 			CTLFLAG_RD, &pf->admin_irq,
 			"Admin Queue IRQ Handled");
 
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "vc_debug_level",
+	    CTLFLAG_RW, &pf->vc_debug_lvl, 0,
+	    "PF/VF Virtual Channel debug logging level");
 
 	ixl_add_vsi_sysctls(pf, &pf->vsi, ctx);
 	vsi_list = SYSCTL_CHILDREN(pf->vsi.vsi_node);
@@ -4159,6 +4167,7 @@ ixl_do_adminq(void *context, int pending)
 		return;
 	}
 
+	IXL_PF_LOCK(pf);
 	/* clean and process any events */
 	do {
 		ret = i40e_clean_arq_element(hw, &event, &result);
@@ -4171,7 +4180,7 @@ ixl_do_adminq(void *context, int pending)
 			ixl_update_link_status(pf);
 			break;
 		case i40e_aqc_opc_send_msg_to_pf:
-			/* process pf/vf communication here */
+			ixl_handle_vf_msg(pf, &event);
 			break;
 		case i40e_aqc_opc_event_lan_overflow:
 			break;
@@ -4189,10 +4198,15 @@ ixl_do_adminq(void *context, int pending)
 	wr32(hw, I40E_PFINT_ICR0_ENA, reg);
 	free(event.msg_buf, M_DEVBUF);
 
-	if (pf->msix > 1)
-		ixl_enable_adminq(&pf->hw);
+	/*
+	 * If there are still messages to process, reschedule ourselves.
+	 * Otherwise, re-enable our interrupt and go to sleep.
+	 */
+	if (result > 0)
+		taskqueue_enqueue(pf->tq, &pf->adminq);
 	else
 		ixl_enable_intr(vsi);
+	IXL_PF_UNLOCK(pf);
 }
 
 static int
@@ -5392,6 +5406,128 @@ ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf)
 
 	wr32(hw, I40E_VFGEN_RSTAT1(vf->vf_num), I40E_VFR_VFACTIVE);
 	ixl_flush(hw);
+}
+
+static const char *
+ixl_vc_opcode_str(uint16_t op)
+{
+
+	switch (op) {
+	case I40E_VIRTCHNL_OP_VERSION:
+		return ("VERSION");
+	case I40E_VIRTCHNL_OP_RESET_VF:
+		return ("RESET_VF");
+	case I40E_VIRTCHNL_OP_GET_VF_RESOURCES:
+		return ("GET_VF_RESOURCES");
+	case I40E_VIRTCHNL_OP_CONFIG_TX_QUEUE:
+		return ("CONFIG_TX_QUEUE");
+	case I40E_VIRTCHNL_OP_CONFIG_RX_QUEUE:
+		return ("CONFIG_RX_QUEUE");
+	case I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES:
+		return ("CONFIG_VSI_QUEUES");
+	case I40E_VIRTCHNL_OP_CONFIG_IRQ_MAP:
+		return ("CONFIG_IRQ_MAP");
+	case I40E_VIRTCHNL_OP_ENABLE_QUEUES:
+		return ("ENABLE_QUEUES");
+	case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
+		return ("DISABLE_QUEUES");
+	case I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS:
+		return ("ADD_ETHER_ADDRESS");
+	case I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS:
+		return ("DEL_ETHER_ADDRESS");
+	case I40E_VIRTCHNL_OP_ADD_VLAN:
+		return ("ADD_VLAN");
+	case I40E_VIRTCHNL_OP_DEL_VLAN:
+		return ("DEL_VLAN");
+	case I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE:
+		return ("CONFIG_PROMISCUOUS_MODE");
+	case I40E_VIRTCHNL_OP_GET_STATS:
+		return ("GET_STATS");
+	case I40E_VIRTCHNL_OP_FCOE:
+		return ("FCOE");
+	case I40E_VIRTCHNL_OP_EVENT:
+		return ("EVENT");
+	default:
+		return ("UNKNOWN");
+	}
+}
+
+static int
+ixl_vc_opcode_level(uint16_t opcode)
+{
+
+	switch (opcode) {
+	case I40E_VIRTCHNL_OP_GET_STATS:
+		return (10);
+	default:
+		return (5);
+	}
+}
+
+static void
+ixl_send_vf_msg(struct ixl_pf *pf, struct ixl_vf *vf, uint16_t op,
+    enum i40e_status_code status, void *msg, uint16_t len)
+{
+	struct i40e_hw *hw;
+	int global_vf_id;
+
+	hw = &pf->hw;
+	global_vf_id = hw->func_caps.vf_base_id + vf->vf_num;
+
+	I40E_VC_DEBUG(pf, ixl_vc_opcode_level(op),
+	    "Sending msg (op=%s[%d], status=%d) to VF-%d\n",
+	    ixl_vc_opcode_str(op), op, status, vf->vf_num);
+
+	i40e_aq_send_msg_to_vf(hw, global_vf_id, op, status, msg, len, NULL);
+}
+
+static void
+ixl_send_vf_ack(struct ixl_pf *pf, struct ixl_vf *vf, uint16_t op)
+{
+
+	ixl_send_vf_msg(pf, vf, op, I40E_SUCCESS, NULL, 0);
+}
+
+static void
+ixl_send_vf_nack_msg(struct ixl_pf *pf, struct ixl_vf *vf, uint16_t op,
+    enum i40e_status_code status, const char *file, int line)
+{
+
+	I40E_VC_DEBUG(pf, 1,
+	    "Sending NACK (op=%s[%d], err=%d) to VF-%d from %s:%d\n",
+	    ixl_vc_opcode_str(op), op, status, vf->vf_num, file, line);
+	ixl_send_vf_msg(pf, vf, op, status, NULL, 0);
+}
+
+static void
+ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
+{
+	struct ixl_vf *vf;
+	void *msg;
+	uint16_t vf_num, msg_size;
+	uint32_t opcode;
+
+	vf_num = le16toh(event->desc.retval);
+	opcode = le32toh(event->desc.cookie_high);
+
+	if (vf_num >= pf->num_vfs) {
+		device_printf(pf->dev, "Got msg from illegal VF: %d\n", vf_num);
+		return;
+	}
+
+	vf = &pf->vfs[vf_num];
+	msg = event->msg_buf;
+	msg_size = event->msg_len;
+
+	I40E_VC_DEBUG(pf, ixl_vc_opcode_level(opcode),
+	    "Got msg %s(%d) from VF-%d of size %d\n",
+	    ixl_vc_opcode_str(opcode), opcode, vf_num, msg_size);
+
+	switch (opcode) {
+	default:
+		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
+		break;
+	}
 }
 
 static int
