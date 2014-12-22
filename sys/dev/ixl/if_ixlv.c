@@ -1257,7 +1257,7 @@ ixlv_init_msix(struct ixlv_sc *sc)
 		device_printf(dev, "Failed to register AQ handler");
 		goto fail;
 	}
-	bus_describe_intr(dev, sc->res, sc->tag, "adminq");
+	bus_describe_intr(dev, sc->res, sc->tag, "aq");
 
 	return (vectors);
 
@@ -1405,7 +1405,7 @@ ixlv_assign_msix(struct ixlv_sc *sc)
 			device_printf(dev, "Failed to register que handler");
 			return (error);
 		}
-		bus_describe_intr(dev, que->res, que->tag, "que %d", i);
+		bus_describe_intr(dev, que->res, que->tag, "q%d", i);
 		/* Bind the vector to a CPU */
 #ifdef RSS
 		cpu_id = rss_getcpu(i % rss_getnumbuckets());
