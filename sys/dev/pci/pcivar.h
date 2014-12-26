@@ -149,7 +149,7 @@ struct pcicfg_vf {
        int index;
 };
 
-#define PCICFG_VF (1 << 0) /* Device is an SR-IOV Virtual Function */
+#define	PCICFG_VF	0x0001 /* Device is an SR-IOV Virtual Function */
 
 /* config header information common to all header types */
 typedef struct pcicfg {
@@ -188,6 +188,7 @@ typedef struct pcicfg {
     uint8_t	func;		/* config space function number */
 
     uint32_t	flags;		/* flags defined above */
+    size_t	devinfo_size;	/* Size of devinfo for this bus type. */
 
     struct pcicfg_pp pp;	/* Power management */
     struct pcicfg_vpd vpd;	/* Vital product data */

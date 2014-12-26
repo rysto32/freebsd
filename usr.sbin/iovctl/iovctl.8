@@ -33,7 +33,7 @@
 .Nd "PCI SR-IOV configuration utility"
 .Sh SYNOPSIS
 .Nm
-.Fl E
+.Fl C
 .Op Fl f Ar config-file
 .Op Fl n
 .Nm
@@ -49,8 +49,8 @@ The
 utility creates or destroys PCI Single-Root I/O Virtualization (SR-IOV) Virtual
 Functions (VFs).
 When invoked with the
-.Fl E
-flag, 
+.Fl C
+flag,
 .Nm
 will create VFs as children of the
 Physical Function (PF) configured in the specified configuration file.
@@ -64,28 +64,28 @@ Available PF devices can be seen in
 .Pp
 The following options are available:
 .Bl -tag -width indent
+.It Fl C
+Enable SR-IOV on the specified PF device and create VF children.
+This operation will fail if the PF already has VF children.
+This option must be used in conjunction with the
+.Fl f
+option.
 .It Fl d Ar device
 Specify the PF device to use for the given operation.
 .Ar device
 may either be the name of a PF device, or a full path name to a node in
 .Pa /dev/iov/ .
 This option may not be used with the
-.Fl E
+.Fl C
 option.
 .It Fl D
 Delete all VF children of the specified PF device.
-This operation will fail of SR-IOV is not currently enabled on the specified
+This operation will fail if SR-IOV is not currently enabled on the specified
 device.
-.It Fl E
-Enable SR-IOV on the specified PF device and create VF children.
-This operation will fail if the PF already has VF children.
-This option must be used in conjunction with the
-.Fl f
-option.
 .It Fl f Ar config-file
 Specify the pathname of the configuration file.
 For the
-.Fl E
+.Fl C
 option, this file will be used to specify all configuration values.
 For the
 .Fl D

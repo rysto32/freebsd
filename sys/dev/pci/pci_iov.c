@@ -331,8 +331,8 @@ pci_iov_alloc_bar(struct pci_devinfo *dinfo, int bar, pci_addr_t bar_shift)
 	rid = iov->iov_pos + PCIR_SRIOV_BAR(bar);
 	bar_size = 1 << bar_shift;
 
-	res = pci_alloc_multi_resource(bus, dev, SYS_RES_MEMORY, &rid, 1ul,
-	    ~1ul, 1, iov->iov_num_vfs, RF_ACTIVE);
+	res = pci_alloc_multi_resource(bus, dev, SYS_RES_MEMORY, &rid, 0ul,
+	    ~0ul, 1, iov->iov_num_vfs, RF_ACTIVE);
 
 	if (res == NULL)
 		return (ENXIO);
@@ -342,7 +342,7 @@ pci_iov_alloc_bar(struct pci_devinfo *dinfo, int bar, pci_addr_t bar_shift)
 	iov->iov_bar[bar].bar_shift = bar_shift;
 
 	start = rman_get_start(res);
-	end = start + rman_get_size(res) - 1;
+	end = rman_get_end(res);
 	return (rman_manage_region(&iov->rman, start, end));
 }
 
@@ -494,14 +494,16 @@ pci_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *config)
 }
 
 static int
-pci_iov_init_rman(struct pcicfg_iov *iov)
+pci_iov_init_rman(device_t pf, struct pcicfg_iov *iov)
 {
 	int error;
 
 	iov->rman.rm_start = 0;
 	iov->rman.rm_end = ~0ul;
 	iov->rman.rm_type = RMAN_ARRAY;
-	iov->rman.rm_descr = "SR-IOV VF I/O memory";
+	snprintf(iov->rman_name, sizeof(iov->rman_name), "%s VF I/O memory",
+	    device_get_nameunit(pf));
+	iov->rman.rm_descr = iov->rman_name;
 
 	error = rman_init(&iov->rman);
 	if (error != 0)
@@ -557,13 +559,14 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const nvlist_t *config,
 	device_t bus, dev, vf;
 	struct pcicfg_iov *iov;
 	struct pci_devinfo *vfinfo;
-	const char *driver;
+	size_t size;
 	int i, error;
 	uint16_t vid, did, next_rid;
 
 	iov = dinfo->cfg.iov;
 	dev = dinfo->cfg.dev;
 	bus = device_get_parent(dev);
+	size = dinfo->cfg.devinfo_size;
 	next_rid = first_rid;
 	vid = pci_get_vendor(dev);
 	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
@@ -574,17 +577,15 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const nvlist_t *config,
 		iov_config = nvlist_get_nvlist(device, IOV_CONFIG_NAME);
 		driver_config = nvlist_get_nvlist(device, DRIVER_CONFIG_NAME);
 
+		vf = pci_add_iov_child(bus, size, next_rid, vid, did);
+
 		/*
 		 * If we are creating passthrough devices then force the ppt
 		 * driver to attach to prevent a VF driver from claiming the
 		 * VFs.
 		 */
 		if (nvlist_get_bool(iov_config, "passthrough"))
-			driver = "ppt";
-		else
-			driver = NULL;
-		vf = pci_add_iov_child(bus, sizeof(*vfinfo), next_rid, vid, did,
-		    driver);
+			device_set_devclass(vf, "ppt");
 
 		vfinfo = device_get_ivars(vf);
 
@@ -673,7 +674,7 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	iov_ctl &= ~(PCIM_SRIOV_VF_EN | PCIM_SRIOV_VF_MSE);
 	IOV_WRITE(dinfo, PCIR_SRIOV_CTL, iov_ctl, 2);
 
-	error = pci_iov_init_rman(iov);
+	error = pci_iov_init_rman(dev, iov);
 	if (error != 0)
 		goto out;
 
@@ -688,7 +689,7 @@ pci_iov_config(struct cdev *cdev, struct pci_iov_arg *arg)
 	IOV_WRITE(dinfo, PCIR_SRIOV_CTL, iov_ctl, 2);
 
 	/* Per specification, we must wait 100ms before accessing VFs. */
-	msleep(iov, &Giant, 0, "iov", hz/10);
+	pause("iov", roundup(hz, 10));
 	pci_iov_enumerate_vfs(dinfo, config, first_rid, rid_stride);
 
 	nvlist_destroy(config);
@@ -778,12 +779,9 @@ pci_iov_delete(struct cdev *cdev)
 
 		error = device_detach(vf);
 		if (error != 0) {
-			/*
-			 * If any device fails to detach, then re-attach all
-			 * VFs to ensure that we leave things in the same state
-			 * that we started in.
-			 */
-			bus_generic_attach(bus);
+			device_printf(dev,
+			   "Could not disable SR-IOV: failed to detach VF %s\n",
+			    device_get_nameunit(vf));
 			goto out;
 		}
 	}
@@ -901,6 +899,7 @@ pci_vf_alloc_mem_resource(device_t dev, device_t child, int *rid, u_long start,
 	struct resource_list_entry *rle;
 	u_long bar_start, bar_end;
 	pci_addr_t bar_length;
+	int error;
 
 	dinfo = device_get_ivars(child);
 	iov = dinfo->cfg.iov;
@@ -915,23 +914,30 @@ pci_vf_alloc_mem_resource(device_t dev, device_t child, int *rid, u_long start,
 
 	res = rman_reserve_resource(&iov->rman, bar_start, bar_end,
 	    bar_length, flags, child);
-
 	if (res == NULL)
 		return (NULL);
 
 	rle = resource_list_add(&dinfo->resources, SYS_RES_MEMORY, *rid,
 	    bar_start, bar_end, 1);
-
 	if (rle == NULL) {
 		rman_release_resource(res);
 		return (NULL);
 	}
 
-	rle->res = res;
-	rle->flags |= RLE_RESERVED;
+	rman_set_rid(res, *rid);
 
-	return (resource_list_alloc(&dinfo->resources, dev, child,
-	    SYS_RES_MEMORY, rid, bar_start, bar_end, 1, flags));
+	if (flags & RF_ACTIVE) {
+		error = bus_activate_resource(child, SYS_RES_MEMORY, *rid, res);
+		if (error != 0) {
+			resource_list_delete(&dinfo->resources, SYS_RES_MEMORY,
+			    *rid);
+			rman_release_resource(res);
+			return (NULL);
+		}
+	}
+	rle->res = res;
+
+	return (res);
 }
 
 int
@@ -940,11 +946,17 @@ pci_vf_release_mem_resource(device_t dev, device_t child, int rid,
 {
 	struct pci_devinfo *dinfo;
 	struct resource_list_entry *rle;
+	int error;
 
 	dinfo = device_get_ivars(child);
 
-	rle = resource_list_find(&dinfo->resources, SYS_RES_MEMORY, rid);
+	if (rman_get_flags(r) & RF_ACTIVE) {
+		error = bus_deactivate_resource(child, SYS_RES_MEMORY, rid, r);
+		if (error != 0)
+			return (error);
+	}
 
+	rle = resource_list_find(&dinfo->resources, SYS_RES_MEMORY, rid);
 	if (rle != NULL) {
 		rle->res = NULL;
 		resource_list_delete(&dinfo->resources, SYS_RES_MEMORY,
