@@ -42,13 +42,14 @@ struct pcicfg_iov {
 
 	struct pci_iov_bar iov_bar[PCIR_MAX_BAR_0 + 1];
 	struct rman rman;
+	char rman_name[64];
  
 	int iov_pos;
 	int iov_num_vfs;
 	uint32_t iov_flags;
 };
 
-#define	IOV_RMAN_INITED	(1 << 0)
+#define	IOV_RMAN_INITED		0x0001
 #define	IOV_BUSY	(1 << 1)
 
 #endif
