@@ -748,6 +748,52 @@ pci_iov_schema_validate_device_subsystems(const nvlist_t *config)
 }
 
 /*
+ * Validate that the string is a valid device node name.  It must either be "PF"
+ * or "VF-n", where n is an integer in the range [0, num_vfs).
+ */
+static int
+pci_iov_schema_validate_dev_name(const char *name, uint16_t num_vfs)
+{
+	const char *number_start;
+	char *endp;
+	u_long vf_num;
+
+	if (strcasecmp(PF_CONFIG_NAME, name) == 0)
+		return (0);
+
+	/* Ensure that we start with "VF-" */
+	if (strncasecmp(name, VF_PREFIX, VF_PREFIX_LEN) != 0)
+		return (EINVAL);
+
+	number_start = name + VF_PREFIX_LEN;
+
+	/* Filter out name == "VF-" (no number) */
+	if (number_start[0] == '\0')
+		return (EINVAL);
+
+	/* Disallow leading whitespace or +/- */
+	if (!isdigit(number_start[0]))
+		return (EINVAL);
+
+	vf_num = strtoul(number_start, &endp, 10);
+	if (*endp != '\0')
+		return (EINVAL);
+
+	/* Disallow leading zeros on VF-[1-9][0-9]* */
+	if (vf_num != 0 && number_start[0] == '0')
+		return (EINVAL);
+
+	/* Disallow leading zeros on VF-0 */
+	if (vf_num == 0 && number_start[1] != '\0')
+		return (EINVAL);
+
+	if (vf_num >= num_vfs)
+		return (EINVAL);
+
+	return (0);
+}
+
+/*
  * Validate that there are no device nodes in config other than the ones for
  * the PF and the VFs.  This includes validating that all config nodes of the
  * form VF-n specify a VF number that is < num_vfs.
@@ -756,47 +802,15 @@ static int
 pci_iov_schema_validate_device_names(const nvlist_t *config, uint16_t num_vfs)
 {
 	const nvlist_t *device;
-	char vf_prefix[VF_PREFIX_LEN + 1];
 	void *cookie;
-	const char *name, *number_start;
-	char *endp;
-	u_long vf_num;
+	const char *name;
 	int type, error;
 
 	cookie = NULL;
 	while ((name = nvlist_next(config, &type, &cookie)) != NULL) {
-		if (strcasecmp(PF_CONFIG_NAME, name) != 0) {
-
-			/* Intentionally truncate name to the first 3 chars. */
-			strlcpy(vf_prefix, name, sizeof(vf_prefix));
-			if (strcasecmp(vf_prefix, VF_PREFIX) != 0)
-				return (EINVAL);
-
-			number_start = name + VF_PREFIX_LEN;
-
-			/* Filter out name == "VF-" (no number) */
-			if (number_start[0] == '\0')
-				return (EINVAL);
-
-			/* Disallow leading whitespace or +/- */
-			if (!isdigit(number_start[0]))
-				return (EINVAL);
-
-			vf_num = strtoul(number_start, &endp, 10);
-			if (*endp != '\0')
-				return (EINVAL);
-
-			/* Disallow leading zeros on VF-[1-9][0-9]* */
-			if (vf_num != 0 && number_start[0] == '0')
-				return (EINVAL);
-
-			/* Disallow leading zeros on VF-0 */
-			if (vf_num == 0 && number_start[1] != '\0')
-				return (EINVAL);
-
-			if (vf_num >= num_vfs)
-				return (EINVAL);
-		}
+		error = pci_iov_schema_validate_dev_name(name, num_vfs);
+		if (error != 0)
+			return (error);
 
 		/*
 		 * Note that as this is a valid PF/VF node, we know that
