@@ -43,8 +43,8 @@
 The
 .Fn PCI_ADD_VF
 method is called by the PCI Single-Root I/O Virtualization (SR-IOV)
-infrastructure when it is initializating a new VF as a child of the given PF
-device.
+infrastructure when it is initializating a new Virtual Function (VF) as a child
+of the given Physical Function (PF) device.
 It is guaranteed that this method will not be called until a successful
 call to
 .Xr PCI_INIT_IOV 9
@@ -57,7 +57,7 @@ call to
 .Xr PCI_INIT_IOV 9 ,
 the VF creation will be aborted and
 .Xr PCI_UNINIT_IOV 9
-will be called immediately without any preceeding calls to
+will be called immediately without any preceding calls to
 .Nm .
 .Pp
 The number of the VF being initialized is passed in the
@@ -65,7 +65,7 @@ The number of the VF being initialized is passed in the
 argument.
 VFs are always numbered sequentially starting at 0.
 .Pp
-If the driver requested device-specific configuration paramters via a VF schema
+If the driver requested device-specific configuration parameters via a VF schema
 in its call to
 .Xr pci_iov_attach 9 ,
 those parameters will be contained in the
