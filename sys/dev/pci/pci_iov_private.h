@@ -42,6 +42,7 @@ struct pcicfg_iov {
 
 	struct pci_iov_bar iov_bar[PCIR_MAX_BAR_0 + 1];
 	struct rman rman;
+	char rman_name[64];
  
 	int iov_pos;
 	int iov_num_vfs;
