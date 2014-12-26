@@ -1121,7 +1121,7 @@ ixl_init_locked(struct ixl_pf *pf)
 	device_t 	dev = pf->dev;
 	struct i40e_filter_control_settings	filter;
 	u8		tmpaddr[ETHER_ADDR_LEN];
-	int		ret;
+	int		ret, i;
 
 	mtx_assert(&pf->pf_mtx, MA_OWNED);
 	INIT_DEBUGOUT("ixl_init: begin");
@@ -1211,6 +1211,9 @@ ixl_init_locked(struct ixl_pf *pf)
 
 	/* And now turn on interrupts */
 	ixl_enable_intr(ifx);
+
+	for (i = 0; i < pf->num_vfs; i++)
+		ixl_reset_vf(pf, &pf->vfs[i]);
 
 	/* Now inform the stack we're ready */
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
