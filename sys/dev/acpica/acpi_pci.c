@@ -83,6 +83,8 @@ static int	acpi_pci_set_powerstate_method(device_t dev, device_t child,
 		    int state);
 static void	acpi_pci_update_device(ACPI_HANDLE handle, device_t pci_child);
 static bus_dma_tag_t acpi_pci_get_dma_tag(device_t bus, device_t child);
+static device_t	acpi_pci_create_iov_child(device_t bus, uint16_t rid,
+		    uint16_t vid, uint16_t did);
 
 static device_method_t acpi_pci_methods[] = {
 	/* Device interface */
@@ -337,3 +339,4 @@ acpi_pci_get_dma_tag(device_t bus, device_t child)
 	return (pci_get_dma_tag(bus, child));
 }
 #endif
+

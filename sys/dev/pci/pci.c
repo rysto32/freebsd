@@ -125,8 +125,6 @@ static int		pci_remap_intr_method(device_t bus, device_t dev,
 
 static uint16_t		pci_get_rid_method(device_t dev, device_t child);
 
-static void		pci_add_named_child(device_t bus,
-			    struct pci_devinfo *dinfo, const char *name);
 static struct pci_devinfo * pci_fill_devinfo(device_t pcib, int d, int b, int s,
     int f, uint16_t vid, uint16_t did, size_t size);
 
@@ -638,6 +636,7 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
 	cfg->hdrtype		&= ~PCIM_MFDEV;
 	STAILQ_INIT(&cfg->maps);
 
+	cfg->devinfo_size	= size;
 	cfg->iov		= NULL;
 
 	pci_fixancient(cfg);
@@ -3544,7 +3543,7 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 #ifdef PCI_IOV
 device_t
 pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
-    uint16_t did, const char *driver)
+    uint16_t did)
 {
 	struct pci_devinfo *dinfo;
 	device_t pcib;
@@ -3558,29 +3557,22 @@ pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
 	    vid, did, size);
 
 	dinfo->cfg.flags |= PCICFG_VF;
-	pci_add_named_child(bus, dinfo, driver);
+	pci_add_child(bus, dinfo);
 
 	return (dinfo->cfg.dev);
 }
 #endif
 
-static void
-pci_add_named_child(device_t bus, struct pci_devinfo *dinfo, const char *name)
+void
+pci_add_child(device_t bus, struct pci_devinfo *dinfo)
 {
-	dinfo->cfg.dev = device_add_child(bus, name, -1);
+	dinfo->cfg.dev = device_add_child(bus, NULL, -1);
 	device_set_ivars(dinfo->cfg.dev, dinfo);
 	resource_list_init(&dinfo->resources);
 	pci_cfg_save(dinfo->cfg.dev, dinfo, 0);
 	pci_cfg_restore(dinfo->cfg.dev, dinfo);
 	pci_print_verbose(dinfo);
 	pci_add_resources(bus, dinfo->cfg.dev, 0, 0);
-}
-
-void
-pci_add_child(device_t bus, struct pci_devinfo *dinfo)
-{
-
-	pci_add_named_child(bus, dinfo, NULL);
 }
 
 static int
