@@ -199,6 +199,7 @@ static void	ixl_handle_vf_msg(struct ixl_pf *,
 		    struct i40e_arq_event_info *);
 static void	ixl_handle_vflr(void *arg, int pending);
 
+static void	ixl_broadcast_pf_reset(struct ixl_pf *);
 static void	ixl_reset_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 static void	ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 #endif
@@ -1219,6 +1220,9 @@ ixl_init_locked(struct ixl_pf *pf)
 
 	/* And now turn on interrupts */
 	ixl_enable_intr(ifx);
+
+	/* Notify VFs that we are ready. */
+	ixl_broadcast_pf_reset(pf);
 
 	for (i = 0; i < pf->num_vfs; i++)
 		ixl_reset_vf(pf, &pf->vfs[i]);
@@ -6347,6 +6351,26 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 		i40e_send_vf_nack(pf, vf, opcode, I40E_ERR_NOT_IMPLEMENTED);
 		break;
 	}
+}
+
+static void
+ixl_notify_vf_reset(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_virtchnl_pf_event event;
+
+	event.event = I40E_VIRTCHNL_EVENT_RESET_IMPENDING;
+	event.severity = I40E_PF_EVENT_SEVERITY_CERTAIN_DOOM;
+	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_EVENT, I40E_SUCCESS, &event,
+	    sizeof(event));
+}
+
+static void
+ixl_broadcast_pf_reset(struct ixl_pf *pf)
+{
+	int i;
+
+	for (i = 0; i < pf->num_vfs; i++)
+		ixl_notify_vf_reset(pf, &pf->vfs[i]);
 }
 
 /* Handle any VFs that have reset themselves via a Function Level Reset(FLR). */
