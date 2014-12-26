@@ -1210,6 +1210,9 @@ ixl_init_locked(struct ixl_pf *pf)
 	/* And now turn on interrupts */
 	ixl_enable_intr(ifx);
 
+	for (i = 0; i < pf->num_vfs; i++)
+		ixl_reset_vf(pf, &pf->vfs[i]);
+
 	/* Now inform the stack we're ready */
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
