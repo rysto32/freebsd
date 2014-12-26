@@ -36,16 +36,6 @@ CODE {
 	{
 		return (0);
 	}
-
-	static device_t
-	null_create_iov_child(device_t bus, uint16_t rid, uint16_t vid,
-	    uint16_t did)
-	{
-
-		device_printf(bus,
-		    "SR-IOV is not supported on this bus.\n");
-		return (NULL);
-	}
 };
 
 
@@ -184,13 +174,6 @@ METHOD int iov_detach {
 	device_t	dev;
 	device_t	child;
 };
-
-METHOD device_t create_iov_child {
-	device_t bus;
-	uint16_t rid;
-	uint16_t vid;
-	uint16_t did;
-}
 
 METHOD int init_iov {
 	device_t		dev;

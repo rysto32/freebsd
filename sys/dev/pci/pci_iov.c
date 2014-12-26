@@ -242,18 +242,20 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const char *driver,
 	device_t bus, dev, vf;
 	struct pcicfg_iov *iov;
 	struct pci_devinfo *vfinfo;
+	size_t size;
 	int i, error;
 	uint16_t vid, did, next_rid;
 
 	iov = dinfo->cfg.iov;
 	dev = dinfo->cfg.dev;
 	bus = device_get_parent(dev);
+	size = dinfo->cfg.devinfo_size;
 	next_rid = first_rid;
 	vid = pci_get_vendor(dev);
 	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
 
 	for (i = 0; i < iov->iov_num_vfs; i++, next_rid += rid_stride) {
-		vf = PCI_CREATE_IOV_CHILD(bus, next_rid, vid, did);
+		vf = pci_add_iov_child(bus, size, next_rid, vid, did);
 		if (vf == NULL)
 			break;
 

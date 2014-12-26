@@ -636,6 +636,7 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
 	cfg->hdrtype		&= ~PCIM_MFDEV;
 	STAILQ_INIT(&cfg->maps);
 
+	cfg->devinfo_size	= size;
 	cfg->iov		= NULL;
 
 	pci_fixancient(cfg);
