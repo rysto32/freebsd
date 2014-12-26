@@ -100,9 +100,6 @@ static device_method_t acpi_pci_methods[] = {
 
 	/* PCI interface */
 	DEVMETHOD(pci_set_powerstate,	acpi_pci_set_powerstate_method),
-#ifdef PCI_IOV
-	DEVMETHOD(pci_create_iov_child,	acpi_pci_create_iov_child),
-#endif
 
 	DEVMETHOD_END
 };
@@ -351,13 +348,3 @@ acpi_pci_get_dma_tag(device_t bus, device_t child)
 }
 #endif
 
-#ifdef PCI_IOV
-static device_t
-acpi_pci_create_iov_child(device_t bus, uint16_t rid, uint16_t vid,
-    uint16_t did)
-{
-
-	return (pci_add_iov_child(bus, sizeof(struct acpi_pci_devinfo), rid,
-	    vid, did));
-}
-#endif

@@ -557,12 +557,14 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const nvlist_t *config,
 	device_t bus, dev, vf;
 	struct pcicfg_iov *iov;
 	struct pci_devinfo *vfinfo;
+	size_t size;
 	int i, error;
 	uint16_t vid, did, next_rid;
 
 	iov = dinfo->cfg.iov;
 	dev = dinfo->cfg.dev;
 	bus = device_get_parent(dev);
+	size = dinfo->cfg.devinfo_size;
 	next_rid = first_rid;
 	vid = pci_get_vendor(dev);
 	did = IOV_READ(dinfo, PCIR_SRIOV_VF_DID, 2);
@@ -572,9 +574,6 @@ pci_iov_enumerate_vfs(struct pci_devinfo *dinfo, const nvlist_t *config,
 		device = nvlist_get_nvlist(config, device_name);
 		iov_config = nvlist_get_nvlist(device, IOV_CONFIG_NAME);
 		driver_config = nvlist_get_nvlist(device, DRIVER_CONFIG_NAME);
-		vf = PCI_CREATE_IOV_CHILD(bus, next_rid, vid, did);
-		if (vf == NULL)
-			break;
 
 		/*
 		 * If we are creating passthrough devices then force the ppt
