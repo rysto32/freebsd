@@ -596,8 +596,9 @@ pci_read_device(device_t pcib, int d, int b, int s, int f)
 
 	vid = REG(PCIR_VENDOR, 2);
 	did = REG(PCIR_DEVICE, 2);
-	if (vid != 0xffff)
+	if (vid != 0xffff || did != 0xffff) {
 		return (PCI_ALLOC_DEVINFO(pcib, d, b, s, f, vid, did));
+	}
 
 	return (NULL);
 }
@@ -616,8 +617,7 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
     uint16_t did, size_t size)
 {
 	struct pci_devinfo *devlist_entry;
-	pcicfgregs *cfg;
-
+	pcicfgregs *cfg = NULL;
 	devlist_entry = malloc(size, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	cfg = &devlist_entry->cfg;
@@ -3561,7 +3561,7 @@ pci_add_iov_child(device_t bus, uint16_t rid, uint16_t vid,
 
 	PCIB_DECODE_RID(pcib, rid, &busno, &slot, &func);
 
-	dinfo = pci_fill_devinfo(pcib, pci_get_domain(pcib), busno, slot, func,
+	dinfo = PCI_ALLOC_DEVINFO(pcib, pci_get_domain(pcib), busno, slot, func,
 	    vid, did, size);
 
 	dinfo->cfg.flags |= PCICFG_VF;
