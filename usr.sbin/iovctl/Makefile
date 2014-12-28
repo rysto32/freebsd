@@ -2,9 +2,7 @@
 
 PROG=	iovctl
 SRCS=	iovctl.c parse.c validate.c
-DPADD=	${LIBNV} ${LIBUCL} ${LIBM}
-LDADD=	-lnv -lucl -lm
-USEPRIVATELIB=	ucl
+LIBADD=	nv ucl m
 
 CFLAGS+=-I${.CURDIR}/../../contrib/libucl/include
 
