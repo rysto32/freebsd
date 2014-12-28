@@ -395,6 +395,7 @@ ixl_attach(device_t dev)
 	u16		bus;
 	int             error = 0;
 #ifdef PCI_IOV
+	nvlist_t	*pf_schema, *vf_schema;
 	int		iov_error;
 #endif
 
@@ -710,7 +711,11 @@ ixl_attach(device_t dev)
 #ifdef PCI_IOV
 	/* Do not enable SR-IOV on A0 silicon. */
 	if (hw->revision_id > 0) {
-		iov_error = pci_iov_attach(dev, NULL, NULL);
+		pf_schema = pci_iov_schema_alloc_node();
+		vf_schema = pci_iov_schema_alloc_node();
+		pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL);
+
+		iov_error = pci_iov_attach(dev, pf_schema, vf_schema);
 		if (iov_error != 0)
 			device_printf(dev,
 			    "Failed to initialize SR-IOV (error=%d)\n",
@@ -6472,6 +6477,8 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 {
 	struct ixl_pf *pf;
 	struct ixl_vf *vf;
+	const void *mac;
+	size_t size;
 	int error;
 
 	pf = device_get_softc(dev);
@@ -6487,6 +6494,12 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 	error = i40e_vf_setup_vsi(pf, vf);
 	if (error != 0)
 		goto out;
+
+	if (nvlist_exists_binary(params, "mac-addr")) {
+		mac = nvlist_get_binary(params, "mac-addr", &size);
+		bcopy(mac, vf->mac, ETHER_ADDR_LEN);
+	} else
+		vf->vf_flags |= VF_FLAG_SET_MAC_CAP;
 
 	ixl_reset_vf(pf, vf);
 out:

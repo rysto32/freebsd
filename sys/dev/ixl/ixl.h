@@ -46,7 +46,6 @@
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
-#include <sys/nv.h>
 #include <sys/sockio.h>
 #include <sys/eventhandler.h>
 
@@ -90,6 +89,11 @@
 #include <sys/pcpu.h>
 #include <sys/smp.h>
 #include <machine/smp.h>
+
+#ifdef PCI_IOV
+#include <sys/nv.h>
+#include <sys/iov_schema.h>
+#endif
 
 #include "i40e_type.h"
 #include "i40e_prototype.h"
