@@ -240,37 +240,6 @@ ATF_TEST_CASE_BODY(nvlist_add_nvlist__single_insert)
 	nvlist_destroy(nvl);
 }
 
-static nvlist_t *
-create_nested_nvlist(int depth)
-{
-	nvlist_t *nvl, *parent;
-	int i;
-
-	nvl = nvlist_create(0);
-	for (i = 0; i < depth; i++) {
-		parent = nvlist_create(0);
-
-		nvlist_move_nvlist(parent, "nvl", nvl);
-		ATF_REQUIRE_EQ(nvlist_error(parent), 0);
-		nvl = parent;
-	}
-
-	return (nvl);
-}
-
-ATF_TEST_CASE_WITHOUT_HEAD(nvlist_add_nvlist__max_depth);
-ATF_TEST_CASE_BODY(nvlist_add_nvlist__max_depth)
-{
-	nvlist_t *nvl, *parent;
-
-	nvl = create_nested_nvlist(NVLIST_MAX_LEVEL);
-	parent = nvlist_create(0);
-	nvlist_move_nvlist(parent, "nvl", nvl);
-	ATF_REQUIRE(nvlist_error(parent) != 0);
-
-	nvlist_destroy(parent);
-}
-
 ATF_TEST_CASE_WITHOUT_HEAD(nvlist_add_nvlist__child_with_error);
 ATF_TEST_CASE_BODY(nvlist_add_nvlist__child_with_error)
 {
@@ -698,24 +667,6 @@ ATF_TEST_CASE_BODY(nvlist_move_nvlist__null_child)
 	nvlist_destroy(parent);
 }
 
-ATF_TEST_CASE_WITHOUT_HEAD(nvlist_move_nvlist__max_depth);
-ATF_TEST_CASE_BODY(nvlist_move_nvlist__max_depth)
-{
-	nvlist_t *nvl, *parent, *grandparent;
-
-	nvl = create_nested_nvlist(NVLIST_MAX_LEVEL - 1);
-
-	parent = nvlist_create(0);
-	nvlist_move_nvlist(parent, "nvl", nvl);
-	ATF_REQUIRE_EQ(nvlist_error(parent), 0);
-
-	grandparent = nvlist_create(0);
-	nvlist_move_nvlist(grandparent, "nvl", parent);
-	ATF_REQUIRE(nvlist_error(grandparent) != 0);
-
-	nvlist_destroy(grandparent);
-}
-
 ATF_TEST_CASE_WITHOUT_HEAD(nvlist_move_nvlist__child_with_error);
 ATF_TEST_CASE_BODY(nvlist_move_nvlist__child_with_error)
 {
@@ -987,35 +938,6 @@ ATF_TEST_CASE_BODY(nvlist_take_nvlist__other_keys_unchanged)
 	nvlist_destroy(nvl);
 }
 
-ATF_TEST_CASE_WITHOUT_HEAD(nvlist_take_nvlist__max_depth);
-ATF_TEST_CASE_BODY(nvlist_take_nvlist__max_depth)
-{
-	nvlist_t *nvl, *child, *parent, *grandparent;
-
-	nvl = create_nested_nvlist(NVLIST_MAX_LEVEL);
-	child = create_nested_nvlist(NVLIST_MAX_LEVEL - 2);
-	nvlist_move_nvlist(nvl, "test", child);
-	nvlist_destroy(nvlist_take_nvlist(nvl, "nvl"));
-
-	/*
-	 * Depth of nvl should now be 9, as its only child has a depth of 8.
-	 * Therefore we would be able to nest one level further.
-	 */
-	parent = nvlist_create(0);
-	nvlist_move_nvlist(parent, "nvl", nvl);
-	ATF_REQUIRE_EQ(nvlist_error(parent), 0);
-
-	/*
-	 * The depth of parent should be 10, so we should not be able to nest
-	 * further.
-	 */
-	grandparent = nvlist_create(0);
-	nvlist_move_nvlist(grandparent, "nvl", parent);
-	ATF_REQUIRE(nvlist_error(grandparent) != 0);
-
-	nvlist_destroy(grandparent);
-}
-
 ATF_TEST_CASE_WITHOUT_HEAD(nvlist_take_binary__single_remove);
 ATF_TEST_CASE_BODY(nvlist_take_binary__single_remove)
 {
@@ -1163,35 +1085,6 @@ ATF_TEST_CASE_BODY(nvlist_free__single_nvlist)
 	nvlist_destroy(nvl);
 }
 
-ATF_TEST_CASE_WITHOUT_HEAD(nvlist_free__max_depth);
-ATF_TEST_CASE_BODY(nvlist_free__max_depth)
-{
-	nvlist_t *nvl, *child, *parent, *grandparent;
-
-	nvl = create_nested_nvlist(NVLIST_MAX_LEVEL);
-	child = create_nested_nvlist(NVLIST_MAX_LEVEL - 2);
-	nvlist_move_nvlist(nvl, "test", child);
-	nvlist_free(nvl, "nvl");
-
-	/*
-	 * Depth of nvl should now be 9, as its only child has a depth of 8.
-	 * Therefore we would be able to nest one level further.
-	 */
-	parent = nvlist_create(0);
-	nvlist_move_nvlist(parent, "nvl", nvl);
-	ATF_REQUIRE_EQ(nvlist_error(parent), 0);
-
-	/*
-	 * The depth of parent should be 10, so we should not be able to nest
-	 * further.
-	 */
-	grandparent = nvlist_create(0);
-	nvlist_move_nvlist(grandparent, "nvl", parent);
-	ATF_REQUIRE(nvlist_error(grandparent) != 0);
-
-	nvlist_destroy(grandparent);
-}
-
 ATF_TEST_CASE_WITHOUT_HEAD(nvlist_free__single_binary);
 ATF_TEST_CASE_BODY(nvlist_free__single_binary)
 {
@@ -1288,35 +1181,6 @@ ATF_TEST_CASE_BODY(nvlist_free_nvlist__single_nvlist)
 	nvlist_destroy(nvl);
 }
 
-ATF_TEST_CASE_WITHOUT_HEAD(nvlist_free_nvlist__max_depth);
-ATF_TEST_CASE_BODY(nvlist_free_nvlist__max_depth)
-{
-	nvlist_t *nvl, *child, *parent, *grandparent;
-
-	nvl = create_nested_nvlist(NVLIST_MAX_LEVEL);
-	child = create_nested_nvlist(NVLIST_MAX_LEVEL - 2);
-	nvlist_move_nvlist(nvl, "test", child);
-	nvlist_free_nvlist(nvl, "nvl");
-
-	/*
-	 * Depth of nvl should now be 9, as its only child has a depth of 8.
-	 * Therefore we would be able to nest one level further.
-	 */
-	parent = nvlist_create(0);
-	nvlist_move_nvlist(parent, "nvl", nvl);
-	ATF_REQUIRE_EQ(nvlist_error(parent), 0);
-
-	/*
-	 * The depth of parent should be 10, so we should not be able to nest
-	 * further.
-	 */
-	grandparent = nvlist_create(0);
-	nvlist_move_nvlist(grandparent, "nvl", parent);
-	ATF_REQUIRE(nvlist_error(grandparent) != 0);
-
-	nvlist_destroy(grandparent);
-}
-
 ATF_TEST_CASE_WITHOUT_HEAD(nvlist_free_binary__single_binary);
 ATF_TEST_CASE_BODY(nvlist_free_binary__single_binary)
 {
@@ -1341,7 +1205,6 @@ ATF_INIT_TEST_CASES(tp)
 	ATF_ADD_TEST_CASE(tp, nvlist_add_number__single_insert);
 	ATF_ADD_TEST_CASE(tp, nvlist_add_string__single_insert);
 	ATF_ADD_TEST_CASE(tp, nvlist_add_nvlist__single_insert);
-	ATF_ADD_TEST_CASE(tp, nvlist_add_nvlist__max_depth);
 	ATF_ADD_TEST_CASE(tp, nvlist_add_nvlist__child_with_error);
 	ATF_ADD_TEST_CASE(tp, nvlist_add_binary__single_insert);
 
@@ -1358,7 +1221,6 @@ ATF_INIT_TEST_CASES(tp)
 	ATF_ADD_TEST_CASE(tp, nvlist_move_string__single_insert);
 	ATF_ADD_TEST_CASE(tp, nvlist_move_nvlist__single_insert);
 	ATF_ADD_TEST_CASE(tp, nvlist_move_nvlist__null_child);
-	ATF_ADD_TEST_CASE(tp, nvlist_move_nvlist__max_depth);
 	ATF_ADD_TEST_CASE(tp, nvlist_move_nvlist__child_with_error);
 	ATF_ADD_TEST_CASE(tp, nvlist_move_binary__single_insert);
 
@@ -1370,7 +1232,6 @@ ATF_INIT_TEST_CASES(tp)
 	ATF_ADD_TEST_CASE(tp, nvlist_take_string__other_keys_unchanged);
 	ATF_ADD_TEST_CASE(tp, nvlist_take_nvlist__single_remove);
 	ATF_ADD_TEST_CASE(tp, nvlist_take_nvlist__other_keys_unchanged);
-	ATF_ADD_TEST_CASE(tp, nvlist_take_nvlist__max_depth);
 	ATF_ADD_TEST_CASE(tp, nvlist_take_binary__single_remove);
 	ATF_ADD_TEST_CASE(tp, nvlist_take_binary__other_keys_unchanged);
 
@@ -1379,7 +1240,6 @@ ATF_INIT_TEST_CASES(tp)
 	ATF_ADD_TEST_CASE(tp, nvlist_free__single_number);
 	ATF_ADD_TEST_CASE(tp, nvlist_free__single_string);
 	ATF_ADD_TEST_CASE(tp, nvlist_free__single_nvlist);
-	ATF_ADD_TEST_CASE(tp, nvlist_free__max_depth);
 	ATF_ADD_TEST_CASE(tp, nvlist_free__single_binary);
 
 	ATF_ADD_TEST_CASE(tp, nvlist_free_null__single_null);
@@ -1387,6 +1247,5 @@ ATF_INIT_TEST_CASES(tp)
 	ATF_ADD_TEST_CASE(tp, nvlist_free_number__single_number);
 	ATF_ADD_TEST_CASE(tp, nvlist_free_string__single_string);
 	ATF_ADD_TEST_CASE(tp, nvlist_free_nvlist__single_nvlist);
-	ATF_ADD_TEST_CASE(tp, nvlist_free_nvlist__max_depth);
 	ATF_ADD_TEST_CASE(tp, nvlist_free_binary__single_binary);
 }
