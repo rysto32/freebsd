@@ -364,7 +364,7 @@ nvlist_size(const nvlist_t *nvl)
 			nvl = nvpair_get_nvlist(nvp);
 			PJDLOG_ASSERT(nvl->nvl_error == 0);
 			nvp = nvlist_first_nvpair(nvl);
-			if (nvp != NULL)
+			if (nvp == NULL)
 				goto continue_parent;
 			continue;
 		} else {
