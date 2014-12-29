@@ -2523,7 +2523,7 @@ ixl_setup_vsi(struct ixl_ifx *ifx)
 	u8	aq_buf[I40E_AQ_LARGE_BUF];
 	int	ret = I40E_SUCCESS;
 	u16	next = 0;
-#ifdef I40E_DEBUG
+#ifdef IXL_DEBUG
 	int i;
 #endif
 
