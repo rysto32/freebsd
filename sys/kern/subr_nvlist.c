@@ -364,12 +364,15 @@ nvlist_size(const nvlist_t *nvl)
 			nvl = nvpair_get_nvlist(nvp);
 			PJDLOG_ASSERT(nvl->nvl_error == 0);
 			nvp = nvlist_first_nvpair(nvl);
+			if (nvp != NULL)
+				goto continue_parent;
 			continue;
 		} else {
 			size += nvpair_size(nvp);
 		}
 
 		while ((nvp = nvlist_next_nvpair(nvl, nvp)) == NULL) {
+continue_parent:
 			nvp = nvlist_get_nvpair_parent(nvl);
 			if (nvp == NULL)
 				goto out;
@@ -530,9 +533,12 @@ nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep)
 			ptr = nvpair_pack_string(nvp, ptr, &left);
 			break;
 		case NV_TYPE_NVLIST:
+			printf("Found nested nvlist %s -> %p\n", nvp->nvp_name, nvl);
 			nvl = nvpair_get_nvlist(nvp);
 			nvp = nvlist_first_nvpair(nvl);
 			ptr = nvlist_pack_header(nvl, ptr, &left);
+			if (nvp == NULL)
+				goto continue_parent;
 			continue;
 #ifndef _KERNEL
 		case NV_TYPE_DESCRIPTOR:
@@ -550,12 +556,16 @@ nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep)
 			return (NULL);
 		}
 		while ((nvp = nvlist_next_nvpair(nvl, nvp)) == NULL) {
+continue_parent:
 			nvp = nvlist_get_nvpair_parent(nvl);
+			printf("Done nvlist %p; try parent %p\n", nvl, nvp);
 			if (nvp == NULL)
 				goto out;
 			ptr = nvpair_pack_nvlist_up(ptr, &left);
-			if (ptr == NULL)
+			if (ptr == NULL) {
+				printf("nvpair_pack_nvlist_up failed\n");
 				goto out;
+			}
 			nvl = nvlist_get_parent(nvl);
 		}
 	}
