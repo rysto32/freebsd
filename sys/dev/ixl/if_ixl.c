@@ -5196,6 +5196,11 @@ i40e_vf_setup_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	if (error != 0)
 		return (error);
 
+	vf->vsi.hw_filters_add = 0;
+	vf->vsi.hw_filters_del = 0;
+	ixl_add_filter(&vf->vsi, ixl_bcast_addr, IXL_VLAN_ANY);
+	ixl_reconfigure_filters(&vf->vsi);
+
 	return (0);
 }
 
