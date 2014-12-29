@@ -5101,7 +5101,7 @@ ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS)
 	sbuf_cat(buf, "\n");
 
 	// set to queue 1?
-	struct ixl_queue *que = pf->vsi.queues;
+	struct ixl_queue *que = pf->ifx.queues;
 	struct tx_ring *txr = &(que[1].txr);
 	struct i40e_tx_desc *txd = &txr->base[desc_idx];
 
