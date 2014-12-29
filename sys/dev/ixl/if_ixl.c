@@ -4899,7 +4899,7 @@ ixl_sysctl_hw_res_alloc(SYSCTL_HANDLER_ARGS)
 	u8 num_entries;
 	struct i40e_aqc_switch_resource_alloc_element_resp resp[IXL_SW_RES_SIZE];
 
-	buf = sbuf_new_for_sysctl(NULL, NULL, 0, req);
+	buf = sbuf_new_for_sysctl(NULL, NULL, 80, req);
 	if (!buf) {
 		device_printf(dev, "Could not allocate sbuf for output.\n");
 		return (ENOMEM);
@@ -4940,9 +4940,6 @@ ixl_sysctl_hw_res_alloc(SYSCTL_HANDLER_ARGS)
 		return error;
 	}
 
-	error = sysctl_handle_string(oidp, sbuf_data(buf), sbuf_len(buf), req);
-	if (error)
-		device_printf(dev, "sysctl error: %d\n", error);
 	sbuf_delete(buf);
 	return error;
 }
@@ -5000,7 +4997,7 @@ ixl_sysctl_switch_config(SYSCTL_HANDLER_ARGS)
 	struct i40e_aqc_get_switch_config_resp *sw_config;
 	sw_config = (struct i40e_aqc_get_switch_config_resp *)aq_buf;
 
-	buf = sbuf_new_for_sysctl(NULL, NULL, 0, req);
+	buf = sbuf_new_for_sysctl(NULL, NULL, 80, req);
 	if (!buf) {
 		device_printf(dev, "Could not allocate sbuf for sysctl output.\n");
 		return (ENOMEM);
@@ -5053,9 +5050,6 @@ ixl_sysctl_switch_config(SYSCTL_HANDLER_ARGS)
 		return error;
 	}
 
-	error = sysctl_handle_string(oidp, sbuf_data(buf), sbuf_len(buf), req);
-	if (error)
-		device_printf(dev, "sysctl error: %d\n", error);
 	sbuf_delete(buf);
 
 	return (error);
@@ -5076,7 +5070,7 @@ ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS)
 
 	u16 desc_idx = 0;
 
-	buf = sbuf_new_for_sysctl(NULL, NULL, 0, req);
+	buf = sbuf_new_for_sysctl(NULL, NULL, 80, req);
 	if (!buf) {
 		device_printf(dev, "Could not allocate sbuf for output.\n");
 		return (ENOMEM);
@@ -5116,9 +5110,6 @@ ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS)
 		return error;
 	}
 
-	error = sysctl_handle_string(oidp, sbuf_data(buf), sbuf_len(buf), req);
-	if (error)
-		device_printf(dev, "sysctl error: %d\n", error);
 	sbuf_delete(buf);
 	return error;
 }
