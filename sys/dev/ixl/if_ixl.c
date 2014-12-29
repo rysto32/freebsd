@@ -5160,9 +5160,10 @@ i40e_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	vsi_ctx.info.valid_sections |=
 	    htole16(I40E_AQ_VSI_PROP_QUEUE_MAP_VALID);
 	vsi_ctx.info.mapping_flags = htole16(I40E_AQ_VSI_QUE_MAP_NONCONTIG);
-	first_queue = ifx->vsi.num_queues + vf->vf_num * IXL_MAX_QUEUES_PER_VF;
-	vsi_ctx.info.queue_mapping[0] = htole16(first_queue);
-	for (i = 1; i < nitems(vsi_ctx.info.queue_mapping); i++)
+	first_queue = ifx->vsi.num_queues + vf->vf_num * IXLV_MAX_QUEUES;
+	for (i = 0; i < IXLV_MAX_QUEUES; i++)
+		vsi_ctx.info.queue_mapping[i] = htole16(first_queue + i);
+	for (; i < nitems(vsi_ctx.info.queue_mapping); i++)
 		vsi_ctx.info.queue_mapping[i] = htole16(I40E_AQ_VSI_QUEUE_MASK);
 
 	vsi_ctx.info.tc_mapping[0] = htole16(
@@ -5175,7 +5176,7 @@ i40e_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	vf->vsi.seid = vsi_ctx.seid;
 	vf->vsi.vsi_num = vsi_ctx.vsi_number;
 	vf->vsi.first_queue = first_queue;
-	vf->vsi.num_queues = IXL_MAX_QUEUES_PER_VF;
+	vf->vsi.num_queues = IXLV_MAX_QUEUES;
 
 	code = i40e_aq_get_vsi_params(hw, &vsi_ctx, NULL);
 	if (code != I40E_SUCCESS)
