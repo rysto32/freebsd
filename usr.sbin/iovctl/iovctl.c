@@ -385,7 +385,7 @@ print_schema(const char *dev_name)
 	iov_schema = nvlist_get_nvlist(pf_schema, IOV_CONFIG_NAME);
 	driver_schema = nvlist_get_nvlist(pf_schema, DRIVER_CONFIG_NAME);
 	printf(
-	"The following configuration parameters may be configued on the PF:\n");
+	"The following configuration parameters may be configured on the PF:\n");
 	print_subsystem_schema(iov_schema);
 	print_subsystem_schema(driver_schema);
 
@@ -393,7 +393,7 @@ print_schema(const char *dev_name)
 	iov_schema = nvlist_get_nvlist(vf_schema, IOV_CONFIG_NAME);
 	driver_schema = nvlist_get_nvlist(vf_schema, DRIVER_CONFIG_NAME);
 	printf(
-	"\nThe following configuration parameters may be configued on a VF:\n");
+	"\nThe following configuration parameters may be configured on a VF:\n");
 	print_subsystem_schema(iov_schema);
 	print_subsystem_schema(driver_schema);
 
