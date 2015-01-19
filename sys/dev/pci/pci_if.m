@@ -36,6 +36,14 @@ CODE {
 	{
 		return (0);
 	}
+	
+	static device_t
+	null_create_iov_child(device_t bus, device_t pf, uint16_t rid,
+	    uint16_t vid, uint16_t did)
+	{
+		device_printf(bus, "PCI_IOV not implemented on this bus.\n");
+		return (NULL);
+	}
 };
 
 
@@ -188,4 +196,12 @@ METHOD int add_vf {
 	device_t		dev;
 	uint16_t		vfnum;
 };
+
+METHOD device_t create_iov_child {
+	device_t bus;
+	device_t pf;
+	uint16_t rid;
+	uint16_t vid;
+	uint16_t did;
+} DEFAULT null_create_iov_child;
 
