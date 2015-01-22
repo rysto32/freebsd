@@ -77,7 +77,6 @@ static int      ixlv_probe(device_t);
 static int      ixlv_attach(device_t);
 static int      ixlv_detach(device_t);
 static int      ixlv_shutdown(device_t);
-static void	ixlv_init_locked(struct ixlv_sc *);
 static int	ixlv_allocate_pci_resources(struct ixlv_sc *);
 static void	ixlv_free_pci_resources(struct ixlv_sc *);
 static int	ixlv_assign_msix(struct ixlv_sc *);
@@ -826,7 +825,7 @@ ixl_init_cmd_complete(struct ixl_vc_cmd *cmd, void *arg,
 	}
 }
 
-static void
+void
 ixlv_init_locked(struct ixlv_sc *sc)
 {
 	struct i40e_hw		*hw = &sc->hw;
