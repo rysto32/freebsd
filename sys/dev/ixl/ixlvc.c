@@ -849,7 +849,7 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 		case I40E_VIRTCHNL_EVENT_RESET_IMPENDING:
 			device_printf(dev, "PF initiated reset!\n");
 			sc->init_state = IXLV_RESET_PENDING;
-			ixlv_init(sc);
+			ixlv_init_locked(sc);
 			break;
 		default:
 			device_printf(dev, "%s: Unknown event %d from AQ\n",
