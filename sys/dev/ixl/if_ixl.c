@@ -118,6 +118,7 @@ static int	ixl_enable_rings(struct ixl_vsi *);
 static int	ixl_disable_rings(struct ixl_vsi *);
 static void	ixl_enable_intr(struct ixl_ifx *);
 static void	ixl_disable_intr(struct ixl_ifx *);
+static void	ixl_disable_rings_intr(struct ixl_ifx *);
 
 static void     ixl_enable_adminq(struct i40e_hw *);
 static void     ixl_disable_adminq(struct i40e_hw *);
@@ -201,7 +202,6 @@ static void	ixl_handle_vf_msg(struct ixl_pf *,
 		    struct i40e_arq_event_info *);
 static void	ixl_handle_vflr(void *arg, int pending);
 
-static void	ixl_broadcast_pf_reset(struct ixl_pf *);
 static void	ixl_reset_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 static void	ixl_reinit_vf(struct ixl_pf *pf, struct ixl_vf *vf);
 #endif
@@ -719,8 +719,7 @@ ixl_attach(device_t dev)
 	    ixl_unregister_vlan, ifx, EVENTHANDLER_PRI_FIRST);
 
 #ifdef PCI_IOV
-	/* Do not enable SR-IOV on A0 silicon. */
-	if (hw->revision_id > 0) {
+	if (ixl_enable_msix) {
 		pf_schema = pci_iov_schema_alloc_node();
 		vf_schema = pci_iov_schema_alloc_node();
 		pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL);
@@ -1142,7 +1141,7 @@ ixl_init_locked(struct ixl_pf *pf)
 	device_t 	dev = pf->dev;
 	struct i40e_filter_control_settings	filter;
 	u8		tmpaddr[ETHER_ADDR_LEN];
-	int		ret, i;
+	int		ret;
 
 	mtx_assert(&pf->pf_mtx, MA_OWNED);
 	INIT_DEBUGOUT("ixl_init: begin");
@@ -1233,12 +1232,6 @@ ixl_init_locked(struct ixl_pf *pf)
 
 	/* And now turn on interrupts */
 	ixl_enable_intr(ifx);
-
-	/* Notify VFs that we are ready. */
-	ixl_broadcast_pf_reset(pf);
-
-	for (i = 0; i < pf->num_vfs; i++)
-		ixl_reset_vf(pf, &pf->vfs[i]);
 
 	/* Now inform the stack we're ready */
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
@@ -1903,7 +1896,10 @@ ixl_stop(struct ixl_pf *pf)
 	mtx_assert(&pf->pf_mtx, MA_OWNED);
 
 	INIT_DEBUGOUT("ixl_stop: begin\n");
-	ixl_disable_intr(ifx);
+	if (pf->num_vfs == 0)
+		ixl_disable_intr(ifx);
+	else
+		ixl_disable_rings_intr(ifx);
 	ixl_disable_rings(&ifx->vsi);
 
 	/* Tell the stack that the interface is no longer active */
@@ -4000,16 +3996,24 @@ ixl_enable_intr(struct ixl_ifx *ifx)
 }
 
 static void
-ixl_disable_intr(struct ixl_ifx *ifx)
+ixl_disable_rings_intr(struct ixl_ifx *ifx)
 {
 	struct i40e_hw		*hw = ifx->hw;
 	struct ixl_queue	*que = ifx->queues;
+	int i;
 
-	if (ixl_enable_msix) {
+	for (i = 0; i < ifx->vsi.num_queues; i++, que++)
+		ixl_disable_queue(hw, que->me);
+}
+
+static void
+ixl_disable_intr(struct ixl_ifx *ifx)
+{
+	struct i40e_hw		*hw = ifx->hw;
+
+	if (ixl_enable_msix)
 		ixl_disable_adminq(hw);
-		for (int i = 0; i < ifx->vsi.num_queues; i++, que++)
-			ixl_disable_queue(hw, que->me);
-	} else
+	else
 		ixl_disable_legacy(hw);
 }
 
@@ -6421,26 +6425,6 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 	}
 }
 
-static void
-ixl_notify_vf_reset(struct ixl_pf *pf, struct ixl_vf *vf)
-{
-	struct i40e_virtchnl_pf_event event;
-
-	event.event = I40E_VIRTCHNL_EVENT_RESET_IMPENDING;
-	event.severity = I40E_PF_EVENT_SEVERITY_CERTAIN_DOOM;
-	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_EVENT, I40E_SUCCESS, &event,
-	    sizeof(event));
-}
-
-static void
-ixl_broadcast_pf_reset(struct ixl_pf *pf)
-{
-	int i;
-
-	for (i = 0; i < pf->num_vfs; i++)
-		ixl_notify_vf_reset(pf, &pf->vfs[i]);
-}
-
 /* Handle any VFs that have reset themselves via a Function Level Reset(FLR). */
 static void
 ixl_handle_vflr(void *arg, int pending)
@@ -6562,6 +6546,9 @@ ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
 		goto fail;
 	}
 
+	ixl_configure_msix(pf);
+	ixl_enable_adminq(hw);
+
 	pf->num_vfs = num_vfs;
 	IXL_PF_UNLOCK(pf);
 	return (0);
@@ -6578,10 +6565,14 @@ ixl_uninit_iov(device_t dev)
 {
 	struct ixl_pf *pf;
 	struct i40e_hw *hw;
+	struct ixl_ifx *ifx;
+	struct ifnet *ifp;
 	int i;
 
 	pf = device_get_softc(dev);
 	hw = &pf->hw;
+	ifx = &pf->ifx;
+	ifp = ifx->ifp;
 
 	IXL_PF_LOCK(pf);
 	for (i = 0; i < pf->num_vfs; i++) {
@@ -6593,6 +6584,9 @@ ixl_uninit_iov(device_t dev)
 		i40e_aq_delete_element(hw, pf->veb_seid, NULL);
 		pf->veb_seid = 0;
 	}
+
+	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0)
+		ixl_disable_intr(ifx);
 
 	free(pf->vfs, M_IXL);
 	pf->vfs = NULL;
