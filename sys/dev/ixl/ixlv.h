@@ -185,6 +185,7 @@ int	ixlv_verify_api_ver(struct ixlv_sc *);
 int	ixlv_send_vf_config_msg(struct ixlv_sc *);
 int	ixlv_get_vf_config(struct ixlv_sc *);
 void	ixlv_init(void *);
+void	ixlv_init_locked(struct ixlv_sc *sc);
 int	ixlv_reinit_locked(struct ixlv_sc *);
 void	ixlv_configure_queues(struct ixlv_sc *);
 void	ixlv_enable_queues(struct ixlv_sc *);
