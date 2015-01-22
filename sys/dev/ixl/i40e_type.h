@@ -62,6 +62,7 @@
 
 #define i40e_is_40G_device(d)		((d) == I40E_DEV_ID_QSFP_A  || \
 					 (d) == I40E_DEV_ID_QSFP_B  || \
+					 (d) == I40E_DEV_ID_KX_B || \
 					 (d) == I40E_DEV_ID_QSFP_C)
 
 #ifndef I40E_MASK
