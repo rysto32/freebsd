@@ -5566,6 +5566,18 @@ ixl_vc_opcode_str(uint16_t op)
 	}
 }
 
+static int
+ixl_vc_opcode_level(uint16_t opcode)
+{
+
+	switch (opcode) {
+	case I40E_VIRTCHNL_OP_GET_STATS:
+		return (10);
+	default:
+		return (5);
+	}
+}
+
 static void
 ixl_send_vf_msg(struct ixl_pf *pf, struct ixl_vf *vf, uint16_t op,
     enum i40e_status_code status, void *msg, uint16_t len)
@@ -5576,7 +5588,8 @@ ixl_send_vf_msg(struct ixl_pf *pf, struct ixl_vf *vf, uint16_t op,
 	hw = &pf->hw;
 	global_vf_id = hw->func_caps.vf_base_id + vf->vf_num;
 
-	I40E_VC_DEBUG(pf, 5, "Sending msg (op=%s[%d], status=%d) to VF-%d\n",
+	I40E_VC_DEBUG(pf, ixl_vc_opcode_level(op),
+	    "Sending msg (op=%s[%d], status=%d) to VF-%d\n",
 	    ixl_vc_opcode_str(op), op, status, vf->vf_num);
 
 	i40e_aq_send_msg_to_vf(hw, global_vf_id, op, status, msg, len, NULL);
@@ -6352,7 +6365,8 @@ ixl_handle_vf_msg(struct ixl_pf *pf, struct i40e_arq_event_info *event)
 	msg = event->msg_buf;
 	msg_size = event->msg_len;
 
-	I40E_VC_DEBUG(pf, 5, "Got msg %s(%d) from VF-%d of size %d\n",
+	I40E_VC_DEBUG(pf, ixl_vc_opcode_level(opcode),
+	    "Got msg %s(%d) from VF-%d of size %d\n",
 	    ixl_vc_opcode_str(opcode), opcode, vf_num, msg_size);
 
 	switch (opcode) {
