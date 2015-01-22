@@ -5784,6 +5784,7 @@ i40e_vf_config_rx_queue(struct ixl_pf *pf, struct ixl_vf *vf,
 
 	rxq.dsize = 1;
 	rxq.crcstrip = 1;
+	rxq.l2tsel = 1;
 
 	rxq.rxmax = info->max_pkt_size;
 	rxq.tphrdesc_ena = 1;
@@ -6206,11 +6207,26 @@ i40e_vf_del_mac_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS);
 }
 
+static enum i40e_status_code
+ixl_vf_enable_vlan_strip(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_vsi_context vsi_ctx;
+
+	vsi_ctx.seid = vf->vsi.seid;
+
+	bzero(&vsi_ctx.info, sizeof(vsi_ctx.info));
+	vsi_ctx.info.valid_sections = htole16(I40E_AQ_VSI_PROP_VLAN_VALID);
+	vsi_ctx.info.port_vlan_flags = I40E_AQ_VSI_PVLAN_MODE_ALL |
+	    I40E_AQ_VSI_PVLAN_EMOD_STR_BOTH;
+	return (i40e_aq_update_vsi_params(&pf->hw, &vsi_ctx, NULL));
+}
+
 static void
 i40e_vf_add_vlan_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
     uint16_t msg_size)
 {
 	struct i40e_virtchnl_vlan_filter_list *filter_list;
+	enum i40e_status_code code;
 	size_t expected_size;
 	int i;
 
@@ -6245,9 +6261,16 @@ i40e_vf_add_vlan_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 		}
 	}
 
-	device_printf(pf->dev, "%s: unimplemented\n", __func__);
-	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_ADD_VLAN,
-	    I40E_ERR_NOT_IMPLEMENTED, NULL, 0);
+	code = ixl_vf_enable_vlan_strip(pf, vf);
+	if (code != I40E_SUCCESS) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_VLAN,
+		    I40E_ERR_PARAM);
+	}
+
+	for (i = 0; i < filter_list->num_elements; i++)
+		ixl_add_filter(&vf->vsi, vf->mac, filter_list->vlan_id[i]);
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_ADD_VLAN);
 }
 
 static void
@@ -6255,6 +6278,7 @@ i40e_vf_del_vlan_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
     uint16_t msg_size)
 {
 	struct i40e_virtchnl_vlan_filter_list *filter_list;
+	int i;
 	size_t expected_size;
 
 	if (msg_size < sizeof(*filter_list)) {
@@ -6274,9 +6298,24 @@ i40e_vf_del_vlan_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 		return;
 	}
 
-	device_printf(pf->dev, "%s: unimplemented\n", __func__);
-	ixl_send_vf_msg(pf, vf, I40E_VIRTCHNL_OP_DEL_VLAN,
-	    I40E_ERR_NOT_IMPLEMENTED, NULL, 0);
+	for (i = 0; i < filter_list->num_elements; i++) {
+		if (filter_list->vlan_id[i] > EVL_VLID_MASK) {
+			i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_VLAN,
+			    I40E_ERR_PARAM);
+			return;
+		}
+	}
+
+	if (!(vf->vf_flags & VF_FLAG_VLAN_CAP)) {
+		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ADD_VLAN,
+		    I40E_ERR_PARAM);
+		return;
+	}
+
+	for (i = 0; i < filter_list->num_elements; i++)
+		ixl_del_filter(&vf->vsi, vf->mac, filter_list->vlan_id[i]);
+
+	ixl_send_vf_ack(pf, vf, I40E_VIRTCHNL_OP_DEL_VLAN);
 }
 
 static void
@@ -6622,6 +6661,8 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 		bcopy(mac, vf->mac, ETHER_ADDR_LEN);
 	} else
 		vf->vf_flags |= VF_FLAG_SET_MAC_CAP;
+
+	vf->vf_flags |= VF_FLAG_VLAN_CAP;
 
 	ixl_reset_vf(pf, vf);
 out:
