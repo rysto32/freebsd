@@ -111,6 +111,8 @@ static void	ixl_config_rss(struct ixl_ifx *);
 static void	ixl_set_queue_rx_itr(struct ixl_queue *);
 static void	ixl_set_queue_tx_itr(struct ixl_queue *);
 static int	ixl_set_advertised_speeds(struct ixl_pf *, int);
+static int	ixl_get_seids(struct ixl_pf *pf);
+
 
 static int	ixl_enable_rings(struct ixl_vsi *);
 static int	ixl_disable_rings(struct ixl_vsi *);
@@ -684,6 +686,12 @@ ixl_attach(device_t dev)
 	/* Setup OS specific network interface */
 	if (ixl_setup_interface(dev, ifx) != 0) {
 		device_printf(dev, "interface setup failed!\n");
+		error = EIO;
+		goto err_late;
+	}
+
+	if (ixl_get_seids(pf) != 0) {
+		device_printf(dev, "Fetching SEIDs failed!\n");
 		error = EIO;
 		goto err_late;
 	}
@@ -2562,27 +2570,23 @@ ixl_config_link(struct i40e_hw *hw)
 	return (check);
 }
 
-/*********************************************************************
- *
- *  Initialize this VSI 
- *
- **********************************************************************/
 static int
-ixl_setup_vsi(struct ixl_ifx *ifx)
+ixl_get_seids(struct ixl_pf *pf)
 {
-	struct ixl_pf	*pf;
-	struct i40e_hw	*hw = ifx->hw;
-	device_t 	dev = ifx->dev;
+	struct ixl_ifx *ifx;
+	struct i40e_hw *hw;
+	device_t dev;
 	struct i40e_aqc_get_switch_config_resp *sw_config;
-	struct i40e_vsi_context	ctxt;
 	u8	aq_buf[I40E_AQ_LARGE_BUF];
-	int	ret = I40E_SUCCESS;
+	int	ret;
 	u16	next = 0;
 #ifdef IXL_DEBUG
 	int i;
 #endif
 
-	pf = ifx->back;
+	ifx = &pf->ifx;
+	hw = &pf->hw;
+	dev = pf->dev;
 
 	sw_config = (struct i40e_aqc_get_switch_config_resp *)aq_buf;
 	ret = i40e_aq_get_switch_config(hw, sw_config,
@@ -2604,12 +2608,31 @@ ixl_setup_vsi(struct ixl_ifx *ifx)
 	}
 #endif
 	/* Save off this important value */
-	if (ifx->vsi.seid == 0) {
-		ifx->uplink_seid = sw_config->element[0].uplink_seid;
-		ifx->downlink_seid = sw_config->element[0].downlink_seid;
-		ifx->vsi.seid = sw_config->element[0].seid;
-	}
+
+	ifx->uplink_seid = sw_config->element[0].uplink_seid;
+	ifx->downlink_seid = sw_config->element[0].downlink_seid;
+	ifx->vsi.seid = sw_config->element[0].seid;
+
 	ifx->vsi.first_queue = 0;
+
+	return (0);
+}
+
+/*********************************************************************
+ *
+ *  Initialize this VSI 
+ *
+ **********************************************************************/
+static int
+ixl_setup_vsi(struct ixl_ifx *ifx)
+{
+	struct ixl_pf	*pf;
+	struct i40e_hw	*hw = ifx->hw;
+	device_t 	dev = ifx->dev;
+	struct i40e_vsi_context	ctxt;
+	int	ret = I40E_SUCCESS;
+
+	pf = ifx->back;
 
 	memset(&ctxt, 0, sizeof(ctxt));
 	ctxt.seid = ifx->vsi.seid;
