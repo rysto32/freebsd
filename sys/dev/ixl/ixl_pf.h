@@ -47,6 +47,8 @@ struct ixl_vf {
 
 	uint8_t			mac[ETHER_ADDR_LEN];
 	uint16_t		vf_num;
+
+	struct sysctl_ctx_list	ctx;
 };
 
 /* Physical controller structure */
