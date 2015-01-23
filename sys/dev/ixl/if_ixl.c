@@ -3131,18 +3131,15 @@ ixl_set_queue_tx_itr(struct ixl_queue *que)
 
 static void
 ixl_add_vsi_sysctls(struct ixl_pf *pf, struct ixl_vsi *vsi,
-    struct sysctl_ctx_list *ctx)
+    struct sysctl_ctx_list *ctx, const char *sysctl_name)
 {
 	struct sysctl_oid *tree;
 	struct sysctl_oid_list *child;
 	struct sysctl_oid_list *vsi_list;
-	char vsi_namebuf[QUEUE_NAME_LEN];
 
 	tree = device_get_sysctl_tree(pf->dev);
 	child = SYSCTL_CHILDREN(tree);
-	snprintf(vsi_namebuf, QUEUE_NAME_LEN, "vsi%d",
-	    vsi->info.stat_counter_idx);
-	vsi->vsi_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, vsi_namebuf,
+	vsi->vsi_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, sysctl_name,
 				   CTLFLAG_RD, NULL, "VSI Number");
 	vsi_list = SYSCTL_CHILDREN(vsi->vsi_node);
 
@@ -3205,7 +3202,7 @@ ixl_add_hw_stats(struct ixl_pf *pf)
 	    CTLFLAG_RW, &pf->vc_debug_lvl, 0,
 	    "PF/VF Virtual Channel debug logging level");
 
-	ixl_add_vsi_sysctls(pf, &pf->ifx.vsi, ctx);
+	ixl_add_vsi_sysctls(pf, &pf->ifx.vsi, ctx, "pf");
 	vsi_list = SYSCTL_CHILDREN(pf->ifx.vsi.vsi_node);
 
 	/* Queue statistics */
@@ -6573,7 +6570,7 @@ ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
 	struct i40e_hw *hw;
 	struct ixl_ifx *pf_ifx;
 	enum i40e_status_code ret;
-	int error;
+	int i, error;
 
 	pf = device_get_softc(dev);
 	hw = &pf->hw;
@@ -6587,6 +6584,9 @@ ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
 		error = ENOMEM;
 		goto fail;
 	}
+
+	for (i = 0; i < num_vfs; i++)
+		sysctl_ctx_init(&pf->vfs[i].ctx);
 
 	ret = i40e_aq_add_veb(hw, pf_ifx->uplink_seid, pf_ifx->vsi.seid,
 	    1, FALSE, FALSE, &pf->veb_seid, NULL);
@@ -6618,7 +6618,8 @@ ixl_uninit_iov(device_t dev)
 	struct i40e_hw *hw;
 	struct ixl_ifx *ifx;
 	struct ifnet *ifp;
-	int i;
+	struct ixl_vf *vfs;
+	int i, num_vfs;
 
 	pf = device_get_softc(dev);
 	hw = &pf->hw;
@@ -6639,15 +6640,23 @@ ixl_uninit_iov(device_t dev)
 	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0)
 		ixl_disable_intr(ifx);
 
-	free(pf->vfs, M_IXL);
+	vfs = pf->vfs;
+	num_vfs = pf->num_vfs;
+
 	pf->vfs = NULL;
 	pf->num_vfs = 0;
 	IXL_PF_UNLOCK(pf);
+
+	/* Do this after the unlock as sysctl_ctx_free might sleep. */
+	for (i = 0; i < num_vfs; i++)
+		sysctl_ctx_free(&vfs[i].ctx);
+	free(vfs, M_IXL);
 }
 
 static int
 ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 {
+	char sysctl_name[QUEUE_NAME_LEN];
 	struct ixl_pf *pf;
 	struct ixl_vf *vf;
 	const void *mac;
@@ -6679,6 +6688,11 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 	ixl_reset_vf(pf, vf);
 out:
 	IXL_PF_UNLOCK(pf);
+	if (error == 0) {
+		snprintf(sysctl_name, sizeof(sysctl_name), "vf%d", vfnum);
+		ixl_add_vsi_sysctls(pf, &vf->vsi, &vf->ctx, sysctl_name);
+	}
+
 	return (error);
 }
 #endif /* PCI_IOV */
