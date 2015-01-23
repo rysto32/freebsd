@@ -227,6 +227,10 @@
 #define IXL_QUEUE_HUNG		0x80000000
 #define IXL_KEYSZ		10
 
+#define IXL_VF_MAX_BUFFER	0x3F80
+#define IXL_VF_MAX_HDR_BUFFER	0x840
+#define IXL_VF_MAX_FRAME	0x3FFF
+
 /* ERJ: hardware can support ~1.5k filters between all functions */
 #define IXL_MAX_FILTERS	256
 #define IXL_MAX_TX_BUSY	10

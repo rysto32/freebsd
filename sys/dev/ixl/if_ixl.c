@@ -5764,12 +5764,26 @@ i40e_vf_config_rx_queue(struct ixl_pf *pf, struct ixl_vf *vf,
 	global_queue_num = vf->vsi.first_queue + info->queue_id;
 	bzero(&rxq, sizeof(rxq));
 
-	if (info->databuffer_size > IXL_MAX_FRAME)
+	if (info->databuffer_size > IXL_VF_MAX_BUFFER)
 		return (EINVAL);
 
-	if (info->max_pkt_size > IXL_MAX_FRAME ||
+	if (info->max_pkt_size > IXL_VF_MAX_FRAME ||
 	    info->max_pkt_size < ETHER_MIN_LEN)
 		return (EINVAL);
+
+	if (info->splithdr_enabled) {
+		if (info->hdr_size > IXL_VF_MAX_HDR_BUFFER)
+			return (EINVAL);
+
+		rxq.hsplit_0 = info->rx_split_pos &
+		    (I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_L2 |
+		     I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_IP |
+		     I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_TCP_UDP |
+		     I40E_HMC_OBJ_RX_HSPLIT_0_SPLIT_SCTP);
+		rxq.hbuff = info->hdr_size >> I40E_RXQ_CTX_HBUFF_SHIFT;
+
+		rxq.dtype = 2;
+	}
 
 	status = i40e_clear_lan_rx_queue_context(hw, global_queue_num);
 	if (status != I40E_SUCCESS)
@@ -5779,8 +5793,6 @@ i40e_vf_config_rx_queue(struct ixl_pf *pf, struct ixl_vf *vf,
 	rxq.qlen = info->ring_len;
 
 	rxq.dbuff = info->databuffer_size >> I40E_RXQ_CTX_DBUFF_SHIFT;
-
-	/* XXX header split */
 
 	rxq.dsize = 1;
 	rxq.crcstrip = 1;
