@@ -723,6 +723,10 @@ ixl_attach(device_t dev)
 		pf_schema = pci_iov_schema_alloc_node();
 		vf_schema = pci_iov_schema_alloc_node();
 		pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL);
+		pci_iov_schema_add_bool(vf_schema, "mac-anti-spoof",
+		    IOV_SCHEMA_HASDEFAULT, TRUE);
+		pci_iov_schema_add_bool(vf_schema, "allow-set-mac",
+		    IOV_SCHEMA_HASDEFAULT, FALSE);
 
 		iov_error = pci_iov_attach(dev, pf_schema, vf_schema);
 		if (iov_error != 0)
@@ -5258,9 +5262,10 @@ i40e_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	vsi_ctx.info.valid_sections = htole16(I40E_AQ_VSI_PROP_SWITCH_VALID);
 	vsi_ctx.info.switch_id = htole16(0);
 
-	/* TODO: security: optionally enable vlan/mac anti-spoof. */
 	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_SECURITY_VALID);
 	vsi_ctx.info.sec_flags = 0;
+	if (vf->vf_flags & VF_FLAG_MAC_ANTI_SPOOF)
+		vsi_ctx.info.sec_flags |= I40E_AQ_VSI_SEC_FLAG_ENABLE_MAC_CHK;
 
 	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_VLAN_VALID);
 	vsi_ctx.info.port_vlan_flags = I40E_AQ_VSI_PVLAN_MODE_ALL |
@@ -6680,8 +6685,18 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 	if (nvlist_exists_binary(params, "mac-addr")) {
 		mac = nvlist_get_binary(params, "mac-addr", &size);
 		bcopy(mac, vf->mac, ETHER_ADDR_LEN);
+
+		if (nvlist_get_bool(params, "allow-set-mac"))
+			vf->vf_flags |= VF_FLAG_SET_MAC_CAP;
 	} else
+		/*
+		 * If the administrator has not specified a MAC address then
+		 * we must allow the VF to choose one.
+		 */
 		vf->vf_flags |= VF_FLAG_SET_MAC_CAP;
+
+	if (nvlist_get_bool(params, "mac-anti-spoof"))
+		vf->vf_flags |= VF_FLAG_MAC_ANTI_SPOOF;
 
 	vf->vf_flags |= VF_FLAG_VLAN_CAP;
 
