@@ -780,12 +780,9 @@ pci_iov_delete(struct cdev *cdev)
 
 		error = device_detach(vf);
 		if (error != 0) {
-			/*
-			 * If any device fails to detach, then re-attach all
-			 * VFs to ensure that we leave things in the same state
-			 * that we started in.
-			 */
-			bus_generic_attach(bus);
+			device_printf(dev,
+			   "Could not disable SR-IOV: failed to detach VF %s\n",
+			    device_get_nameunit(vf));
 			goto out;
 		}
 	}
