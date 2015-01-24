@@ -42,11 +42,11 @@
 .Sh DESCRIPTION
 The
 .Fn PCI_ADD_VF
-method is called by the PCI Single-Root I/O Virtualization (SR-IOV)
-infrastructure when it is initializating a new VF as a child of the given PF
-device.
-It is guaranteed that this method will not be called until a successful
-call to
+method is called by the PCI Single-Root I/O Virtualization
+.Pq SR-IOV
+infrastructure when it is initializating a new Virtual Function (VF) as a child
+of the given Physical Function (PF) device.
+This method will not be called until a successful call to
 .Xr PCI_INIT_IOV 9
 has been made.
 It is not guaranteed that this method will be called following a successful call
@@ -57,15 +57,15 @@ call to
 .Xr PCI_INIT_IOV 9 ,
 the VF creation will be aborted and
 .Xr PCI_UNINIT_IOV 9
-will be called immediately without any preceeding calls to
+will be called immediately without any preceding calls to
 .Nm .
 .Pp
-The number of the VF being initialized is passed in the
+The index of the VF being initialized is passed in the
 .Fa vfnum
 argument.
 VFs are always numbered sequentially starting at 0.
 .Pp
-If the driver requested device-specific configuration paramters via a VF schema
+If the driver requested device-specific configuration parameters via a VF schema
 in its call to
 .Xr pci_iov_attach 9 ,
 those parameters will be contained in the
@@ -77,21 +77,20 @@ had a default value set in the VF schema are guaranteed to be present in
 Configuration parameters that were neither set as required nor were given a
 default value are optional and may or may not be present in
 .Fa vf_config .
-It is guaranteed that
 .Fa vf_config
 will not contain any configuration parameters that were not specified in the VF
 schema.
-It is guaranteed that all configuration parameters will have the correct type
-and are in the range of valid values specified in the schema.
+All configuration parameters will have the correct type and will be in the range
+of valid values specified in the schema.
 .Pp
 Note that it is possible for the user to set different configuration values on
 different VF devices that are children of the same PF.
-It is incorrect for the PF driver to cache configuration parameters passed in
-previous calls to
+The PF driver must not cache configuration parameters passed in previous calls
+to
 .Fn PCI_ADD_VF
 for other VFs and apply those parameters to the current VF.
 .Pp
-It is guaranteed that this function will not be called twice for the same
+This function will not be called twice for the same
 .Fa vf_num
 on the same PF device without
 .Xr PCI_UNINIT_IOV 9
@@ -111,4 +110,4 @@ the PF.
 .Xr PCI_UNINIT_IOV 9
 .Sh AUTHORS
 This manual page was written by
-.An Ryan Stone Aq rstone@FreeBSD.org .
+.An Ryan Stone Aq Mt rstone@FreeBSD.org .

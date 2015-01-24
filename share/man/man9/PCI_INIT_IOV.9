@@ -43,8 +43,10 @@
 The
 .Fn PCI_INIT_IOV
 method is called by the PCI Single-Root I/O Virtualization (SR-IOV)
-infrastucture when the user requests that SR-IOV be enabled on a PF device.
-The number of VFs that will be created is passed to this method in the
+infrastucture when the user requests that SR-IOV be enabled on a Physical
+Function (PF).
+The number of Virtual Functions (VFs) that will be created is passed to this
+method in the
 .Fa num_vfs
 argument.
 .Pp
@@ -60,26 +62,25 @@ had a default value set in the PF schema are guaranteed to be present in
 Configuration parameters that were neither set as required nor were given a
 default value are optional and may or may not be present in
 .Fa pf_config .
-It is guaranteed that
 .Fa pf_config
 will not contain any configuration parameters that were not specified in the PF
 schema.
-It is guaranteed that all configuration parameters will have the correct type
-and are in the range of valid values specified in the schema.
+All configuration parameters will have the correct type and are in the range of
+valid values specified in the schema.
 .Pp
-If this method returns successfully, then it is guaranteed that this method will
-not be called again on the same device until after a call to
+If this method returns successfully, then this method will not be called again
+on the same device until after a call to
 .Xr PCI_UNINIT_IOV .
 .Sh RETURN VALUES
-This method returns 0 on success, otherwise an appropriate error is returned.
+Returns 0 on success, otherwise an appropriate error is returned.
 If this method returns an error then the SR-IOV configuration will be aborted
 and no VFs will be created.
 .Sh SEE ALSO
-.Xr nv 3,
+.Xr nv 9 ,
 .Xr pci 9 ,
 .Xr pci_iov_schema 9 ,
 .Xr PCI_ADD_VF 9 ,
 .Xr PCI_UNINIT_IOV 9
 .Sh AUTHORS
 This manual page was written by
-.An Ryan Stone Aq rstone@FreeBSD.org .
+.An Ryan Stone Aq Mt rstone@FreeBSD.org .
