@@ -30,16 +30,15 @@
 .Os
 .Sh NAME
 .Nm iovctl.conf
-.Nd
-.Xr iovctl 8
-configuration file
+.Nd IOVCTL configuration file
 .Sh DESCRIPTION
 The
 .Nm
 file is the configuration file for the
 .Xr iovctl 8
 program.
-This file specifies configuration parameters for a single Physical Function (PF)
+This file specifies configuration parameters for a single Physical Function
+.Pq PF
 device.
 To configure SR-IOV on multiple PF devices, use one configuration file for each
 PF.
@@ -58,7 +57,7 @@ There are three types of sections in the
 .Nm
 file.
 A section is a key at the top level of the file with a list as its value.
-The list may contain the keys specified in the 
+The list may contain the keys specified in the
 .Sx OPTIONS
 section of this manual page.
 Individual PF driver implementations may specify additional device-specific
@@ -66,8 +65,8 @@ configuration keys that they will accept.
 The order in which sections appear in
 .Nm
 is ignored.
-No two sections may have the same key (e.g. two sections for VF-1 may not be
-defined).
+No two sections may have the same key.
+For example, two sections for VF-1 must not be defined.
 .Pp
 The first section type is the PF section.
 This section always has the key "PF"; therefore, only one such section may be
@@ -76,8 +75,9 @@ This section defines configuration parameters that apply to the PF as a whole.
 .Pp
 The second section type is the VF section.
 This section has the key "VF-" followed by a VF index.
-VF indicies start at 0 and always increment by 1.
-Valid VF indicies are in the range of 0 to (num_vfs-1).
+VF indices start at 0 and always increment by 1.
+Valid VF indices are in the range of 0 to
+.Po num_vfs - 1 Pc .
 The VF index must be given as a decimal integer with no leading zeros.
 This section defines configuration parameters that apply to a single VF.
 .Pp
@@ -117,10 +117,10 @@ Accepts any integer in the range 0-2**64, inclusive.
 .Sh OPTIONS
 The following parameters are accepted by all PF drivers:
 .Bl -tag -width indent
-.It device (string)
+.It device Pq string
 This parameter specifies the name of the PF device.
 This parameter is required to be specified.
-.It num_vfs (uint16_t)
+.It num_vfs Pq uint16_t
 This parameter specifies the number of VF children to create.
 This parameter may not be zero.
 The maximum value of this parameter is device-specific.
@@ -128,7 +128,7 @@ The maximum value of this parameter is device-specific.
 .Pp
 The following parameters are accepted by all VFs:
 .Bl -tag -width indent
-.It passthrough (boolean)
+.It passthrough Pq boolean
 This parameter controls whether the VF is reserved for the use of the
 .Xr bhyve 8
 hypervisor as a PCI passthrough device.
@@ -137,8 +137,8 @@ passthrough device and it will not be accessible from the host OS.
 The default value of this parameter is false.
 .El
 .Pp
-See the manual page of the PF driver for your device for documentation of
-device-specific configuration parameters.
+See the PF driver manual page for configuration parameters specific to
+particular hardware.
 .Sh EXAMPLES
 This sample file will create 3 VFs as children of the ix0 device.
 VF-1 and VF-2 are set as
@@ -163,8 +163,8 @@ VF-0 {
 }
 .Ed
 .Sh SEE ALSO
-.Xr iovctl 8
-.Sh AUTHORS
+.Xr iovctl 8 ,
 .Xr rc.conf 5
+.Sh AUTHORS
 This manual page was written by
-.An Ryan Stone Aq rstone@FreeBSD.org .
+.An Ryan Stone Aq Mt rstone@FreeBSD.org .
