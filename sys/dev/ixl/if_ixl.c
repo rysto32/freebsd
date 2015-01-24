@@ -111,6 +111,7 @@ static void	ixl_config_rss(struct ixl_ifx *);
 static void	ixl_set_queue_rx_itr(struct ixl_queue *);
 static void	ixl_set_queue_tx_itr(struct ixl_queue *);
 static int	ixl_set_advertised_speeds(struct ixl_pf *, int);
+static int	ixl_get_seids(struct ixl_pf *pf);
 
 static int	ixl_enable_rings(struct ixl_vsi *);
 static int	ixl_disable_rings(struct ixl_vsi *);
@@ -187,6 +188,13 @@ static int	ixl_sysctl_switch_config(SYSCTL_HANDLER_ARGS);
 static int	ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS);
 #endif
 
+#ifdef PCI_IOV
+static int	ixl_adminq_err_to_errno(enum i40e_admin_queue_err err);
+
+static int	ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t*);
+static void	ixl_uninit_iov(device_t dev);
+#endif
+
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
  *********************************************************************/
@@ -197,6 +205,10 @@ static device_method_t ixl_methods[] = {
 	DEVMETHOD(device_attach, ixl_attach),
 	DEVMETHOD(device_detach, ixl_detach),
 	DEVMETHOD(device_shutdown, ixl_shutdown),
+#ifdef PCI_IOV
+	DEVMETHOD(pci_init_iov, ixl_init_iov),
+	DEVMETHOD(pci_uninit_iov, ixl_uninit_iov),
+#endif
 	{0, 0}
 };
 
@@ -283,6 +295,7 @@ int ixl_atr_rate = 20;
 TUNABLE_INT("hw.ixl.atr_rate", &ixl_atr_rate);
 #endif
 
+static MALLOC_DEFINE(M_IXL, "ixl", "ixl driver allocations");
 
 static uint8_t ixl_bcast_addr[ETHER_ADDR_LEN] =
     {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -654,6 +667,16 @@ ixl_attach(device_t dev)
 	/* Setup OS specific network interface */
 	if (ixl_setup_interface(dev, ifx) != 0) {
 		device_printf(dev, "interface setup failed!\n");
+		error = EIO;
+		goto err_late;
+	}
+
+	/*
+	 * Fetch the Switch Element IDs (SEIDs) for the physical port and for
+	 * the PF's VSI.  We'll need these values when enabling SR-IOV.
+	 */
+	if (ixl_get_seids(pf) != 0) {
+		device_printf(dev, "Fetching SEIDs failed!\n");
 		error = EIO;
 		goto err_late;
 	}
@@ -2481,6 +2504,54 @@ ixl_config_link(struct i40e_hw *hw)
 	return (check);
 }
 
+static int
+ixl_get_seids(struct ixl_pf *pf)
+{
+	struct ixl_ifx *ifx;
+	struct i40e_hw *hw;
+	device_t dev;
+	struct i40e_aqc_get_switch_config_resp *sw_config;
+	u8	aq_buf[I40E_AQ_LARGE_BUF];
+	int	ret;
+	u16	next = 0;
+#ifdef IXL_DEBUG
+	int i;
+#endif
+
+	ifx = &pf->ifx;
+	hw = &pf->hw;
+	dev = pf->dev;
+
+	sw_config = (struct i40e_aqc_get_switch_config_resp *)aq_buf;
+	ret = i40e_aq_get_switch_config(hw, sw_config,
+	    sizeof(aq_buf), &next, NULL);
+	if (ret) {
+		device_printf(dev,"aq_get_switch_config failed (ret=%d)!!\n",
+		    ret);
+		return (ret);
+	}
+#ifdef IXL_DEBUG
+	device_printf(dev, "Switch config: header reported: %d in structure, %d total\n",
+    	    sw_config->header.num_reported, sw_config->header.num_total);
+	for (i = 0; i < sw_config->header.num_reported; i++) {
+		device_printf(dev, "%d: type=%d seid=%d uplink=%d downlink=%d\n", i,
+		    sw_config->element[i].element_type,
+		    sw_config->element[i].seid,
+		    sw_config->element[i].uplink_seid,
+		    sw_config->element[i].downlink_seid);
+	}
+#endif
+	/* Save off this important value */
+
+	ifx->uplink_seid = sw_config->element[0].uplink_seid;
+	ifx->downlink_seid = sw_config->element[0].downlink_seid;
+	ifx->vsi.seid = sw_config->element[0].seid;
+
+	ifx->vsi.first_queue = 0;
+
+	return (0);
+}
+
 /*********************************************************************
  *
  *  Initialize this VSI 
@@ -2489,35 +2560,18 @@ ixl_config_link(struct i40e_hw *hw)
 static int
 ixl_setup_vsi(struct ixl_ifx *ifx)
 {
+	struct ixl_pf	*pf;
 	struct i40e_hw	*hw = ifx->hw;
 	device_t 	dev = ifx->dev;
-	struct i40e_aqc_get_switch_config_resp *sw_config;
 	struct i40e_vsi_context	ctxt;
-	u8	aq_buf[I40E_AQ_LARGE_BUF];
 	int	ret = I40E_SUCCESS;
-	u16	next = 0;
 
-	sw_config = (struct i40e_aqc_get_switch_config_resp *)aq_buf;
-	ret = i40e_aq_get_switch_config(hw, sw_config,
-	    sizeof(aq_buf), &next, NULL);
-	if (ret) {
-		device_printf(dev,"aq_get_switch_config failed!!\n");
-		return (ret);
-	}
-#ifdef IXL_DEBUG
-	printf("Switch config: header reported: %d in structure, %d total\n",
-    	    sw_config->header.num_reported, sw_config->header.num_total);
-	printf("type=%d seid=%d uplink=%d downlink=%d\n",
-	    sw_config->element[0].element_type,
-	    sw_config->element[0].seid,
-	    sw_config->element[0].uplink_seid,
-	    sw_config->element[0].downlink_seid);
-#endif
-	/* Save off this important value */
-	ifx->vsi.seid = sw_config->element[0].seid;
+	pf = ifx->back;
 
 	memset(&ctxt, 0, sizeof(ctxt));
 	ctxt.seid = ifx->vsi.seid;
+	if (pf->veb_seid != 0)
+		ctxt.uplink_seid = pf->veb_seid;
 	ctxt.pf_num = hw->pf_id;
 	ret = i40e_aq_get_vsi_params(hw, &ctxt, NULL);
 	if (ret) {
@@ -2558,6 +2612,8 @@ ixl_setup_vsi(struct ixl_ifx *ifx)
 	ixl_vsi_reset_stats(&ifx->vsi);
 	ifx->vsi.hw_filters_add = 0;
 	ifx->vsi.hw_filters_del = 0;
+
+	ctxt.flags = htole16(I40E_AQ_VSI_TYPE_PF);
 
 	ret = i40e_aq_update_vsi_params(hw, &ctxt, NULL);
 	if (ret)
@@ -5047,3 +5103,127 @@ ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS)
 }
 #endif /* IXL_DEBUG_SYSCTL */
 
+#ifdef PCI_IOV
+static int
+ixl_adminq_err_to_errno(enum i40e_admin_queue_err err)
+{
+
+	switch (err) {
+	case I40E_AQ_RC_EPERM:
+		return (EPERM);
+	case I40E_AQ_RC_ENOENT:
+		return (ENOENT);
+	case I40E_AQ_RC_ESRCH:
+		return (ESRCH);
+	case I40E_AQ_RC_EINTR:
+		return (EINTR);
+	case I40E_AQ_RC_EIO:
+		return (EIO);
+	case I40E_AQ_RC_ENXIO:
+		return (ENXIO);
+	case I40E_AQ_RC_E2BIG:
+		return (E2BIG);
+	case I40E_AQ_RC_EAGAIN:
+		return (EAGAIN);
+	case I40E_AQ_RC_ENOMEM:
+		return (ENOMEM);
+	case I40E_AQ_RC_EACCES:
+		return (EACCES);
+	case I40E_AQ_RC_EFAULT:
+		return (EFAULT);
+	case I40E_AQ_RC_EBUSY:
+		return (EBUSY);
+	case I40E_AQ_RC_EEXIST:
+		return (EEXIST);
+	case I40E_AQ_RC_EINVAL:
+		return (EINVAL);
+	case I40E_AQ_RC_ENOTTY:
+		return (ENOTTY);
+	case I40E_AQ_RC_ENOSPC:
+		return (ENOSPC);
+	case I40E_AQ_RC_ENOSYS:
+		return (ENOSYS);
+	case I40E_AQ_RC_ERANGE:
+		return (ERANGE);
+	case I40E_AQ_RC_EFLUSHED:
+		return (EINVAL);	/* No exact equivalent in errno.h */
+	case I40E_AQ_RC_BAD_ADDR:
+		return (EFAULT);
+	case I40E_AQ_RC_EMODE:
+		return (EPERM);
+	case I40E_AQ_RC_EFBIG:
+		return (EFBIG);
+	default:
+		return (EINVAL);
+	}
+}
+
+static int
+ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
+{
+	struct ixl_pf *pf;
+	struct i40e_hw *hw;
+	struct ixl_ifx *pf_ifx;
+	enum i40e_status_code ret;
+	int error;
+
+	pf = device_get_softc(dev);
+	hw = &pf->hw;
+	pf_ifx = &pf->ifx;
+
+	IXL_PF_LOCK(pf);
+	pf->vfs = malloc(sizeof(struct ixl_vf) * num_vfs, M_IXL, M_NOWAIT |
+	    M_ZERO);
+
+	if (pf->vfs == NULL) {
+		error = ENOMEM;
+		goto fail;
+	}
+
+	ret = i40e_aq_add_veb(hw, pf_ifx->uplink_seid, pf_ifx->vsi.seid,
+	    1, FALSE, FALSE, &pf->veb_seid, NULL);
+	if (ret != I40E_SUCCESS) {
+		error = ixl_adminq_err_to_errno(hw->aq.asq_last_status);
+		device_printf(dev, "add_veb failed; code=%d error=%d", ret,
+		    error);
+		goto fail;
+	}
+
+	pf->num_vfs = num_vfs;
+	IXL_PF_UNLOCK(pf);
+	return (0);
+
+fail:
+	free(pf->vfs, M_IXL);
+	pf->vfs = NULL;
+	IXL_PF_UNLOCK(pf);
+	return (error);
+}
+
+static void
+ixl_uninit_iov(device_t dev)
+{
+	struct ixl_pf *pf;
+	struct i40e_hw *hw;
+	int i;
+
+	pf = device_get_softc(dev);
+	hw = &pf->hw;
+
+	IXL_PF_LOCK(pf);
+	for (i = 0; i < pf->num_vfs; i++) {
+		if (pf->vfs[i].vsi.seid != 0)
+			i40e_aq_delete_element(hw, pf->vfs[i].vsi.seid, NULL);
+	}
+
+	if (pf->veb_seid != 0) {
+		i40e_aq_delete_element(hw, pf->veb_seid, NULL);
+		pf->veb_seid = 0;
+	}
+
+	free(pf->vfs, M_IXL);
+	pf->vfs = NULL;
+	pf->num_vfs = 0;
+	IXL_PF_UNLOCK(pf);
+}
+#endif /* PCI_IOV */
