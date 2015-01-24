@@ -190,6 +190,7 @@ static device_method_t pci_methods[] = {
 #ifdef PCI_IOV
 	DEVMETHOD(pci_iov_attach,	pci_iov_attach_method),
 	DEVMETHOD(pci_iov_detach,	pci_iov_detach_method),
+	DEVMETHOD(pci_create_iov_child,	pci_create_iov_child_method),
 #endif
 
 	DEVMETHOD_END
@@ -636,6 +637,7 @@ pci_fill_devinfo(device_t pcib, int d, int b, int s, int f, uint16_t vid,
 	cfg->hdrtype		&= ~PCIM_MFDEV;
 	STAILQ_INIT(&cfg->maps);
 
+	cfg->devinfo_size	= size;
 	cfg->iov		= NULL;
 
 	pci_fixancient(cfg);
@@ -3541,24 +3543,46 @@ pci_add_children(device_t dev, int domain, int busno, size_t dinfo_size)
 
 #ifdef PCI_IOV
 device_t
-pci_add_iov_child(device_t bus, size_t size, uint16_t rid, uint16_t vid,
+pci_add_iov_child(device_t bus, device_t pf, size_t size, uint16_t rid, uint16_t vid,
     uint16_t did)
 {
-	struct pci_devinfo *dinfo;
+	struct pci_devinfo *pf_dinfo, *vf_dinfo;
 	device_t pcib;
 	int busno, slot, func;
+
+	pf_dinfo = device_get_ivars(pf);
+
+	/*
+	 * Do a sanity check that we have been passed the correct size.  If this
+	 * test fails then likely the pci subclass hasn't implemented the
+	 * pci_create_iov_child method like it's supposed it.
+	 */
+	if (size != pf_dinfo->cfg.devinfo_size) {
+		device_printf(pf,
+		    "PCI subclass does not properly implement PCI_IOV\n");
+		return (NULL);
+	}
 
 	pcib = device_get_parent(bus);
 
 	PCIB_DECODE_RID(pcib, rid, &busno, &slot, &func);
 
-	dinfo = pci_fill_devinfo(pcib, pci_get_domain(pcib), busno, slot, func,
+	vf_dinfo = pci_fill_devinfo(pcib, pci_get_domain(pcib), busno, slot, func,
 	    vid, did, size);
 
-	dinfo->cfg.flags |= PCICFG_VF;
-	pci_add_child(bus, dinfo);
+	vf_dinfo->cfg.flags |= PCICFG_VF;
+	pci_add_child(bus, vf_dinfo);
 
-	return (dinfo->cfg.dev);
+	return (vf_dinfo->cfg.dev);
+}
+
+device_t
+pci_create_iov_child_method(device_t bus, device_t pf, uint16_t rid,
+    uint16_t vid, uint16_t did)
+{
+
+	return (pci_add_iov_child(bus, pf, sizeof(struct pci_devinfo), rid, vid,
+	    did));
 }
 #endif
 

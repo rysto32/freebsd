@@ -51,7 +51,7 @@ extern int 	pci_do_power_suspend;
 void		pci_add_children(device_t dev, int domain, int busno,
 		    size_t dinfo_size);
 void		pci_add_child(device_t bus, struct pci_devinfo *dinfo);
-device_t	pci_add_iov_child(device_t bus, size_t dinfo_size,
+device_t	pci_add_iov_child(device_t bus, device_t pf, size_t dinfo_size,
 		    uint16_t rid, uint16_t vid, uint16_t did);
 void		pci_add_resources(device_t bus, device_t dev, int force,
 		    uint32_t prefetchmask);
@@ -148,6 +148,9 @@ struct resource *pci_alloc_multi_resource(device_t dev, device_t child,
 int		pci_iov_attach_method(device_t bus, device_t dev,
 		    struct nvlist *pf_schema, struct nvlist *vf_schema);
 int		pci_iov_detach_method(device_t bus, device_t dev);
+
+device_t	pci_create_iov_child_method(device_t bus, device_t pf,
+		    uint16_t rid, uint16_t vid, uint16_t did);
 
 struct resource *pci_vf_alloc_mem_resource(device_t dev, device_t child,
 		    int *rid, u_long start, u_long end, u_long count,

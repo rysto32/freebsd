@@ -36,14 +36,12 @@ CODE {
 	{
 		return (0);
 	}
-
+	
 	static device_t
-	null_create_iov_child(device_t bus, uint16_t rid, uint16_t vid,
-	    uint16_t did)
+	null_create_iov_child(device_t bus, device_t pf, uint16_t rid,
+	    uint16_t vid, uint16_t did)
 	{
-
-		device_printf(bus,
-		    "SR-IOV is not supported on this bus.\n");
+		device_printf(bus, "PCI_IOV not implemented on this bus.\n");
 		return (NULL);
 	}
 };
@@ -191,13 +189,6 @@ METHOD int iov_detach {
 	device_t	child;
 };
 
-METHOD device_t create_iov_child {
-	device_t bus;
-	uint16_t rid;
-	uint16_t vid;
-	uint16_t did;
-}
-
 METHOD int init_iov {
 	device_t		dev;
 	uint16_t		num_vfs;
@@ -213,4 +204,12 @@ METHOD int add_vf {
 	uint16_t		vfnum;
 	const struct nvlist	*config;
 };
+
+METHOD device_t create_iov_child {
+	device_t bus;
+	device_t pf;
+	uint16_t rid;
+	uint16_t vid;
+	uint16_t did;
+} DEFAULT null_create_iov_child;
 
