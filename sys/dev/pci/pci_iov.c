@@ -913,6 +913,17 @@ pci_vf_alloc_mem_resource(device_t dev, device_t child, int *rid, u_long start,
 	bar_start = map->pm_value;
 	bar_end = bar_start + bar_length - 1;
 
+	/* Make sure that the resource fits the constraints. */
+	if (bar_start >= end || bar_end <= bar_start || count != 1)
+		return (NULL);
+
+	/* Clamp the resource to the constraints if necessary. */
+	if (bar_start < start)
+		bar_start = start;
+	if (bar_end > end)
+		bar_end = end;
+	bar_length = bar_end - bar_start + 1;
+
 	res = rman_reserve_resource(&iov->rman, bar_start, bar_end,
 	    bar_length, flags, child);
 	if (res == NULL)
