@@ -33,7 +33,7 @@
 .Nd "PCI SR-IOV configuration utility"
 .Sh SYNOPSIS
 .Nm
-.Fl E
+.Fl C
 .Op Fl f Ar config-file
 .Op Fl n
 .Nm
@@ -46,46 +46,49 @@
 .Sh DESCRIPTION
 The
 .Nm
-utility creates or destroys PCI Single-Root I/O Virtualization (SR-IOV) Virtual
-Functions (VFs).
+utility creates or destroys PCI Single-Root I/O Virtualization
+.Pq SR-IOV
+Virtual Functions
+.Po VFs Pc .
 When invoked with the
-.Fl E
-flag, 
+.Fl C
+flag,
 .Nm
-will create VFs as children of the
-Physical Function (PF) configured in the specified configuration file.
+creates VFs as children of the Physical Function
+.Pq PF
+configured in the specified configuration file.
 When invoked with the
 .Fl D
 flag,
 .Nm
-will destroy all VFs that are children of the specified device.
+destroys all VFs that are children of the specified device.
 Available PF devices can be seen in
 .Pa /dev/iov/ .
 .Pp
 The following options are available:
 .Bl -tag -width indent
+.It Fl C
+Enable SR-IOV on the specified PF device and create VF children.
+This operation will fail if the PF already has VF children.
+This option must be used in conjunction with the
+.Fl f
+option.
 .It Fl d Ar device
 Specify the PF device to use for the given operation.
 .Ar device
 may either be the name of a PF device, or a full path name to a node in
 .Pa /dev/iov/ .
 This option may not be used with the
-.Fl E
+.Fl C
 option.
 .It Fl D
 Delete all VF children of the specified PF device.
-This operation will fail of SR-IOV is not currently enabled on the specified
+This operation will fail if SR-IOV is not currently enabled on the specified
 device.
-.It Fl E
-Enable SR-IOV on the specified PF device and create VF children.
-This operation will fail if the PF already has VF children.
-This option must be used in conjunction with the
-.Fl f
-option.
 .It Fl f Ar config-file
 Specify the pathname of the configuration file.
 For the
-.Fl E
+.Fl C
 option, this file will be used to specify all configuration values.
 For the
 .Fl D
@@ -97,8 +100,8 @@ See
 .Xr iovctl.conf
 for a description of the config file format and documentation of the
 configuration parameters that apply to all PF drivers.
-See the manual page for your PF driver for documentation of configuration
-parameters that are specific to your hardware.
+See the PF driver manual page for configuration parameters specific to
+particular hardware.
 .It Fl n
 Perform a dry-run.
 Perform all validation of the specified action and print what would be done,
@@ -117,4 +120,4 @@ a given PF device.
 .Xr rc.conf 5
 .Sh AUTHORS
 This manual page was written by
-.An Ryan Stone Aq rstone@FreeBSD.org .
+.An Ryan Stone Aq Mt rstone@FreeBSD.org .
