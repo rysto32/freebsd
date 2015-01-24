@@ -396,6 +396,9 @@ ixl_attach(device_t dev)
 	struct ixl_vsi *vsi;
 	u16		bus;
 	int             error = 0;
+#ifdef PCI_IOV
+	int		iov_error;
+#endif
 
 	INIT_DEBUGOUT("ixl_attach: begin");
 
@@ -717,6 +720,16 @@ ixl_attach(device_t dev)
 	vsi->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
 	    ixl_unregister_vlan, vsi, EVENTHANDLER_PRI_FIRST);
 
+#ifdef PCI_IOV
+	/* SR-IOV is only supported when MSI-X is in use. */
+	if (pf->msix > 1) {
+		iov_error = pci_iov_attach(dev, NULL, NULL);
+		if (iov_error != 0)
+			device_printf(dev,
+			    "Failed to initialize SR-IOV (error=%d)\n",
+			    iov_error);
+	}
+#endif
 
 	INIT_DEBUGOUT("ixl_attach: end");
 	return (0);
@@ -753,6 +766,9 @@ ixl_detach(device_t dev)
 	struct ixl_vsi		*vsi = &pf->vsi;
 	struct ixl_queue	*que = vsi->queues;
 	i40e_status		status;
+#ifdef PCI_IOV
+	int error;
+#endif
 
 	INIT_DEBUGOUT("ixl_detach: begin");
 
@@ -761,6 +777,14 @@ ixl_detach(device_t dev)
 		device_printf(dev,"Vlan in use, detach first\n");
 		return (EBUSY);
 	}
+
+#ifdef PCI_IOV
+	error = pci_iov_detach(dev);
+	if (error != 0) {
+		device_printf(dev, "SR-IOV in use; detach first.\n");
+		return (error);
+	}
+#endif
 
 	IXL_PF_LOCK(pf);
 	ixl_stop(pf);
