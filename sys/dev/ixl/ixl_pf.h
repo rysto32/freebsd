@@ -39,6 +39,9 @@
 #define	VF_FLAG_ENABLED			0x01
 
 struct ixl_vf {
+	struct ixl_vsi		vsi;
+	uint32_t		vf_flags;
+
 	uint16_t		vf_num;
 };
 
