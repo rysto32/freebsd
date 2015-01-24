@@ -46,6 +46,7 @@
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
+#include <sys/nv.h>
 #include <sys/sockio.h>
 #include <sys/eventhandler.h>
 
