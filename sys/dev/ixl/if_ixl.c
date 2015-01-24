@@ -193,6 +193,7 @@ static int	ixl_adminq_err_to_errno(enum i40e_admin_queue_err err);
 
 static int	ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t*);
 static void	ixl_uninit_iov(device_t dev);
+static int	ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t*);
 #endif
 
 /*********************************************************************
@@ -208,6 +209,7 @@ static device_method_t ixl_methods[] = {
 #ifdef PCI_IOV
 	DEVMETHOD(pci_init_iov, ixl_init_iov),
 	DEVMETHOD(pci_uninit_iov, ixl_uninit_iov),
+	DEVMETHOD(pci_add_vf, ixl_add_vf),
 #endif
 	{0, 0}
 };
@@ -603,7 +605,8 @@ ixl_attach(device_t dev)
 	}
 
 	/* Set up host memory cache */
-	error = i40e_init_lan_hmc(hw, vsi->num_queues, vsi->num_queues, 0, 0);
+	error = i40e_init_lan_hmc(hw, hw->func_caps.num_tx_qp,
+	    hw->func_caps.num_rx_qp, 0, 0);
 	if (error) {
 		device_printf(dev, "init_lan_hmc failed: %d\n", error);
 		goto err_get_cap;
@@ -5105,6 +5108,89 @@ ixl_sysctl_dump_txd(SYSCTL_HANDLER_ARGS)
 
 #ifdef PCI_IOV
 static int
+ixl_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	struct ixl_vsi *vsi;
+	struct i40e_vsi_context vsi_ctx;
+	int i;
+	uint16_t first_queue;
+	enum i40e_status_code code;
+
+	hw = &pf->hw;
+	vsi = &pf->vsi;
+
+	vsi_ctx.pf_num = hw->pf_id;
+	vsi_ctx.uplink_seid = pf->veb_seid;
+	vsi_ctx.connection_type = IXL_VSI_DATA_PORT;
+	vsi_ctx.vf_num = hw->func_caps.vf_base_id + vf->vf_num;
+	vsi_ctx.flags = I40E_AQ_VSI_TYPE_VF;
+
+	bzero(&vsi_ctx.info, sizeof(vsi_ctx.info));
+
+	vsi_ctx.info.valid_sections = htole16(I40E_AQ_VSI_PROP_SWITCH_VALID);
+	vsi_ctx.info.switch_id = htole16(0);
+
+	/* TODO: security: optionally enable vlan/mac anti-spoof. */
+	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_SECURITY_VALID);
+	vsi_ctx.info.sec_flags = 0;
+
+	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_VLAN_VALID);
+	vsi_ctx.info.port_vlan_flags = I40E_AQ_VSI_PVLAN_MODE_ALL |
+	    I40E_AQ_VSI_PVLAN_EMOD_NOTHING;
+
+	vsi_ctx.info.valid_sections |=
+	    htole16(I40E_AQ_VSI_PROP_QUEUE_MAP_VALID);
+	vsi_ctx.info.mapping_flags = htole16(I40E_AQ_VSI_QUE_MAP_NONCONTIG);
+	first_queue = vsi->num_queues + vf->vf_num * IXLV_MAX_QUEUES;
+	for (i = 0; i < IXLV_MAX_QUEUES; i++)
+		vsi_ctx.info.queue_mapping[i] = htole16(first_queue + i);
+	for (; i < nitems(vsi_ctx.info.queue_mapping); i++)
+		vsi_ctx.info.queue_mapping[i] = htole16(I40E_AQ_VSI_QUEUE_MASK);
+
+	vsi_ctx.info.tc_mapping[0] = htole16(
+	    (0 << I40E_AQ_VSI_TC_QUE_OFFSET_SHIFT) |
+	    (1 << I40E_AQ_VSI_TC_QUE_NUMBER_SHIFT));
+
+	code = i40e_aq_add_vsi(hw, &vsi_ctx, NULL);
+	if (code != I40E_SUCCESS)
+		return (ixl_adminq_err_to_errno(hw->aq.asq_last_status));
+	vf->vsi.seid = vsi_ctx.seid;
+	vf->vsi.vsi_num = vsi_ctx.vsi_number;
+	vf->vsi.first_queue = first_queue;
+	vf->vsi.num_queues = IXLV_MAX_QUEUES;
+
+	code = i40e_aq_get_vsi_params(hw, &vsi_ctx, NULL);
+	if (code != I40E_SUCCESS)
+		return (ixl_adminq_err_to_errno(hw->aq.asq_last_status));
+
+	code = i40e_aq_config_vsi_bw_limit(hw, vf->vsi.seid, 0, 0, NULL);
+	if (code != I40E_SUCCESS) {
+		device_printf(pf->dev, "Failed to disable BW limit: %d\n",
+		    ixl_adminq_err_to_errno(hw->aq.asq_last_status));
+		return (ixl_adminq_err_to_errno(hw->aq.asq_last_status));
+	}
+
+	memcpy(&vf->vsi.info, &vsi_ctx.info, sizeof(vf->vsi.info));
+	return (0);
+}
+
+static int
+ixl_vf_setup_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
+{
+	struct i40e_hw *hw;
+	int error;
+
+	hw = &pf->hw;
+
+	error = ixl_vf_alloc_vsi(pf, vf);
+	if (error != 0)
+		return (error);
+
+	return (0);
+}
+
+static int
 ixl_adminq_err_to_errno(enum i40e_admin_queue_err err)
 {
 
@@ -5225,5 +5311,27 @@ ixl_uninit_iov(device_t dev)
 	pf->vfs = NULL;
 	pf->num_vfs = 0;
 	IXL_PF_UNLOCK(pf);
+}
+
+static int
+ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
+{
+	struct ixl_pf *pf;
+	struct ixl_vf *vf;
+	int error;
+
+	pf = device_get_softc(dev);
+	vf = &pf->vfs[vfnum];
+
+	IXL_PF_LOCK(pf);
+	vf->vf_num = vfnum;
+
+	vf->vsi.back = pf;
+	vf->vf_flags = VF_FLAG_ENABLED;
+	SLIST_INIT(&vf->vsi.ftl);
+
+	error = ixl_vf_setup_vsi(pf, vf);
+	IXL_PF_UNLOCK(pf);
+	return (error);
 }
 #endif /* PCI_IOV */
