@@ -40,7 +40,6 @@
 
 #define IXLV_AQ_MAX_ERR		1000
 #define IXLV_MAX_FILTERS	128
-#define IXLV_MAX_QUEUES		16
 #define IXLV_AQ_TIMEOUT		(1 * hz)
 #define IXLV_CALLOUT_TIMO	(hz / 50)	/* 20 msec */
 
