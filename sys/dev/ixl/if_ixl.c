@@ -2579,7 +2579,7 @@ ixl_config_link(struct i40e_hw *hw)
 static int
 ixl_get_seids(struct ixl_pf *pf)
 {
-	struct ixl_ifx *ifx;
+	struct ixl_vsi *vsi;
 	struct i40e_hw *hw;
 	device_t dev;
 	struct i40e_aqc_get_switch_config_resp *sw_config;
@@ -2590,7 +2590,7 @@ ixl_get_seids(struct ixl_pf *pf)
 	int i;
 #endif
 
-	ifx = &pf->ifx;
+	vsi = &pf->vsi;
 	hw = &pf->hw;
 	dev = pf->dev;
 
@@ -2615,10 +2615,11 @@ ixl_get_seids(struct ixl_pf *pf)
 #endif
 	/* Save off this important value */
 
-	ifx->uplink_seid = sw_config->element[0].uplink_seid;
-	ifx->downlink_seid = sw_config->element[0].downlink_seid;
+	vsi->uplink_seid = sw_config->element[0].uplink_seid;
+	vsi->downlink_seid = sw_config->element[0].downlink_seid;
+	vsi->seid = sw_config->element[0].seid;
 
-	ifx->vsi.first_queue = 0;
+	vsi->first_queue = 0;
 
 	return (0);
 }
@@ -2629,15 +2630,15 @@ ixl_get_seids(struct ixl_pf *pf)
  *
  **********************************************************************/
 static int
-ixl_setup_vsi(struct ixl_ifx *ifx)
+ixl_setup_vsi(struct ixl_vsi *vsi)
 {
 	struct ixl_pf	*pf;
-	struct i40e_hw	*hw = ifx->hw;
-	device_t 	dev = ifx->dev;
+	struct i40e_hw	*hw = vsi->hw;
+	device_t 	dev = vsi->dev;
 	struct i40e_vsi_context	ctxt;
 	int	ret = I40E_SUCCESS;
 
-	pf = ifx->back;
+	pf = vsi->back;
 
 	memset(&ctxt, 0, sizeof(ctxt));
 	ctxt.seid = vsi->seid;
@@ -6578,13 +6579,13 @@ ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
 {
 	struct ixl_pf *pf;
 	struct i40e_hw *hw;
-	struct ixl_ifx *pf_ifx;
+	struct ixl_vsi *pf_vsi;
 	enum i40e_status_code ret;
 	int i, error;
 
 	pf = device_get_softc(dev);
 	hw = &pf->hw;
-	pf_ifx = &pf->ifx;
+	pf_vsi = &pf->vsi;
 
 	IXL_PF_LOCK(pf);
 	pf->vfs = malloc(sizeof(struct ixl_vf) * num_vfs, M_IXL, M_NOWAIT |
@@ -6598,7 +6599,7 @@ ixl_init_iov(device_t dev, uint16_t num_vfs, const nvlist_t *params)
 	for (i = 0; i < num_vfs; i++)
 		sysctl_ctx_init(&pf->vfs[i].ctx);
 
-	ret = i40e_aq_add_veb(hw, pf_ifx->uplink_seid, pf_ifx->vsi.seid,
+	ret = i40e_aq_add_veb(hw, pf_vsi->uplink_seid, pf_vsi->seid,
 	    1, FALSE, FALSE, &pf->veb_seid, NULL);
 	if (ret != I40E_SUCCESS) {
 		error = ixl_adminq_err_to_errno(hw->aq.asq_last_status);
