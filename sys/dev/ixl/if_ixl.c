@@ -3175,7 +3175,7 @@ ixl_sysctl_reg(SYSCTL_HANDLER_ARGS)
 	int tail;
 
 	que = arg1;
-	tail = rd32(que->ifx->hw, arg2);
+	tail = rd32(que->vsi->hw, arg2);
 
 	return (sysctl_handle_int(oidp, &tail, 0, req));
 }
