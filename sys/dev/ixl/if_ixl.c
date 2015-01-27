@@ -5111,14 +5111,14 @@ static int
 ixl_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 {
 	struct i40e_hw *hw;
-	struct ixl_ifx *ifx;
+	struct ixl_vsi *vsi;
 	struct i40e_vsi_context vsi_ctx;
 	int i;
 	uint16_t first_queue;
 	enum i40e_status_code code;
 
 	hw = &pf->hw;
-	ifx = &pf->ifx;
+	vsi = &pf->vsi;
 
 	vsi_ctx.pf_num = hw->pf_id;
 	vsi_ctx.uplink_seid = pf->veb_seid;
@@ -5142,7 +5142,7 @@ ixl_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	vsi_ctx.info.valid_sections |=
 	    htole16(I40E_AQ_VSI_PROP_QUEUE_MAP_VALID);
 	vsi_ctx.info.mapping_flags = htole16(I40E_AQ_VSI_QUE_MAP_NONCONTIG);
-	first_queue = ifx->vsi.num_queues + vf->vf_num * IXLV_MAX_QUEUES;
+	first_queue = vsi->num_queues + vf->vf_num * IXLV_MAX_QUEUES;
 	for (i = 0; i < IXLV_MAX_QUEUES; i++)
 		vsi_ctx.info.queue_mapping[i] = htole16(first_queue + i);
 	for (; i < nitems(vsi_ctx.info.queue_mapping); i++)
