@@ -3212,7 +3212,7 @@ ixl_add_hw_stats(struct ixl_pf *pf)
 	    CTLFLAG_RW, &pf->vc_debug_lvl, 0,
 	    "PF/VF Virtual Channel debug logging level");
 
-	ixl_add_vsi_sysctls(pf, &pf->ifx.vsi, ctx, "pf");
+	ixl_add_vsi_sysctls(pf, &pf->vsi, ctx, "pf");
 	vsi_list = SYSCTL_CHILDREN(pf->vsi.vsi_node);
 
 	/* Queue statistics */
