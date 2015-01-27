@@ -74,7 +74,7 @@ struct ixl_pf {
 	** NOTE: The PF has only a single interface,
 	**   so it is embedded in the PF struct.
 	*/
-	struct ixl_ifx		ifx;
+	struct ixl_vsi		vsi;
 
 	/* Misc stats maintained by the driver */
 	u64			watchdog_events;

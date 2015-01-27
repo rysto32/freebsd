@@ -128,7 +128,7 @@ struct ixlv_sc {
 	struct task     	aq_sched;
 	struct taskqueue	*tq;
 
-	struct ixl_ifx		ifx;
+	struct ixl_vsi		vsi;
 
 	/* Filter lists */
 	struct mac_list		*mac_filters;
@@ -191,8 +191,8 @@ void	ixlv_configure_queues(struct ixlv_sc *);
 void	ixlv_enable_queues(struct ixlv_sc *);
 void	ixlv_disable_queues(struct ixlv_sc *);
 void	ixlv_map_queues(struct ixlv_sc *);
-void	ixlv_enable_intr(struct ixl_ifx *);
-void	ixlv_disable_intr(struct ixl_ifx *);
+void	ixlv_enable_intr(struct ixl_vsi *);
+void	ixlv_disable_intr(struct ixl_vsi *);
 void	ixlv_add_ether_filters(struct ixlv_sc *);
 void	ixlv_del_ether_filters(struct ixlv_sc *);
 void	ixlv_request_stats(struct ixlv_sc *);
