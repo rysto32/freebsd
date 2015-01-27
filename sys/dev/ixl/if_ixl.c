@@ -4493,7 +4493,7 @@ ixl_update_vsi_stats(struct ixl_vsi *vsi)
 	IXL_SET_IMCASTS(vsi, es->rx_multicast);
 	IXL_SET_OMCASTS(vsi, es->tx_multicast);
 
-	IXL_SET_IERRORS(ifx, nsd->crc_errors + nsd->illegal_bytes +
+	IXL_SET_IERRORS(vsi, nsd->crc_errors + nsd->illegal_bytes +
 	    nsd->rx_undersize + nsd->rx_oversize + nsd->rx_fragments +
 	    nsd->rx_jabber);
 	IXL_SET_OERRORS(vsi, es->tx_errors);
