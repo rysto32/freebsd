@@ -4388,7 +4388,7 @@ ixl_update_ifx_stats(struct ixl_ifx *ifx)
 	IXL_SET_IMCASTS(ifx, es->rx_multicast);
 	IXL_SET_OMCASTS(ifx, es->tx_multicast);
 
-	IXL_SET_IERRORS(ifx, nsd->crc_errors + nsd->illegal_bytes +
+	IXL_SET_IERRORS(vsi, nsd->crc_errors + nsd->illegal_bytes +
 	    nsd->rx_undersize + nsd->rx_oversize + nsd->rx_fragments +
 	    nsd->rx_jabber);
 	IXL_SET_OERRORS(ifx, es->tx_errors);
