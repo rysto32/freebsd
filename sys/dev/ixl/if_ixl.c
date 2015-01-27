@@ -6561,14 +6561,14 @@ ixl_uninit_iov(device_t dev)
 {
 	struct ixl_pf *pf;
 	struct i40e_hw *hw;
-	struct ixl_ifx *ifx;
+	struct ixl_vsi *vsi;
 	struct ifnet *ifp;
 	int i;
 
 	pf = device_get_softc(dev);
 	hw = &pf->hw;
-	ifx = &pf->ifx;
-	ifp = ifx->ifp;
+	vsi = &pf->vsi;
+	ifp = vsi->ifp;
 
 	IXL_PF_LOCK(pf);
 	for (i = 0; i < pf->num_vfs; i++) {
