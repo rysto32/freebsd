@@ -1230,7 +1230,7 @@ ixl_init_locked(struct ixl_pf *pf)
 
 	i40e_aq_set_default_vsi(hw, vsi->seid, NULL);
 
-	ixl_reconfigure_filters(&ifx->vsi);
+	ixl_reconfigure_filters(vsi);
 
 	/* Set MTU in hardware*/
 	int aq_error = i40e_aq_set_mac_config(hw, vsi->max_frame_size,
