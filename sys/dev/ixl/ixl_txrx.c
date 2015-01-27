@@ -62,7 +62,7 @@ static __inline void ixl_rx_input(struct rx_ring *, struct ifnet *,
 int
 ixl_mq_start(struct ifnet *ifp, struct mbuf *m)
 {
-	struct ixl_ifx		*ifx = ifp->if_softc;
+	struct ixl_vsi		*vsi = ifp->if_softc;
 	struct ixl_queue	*que;
 	struct tx_ring		*txr;
 	int 			err, i;
@@ -85,18 +85,18 @@ ixl_mq_start(struct ifnet *ifp, struct mbuf *m)
 			i = bucket_id % vsi->num_queues;
                 } else
 #endif
-                        i = m->m_pkthdr.flowid % ifx->vsi.num_queues;
+                        i = m->m_pkthdr.flowid % vsi->num_queues;
         } else
-		i = curcpu % ifx->vsi.num_queues;
+		i = curcpu % vsi->num_queues;
 	/*
 	** This may not be perfect, but until something
 	** better comes along it will keep from scheduling
 	** on stalled queues.
 	*/
-	if (((1 << i) & ifx->active_queues) == 0)
-		i = ffsl(ifx->active_queues);
+	if (((1 << i) & vsi->active_queues) == 0)
+		i = ffsl(vsi->active_queues);
 
-	que = &ifx->queues[i];
+	que = &vsi->queues[i];
 	txr = &que->txr;
 
 	err = drbr_enqueue(ifp, txr->br, m);
@@ -115,13 +115,13 @@ int
 ixl_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
 {
 	struct ixl_queue	*que = txr->que;
-	struct ixl_ifx		*ifx = que->ifx;
+	struct ixl_vsi		*vsi = que->vsi;
         struct mbuf		*next;
         int			err = 0;
 
 
 	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
-	    ifx->link_active == 0)
+	    vsi->link_active == 0)
 		return (ENETDOWN);
 
 	/* Process the transmit queue */
@@ -154,8 +154,8 @@ ixl_deferred_mq_start(void *arg, int pending)
 {
 	struct ixl_queue	*que = arg;
         struct tx_ring		*txr = &que->txr;
-	struct ixl_ifx		*ifx = que->ifx;
-        struct ifnet		*ifp = ifx->ifp;
+	struct ixl_vsi		*vsi = que->vsi;
+        struct ifnet		*ifp = vsi->ifp;
         
 	IXL_TX_LOCK(txr);
 	if (!drbr_empty(ifp, txr->br))
@@ -169,10 +169,10 @@ ixl_deferred_mq_start(void *arg, int pending)
 void
 ixl_qflush(struct ifnet *ifp)
 {
-	struct ixl_ifx	*ifx = ifp->if_softc;
+	struct ixl_vsi	*vsi = ifp->if_softc;
 
-        for (int i = 0; i < ifx->vsi.num_queues; i++) {
-		struct ixl_queue *que = &ifx->queues[i];
+        for (int i = 0; i < vsi->num_queues; i++) {
+		struct ixl_queue *que = &vsi->queues[i];
 		struct tx_ring	*txr = &que->txr;
 		struct mbuf	*m;
 		IXL_TX_LOCK(txr);
@@ -223,8 +223,8 @@ ixl_tso_detect_sparse(struct mbuf *mp)
 static int
 ixl_xmit(struct ixl_queue *que, struct mbuf **m_headp)
 {
-	struct ixl_ifx		*ifx = que->ifx;
-	struct i40e_hw		*hw = ifx->hw;
+	struct ixl_vsi		*vsi = que->vsi;
+	struct i40e_hw		*hw = vsi->hw;
 	struct tx_ring		*txr = &que->txr;
 	struct ixl_tx_buf	*buf;
 	struct i40e_tx_desc	*txd = NULL;
@@ -403,8 +403,8 @@ int
 ixl_allocate_tx_data(struct ixl_queue *que)
 {
 	struct tx_ring		*txr = &que->txr;
-	struct ixl_ifx		*ifx = que->ifx;
-	device_t		dev = ifx->dev;
+	struct ixl_vsi		*vsi = que->vsi;
+	device_t		dev = vsi->dev;
 	struct ixl_tx_buf	*buf;
 	int			error = 0;
 
@@ -933,7 +933,7 @@ ixl_txeof(struct ixl_queue *que)
 static void
 ixl_refresh_mbufs(struct ixl_queue *que, int limit)
 {
-	struct ixl_ifx		*ifx = que->ifx;
+	struct ixl_vsi		*vsi = que->vsi;
 	struct rx_ring		*rxr = &que->rxr;
 	bus_dma_segment_t	hseg[1];
 	bus_dma_segment_t	pseg[1];
@@ -1015,7 +1015,7 @@ no_split:
 	}
 update:
 	if (refreshed) /* Update hardware tail index */
-		wr32(ifx->hw, rxr->tail, rxr->next_refresh);
+		wr32(vsi->hw, rxr->tail, rxr->next_refresh);
 	return;
 }
 
@@ -1032,8 +1032,8 @@ int
 ixl_allocate_rx_data(struct ixl_queue *que)
 {
 	struct rx_ring		*rxr = &que->rxr;
-	struct ixl_ifx		*ifx = que->ifx;
-	device_t 		dev = ifx->dev;
+	struct ixl_vsi		*vsi = que->vsi;
+	device_t 		dev = vsi->dev;
 	struct ixl_rx_buf 	*buf;
 	int             	i, bsize, error;
 
@@ -1107,9 +1107,9 @@ int
 ixl_init_rx_ring(struct ixl_queue *que)
 {
 	struct	rx_ring 	*rxr = &que->rxr;
-	struct ixl_ifx		*ifx = que->ifx;
+	struct ixl_vsi		*vsi = que->vsi;
 #if defined(INET6) || defined(INET)
-	struct ifnet		*ifp = ifx->ifp;
+	struct ifnet		*ifp = vsi->ifp;
 	struct lro_ctrl		*lro = &rxr->lro;
 #endif
 	struct ixl_rx_buf	*buf;
@@ -1210,8 +1210,8 @@ skip_head:
 	rxr->bytes = 0;
 	rxr->discard = FALSE;
 
-	wr32(ifx->hw, rxr->tail, que->num_desc - 1);
-	ixl_flush(ifx->hw);
+	wr32(vsi->hw, rxr->tail, que->num_desc - 1);
+	ixl_flush(vsi->hw);
 
 #if defined(INET6) || defined(INET)
 	/*
@@ -1225,7 +1225,7 @@ skip_head:
 		}
 		INIT_DBG_IF(ifp, "queue %d: RX Soft LRO Initialized", que->me);
 		rxr->lro_enabled = TRUE;
-		lro->ifp = ifx->ifp;
+		lro->ifp = vsi->ifp;
 	}
 #endif
 
@@ -1435,9 +1435,9 @@ ixl_ptype_to_hash(u8 ptype)
 bool
 ixl_rxeof(struct ixl_queue *que, int count)
 {
-	struct ixl_ifx		*ifx = que->ifx;
+	struct ixl_vsi		*vsi = que->vsi;
 	struct rx_ring		*rxr = &que->rxr;
-	struct ifnet		*ifp = ifx->ifp;
+	struct ifnet		*ifp = vsi->ifp;
 #if defined(INET6) || defined(INET)
 	struct lro_ctrl		*lro = &rxr->lro;
 	struct lro_entry	*queued;
@@ -1716,36 +1716,36 @@ ixl_rx_checksum(struct mbuf * mp, u32 status, u32 error, u8 ptype)
 uint64_t
 ixl_get_counter(if_t ifp, ift_counter cnt)
 {
-	struct ixl_ifx *ifx;
+	struct ixl_vsi *vsi;
 
-	ifx = if_getsoftc(ifp);
+	vsi = if_getsoftc(ifp);
 
 	switch (cnt) {
 	case IFCOUNTER_IPACKETS:
-		return (ifx->ipackets);
+		return (vsi->ipackets);
 	case IFCOUNTER_IERRORS:
-		return (ifx->ierrors);
+		return (vsi->ierrors);
 	case IFCOUNTER_OPACKETS:
-		return (ifx->opackets);
+		return (vsi->opackets);
 	case IFCOUNTER_OERRORS:
-		return (ifx->oerrors);
+		return (vsi->oerrors);
 	case IFCOUNTER_COLLISIONS:
 		/* Collisions are by standard impossible in 40G/10G Ethernet */
 		return (0);
 	case IFCOUNTER_IBYTES:
-		return (ifx->ibytes);
+		return (vsi->ibytes);
 	case IFCOUNTER_OBYTES:
-		return (ifx->obytes);
+		return (vsi->obytes);
 	case IFCOUNTER_IMCASTS:
-		return (ifx->imcasts);
+		return (vsi->imcasts);
 	case IFCOUNTER_OMCASTS:
-		return (ifx->omcasts);
+		return (vsi->omcasts);
 	case IFCOUNTER_IQDROPS:
-		return (ifx->iqdrops);
+		return (vsi->iqdrops);
 	case IFCOUNTER_OQDROPS:
-		return (ifx->oqdrops);
+		return (vsi->oqdrops);
 	case IFCOUNTER_NOPROTO:
-		return (ifx->noproto);
+		return (vsi->noproto);
 	default:
 		return (if_get_counter_default(ifp, cnt));
 	}

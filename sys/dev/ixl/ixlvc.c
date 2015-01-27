@@ -354,8 +354,8 @@ void
 ixlv_configure_queues(struct ixlv_sc *sc)
 {
 	device_t		dev = sc->dev;
-	struct ixl_ifx		*ifx = &sc->ifx;
-	struct ixl_queue	*que = ifx->queues;
+	struct ixl_vsi		*vsi = &sc->vsi;
+	struct ixl_queue	*que = vsi->queues;
 	struct tx_ring		*txr;
 	struct rx_ring		*rxr;
 	int			len, pairs;
@@ -363,7 +363,7 @@ ixlv_configure_queues(struct ixlv_sc *sc)
 	struct i40e_virtchnl_vsi_queue_config_info *vqci;
 	struct i40e_virtchnl_queue_pair_info *vqpi;
 
-	pairs = ifx->vsi.num_queues;
+	pairs = vsi->num_queues;
 	len = sizeof(struct i40e_virtchnl_vsi_queue_config_info) +
 		       (sizeof(struct i40e_virtchnl_queue_pair_info) * pairs);
 	vqci = malloc(len, M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -394,7 +394,7 @@ ixlv_configure_queues(struct ixlv_sc *sc)
 		vqpi->rxq.queue_id = i;
 		vqpi->rxq.ring_len = que->num_desc;
 		vqpi->rxq.dma_ring_addr = rxr->dma.pa;
-		vqpi->rxq.max_pkt_size = ifx->max_frame_size;
+		vqpi->rxq.max_pkt_size = vsi->max_frame_size;
 		vqpi->rxq.databuffer_size = rxr->mbuf_sz;
 		vqpi->rxq.splithdr_enabled = 0;
 	}
@@ -449,8 +449,8 @@ ixlv_map_queues(struct ixlv_sc *sc)
 {
 	struct i40e_virtchnl_irq_map_info *vm;
 	int 			i, q, len;
-	struct ixl_ifx		*ifx = &sc->ifx;
-	struct ixl_queue	*que = ifx->queues;
+	struct ixl_vsi		*vsi = &sc->vsi;
+	struct ixl_queue	*que = vsi->queues;
 
 	/* How many queue vectors, adminq uses one */
 	q = sc->msix - 1;
@@ -663,7 +663,7 @@ ixlv_add_ether_filters(struct ixlv_sc *sc)
 		ixl_vc_schedule_retry(&sc->vc_mgr);
 		return;
 	}
-	a->vsi_id = sc->ifx.id;
+	a->vsi_id = sc->vsi.id;
 	a->num_elements = cnt;
 
 	/* Scan the filter array */
@@ -723,7 +723,7 @@ ixlv_del_ether_filters(struct ixlv_sc *sc)
 		ixl_vc_schedule_retry(&sc->vc_mgr);
 		return;
 	}
-	d->vsi_id = sc->ifx.id;
+	d->vsi_id = sc->vsi.id;
 	d->num_elements = cnt;
 
 	/* Scan the filter array */
@@ -783,35 +783,35 @@ ixlv_request_stats(struct ixlv_sc *sc)
 void
 ixlv_update_stats_counters(struct ixlv_sc *sc, struct i40e_eth_stats *es)
 {
-	struct ixl_ifx *ifx;
+	struct ixl_vsi *vsi;
 	uint64_t tx_discards;
 	int i;
 
-	ifx = &sc->ifx;
+	vsi = &sc->vsi;
 
 	tx_discards = es->tx_discards;
-	for (i = 0; i < sc->ifx.vsi.num_queues; i++)
-		tx_discards += sc->ifx.queues[i].txr.br->br_drops;
+	for (i = 0; i < vsi->num_queues; i++)
+		tx_discards += sc->vsi.queues[i].txr.br->br_drops;
 
 	/* Update ifnet stats */
-	IXL_SET_IPACKETS(ifx, es->rx_unicast +
+	IXL_SET_IPACKETS(vsi, es->rx_unicast +
 	                   es->rx_multicast +
 			   es->rx_broadcast);
-	IXL_SET_OPACKETS(ifx, es->tx_unicast +
+	IXL_SET_OPACKETS(vsi, es->tx_unicast +
 	                   es->tx_multicast +
 			   es->tx_broadcast);
-	IXL_SET_IBYTES(ifx, es->rx_bytes);
-	IXL_SET_OBYTES(ifx, es->tx_bytes);
-	IXL_SET_IMCASTS(ifx, es->rx_multicast);
-	IXL_SET_OMCASTS(ifx, es->tx_multicast);
+	IXL_SET_IBYTES(vsi, es->rx_bytes);
+	IXL_SET_OBYTES(vsi, es->tx_bytes);
+	IXL_SET_IMCASTS(vsi, es->rx_multicast);
+	IXL_SET_OMCASTS(vsi, es->tx_multicast);
 
-	IXL_SET_OERRORS(ifx, es->tx_errors);
-	IXL_SET_IQDROPS(ifx, es->rx_discards);
-	IXL_SET_OQDROPS(ifx, tx_discards);
-	IXL_SET_NOPROTO(ifx, es->rx_unknown_protocol);
-	IXL_SET_COLLISIONS(ifx, 0);
+	IXL_SET_OERRORS(vsi, es->tx_errors);
+	IXL_SET_IQDROPS(vsi, es->rx_discards);
+	IXL_SET_OQDROPS(vsi, tx_discards);
+	IXL_SET_NOPROTO(vsi, es->rx_unknown_protocol);
+	IXL_SET_COLLISIONS(vsi, 0);
 
-	sc->ifx.vsi.eth_stats = *es;
+	vsi->eth_stats = *es;
 }
 
 /*
@@ -827,7 +827,7 @@ ixlv_vc_completion(struct ixlv_sc *sc,
     i40e_status v_retval, u8 *msg, u16 msglen)
 {
 	device_t	dev = sc->dev;
-	struct ixl_ifx	*ifx = &sc->ifx;
+	struct ixl_vsi	*vsi = &sc->vsi;
 
 	if (v_opcode == I40E_VIRTCHNL_OP_EVENT) {
 		struct i40e_virtchnl_pf_event *vpe =
@@ -840,9 +840,9 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 			    vpe->event_data.link_event.link_status,
 			    vpe->event_data.link_event.link_speed);
 #endif
-			ifx->link_up =
+			vsi->link_up =
 				vpe->event_data.link_event.link_status;
-			ifx->link_speed =
+			vsi->link_speed =
 				vpe->event_data.link_event.link_speed;
 			ixlv_update_link_status(sc);
 			break;
@@ -907,10 +907,10 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 			/* Update link status */
 			ixlv_update_link_status(sc);
 			/* Turn on all interrupts */
-			ixlv_enable_intr(ifx);
+			ixlv_enable_intr(vsi);
 			/* And inform the stack we're ready */
-			ifx->ifp->if_drv_flags |= IFF_DRV_RUNNING;
-			ifx->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+			vsi->ifp->if_drv_flags |= IFF_DRV_RUNNING;
+			vsi->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 		}
 		break;
 	case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
@@ -918,9 +918,9 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 		    v_retval);
 		if (v_retval == 0) {
 			/* Turn off all interrupts */
-			ixlv_disable_intr(ifx);
+			ixlv_disable_intr(vsi);
 			/* Tell the stack that the interface is no longer active */
-			ifx->ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
+			vsi->ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
 		}
 		break;
 	case I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES:

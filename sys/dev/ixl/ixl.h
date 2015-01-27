@@ -420,7 +420,7 @@ struct rx_ring {
 **  for the associated tx and rx ring pair.
 */
 struct ixl_queue {
-	struct ixl_ifx		*ifx;
+	struct ixl_vsi		*vsi;
 	u32			me;
 	u32			msix;           /* This queue's MSIX vector */
 	u32			eims;           /* This queue's EIMS bit */
@@ -445,40 +445,13 @@ struct ixl_queue {
 	u64			dropped_pkts;
 };
 
-SLIST_HEAD(i40e_ftl_head, ixl_mac_filter);
-struct ixl_vsi {
-	void			*back;
-	uint16_t		seid;
-	uint16_t		vsi_num;
-	uint16_t		first_queue;
-	uint16_t		num_queues;
-
-	/* MAC/VLAN Filter list */
-	struct i40e_ftl_head	ftl;
-	u16			num_vlans;
-	u16			num_macs;
-
-	/* Driver statistics */
-	u64			hw_filters_del;
-	u64			hw_filters_add;
-
-	struct i40e_aqc_vsi_properties_data info;
-
-	struct sysctl_oid *vsi_node;
-
-	/* Per-VSI stats */
-	struct i40e_eth_stats	eth_stats;
-	struct i40e_eth_stats	eth_stats_offsets;
-	bool 			stat_offsets_loaded;
-};
-
 /*
 ** Virtual Station interface: 
 **	there would be one of these per traffic class/type
 **	for now just one, and its embedded in the pf
 */
 SLIST_HEAD(ixl_ftl_head, ixl_mac_filter);
-struct ixl_ifx {
+struct ixl_vsi {
 	void 			*back;
 	struct ifnet		*ifp;
 	struct device		*dev;
@@ -486,11 +459,15 @@ struct ixl_ifx {
 	struct ifmedia		media;
 	u64			que_mask;
 	int			id;
+	u16			vsi_num;
 	u16			msix_base;	/* station base MSIX vector */
+	u16			first_queue;
+	u16			num_queues;
 	u16			rx_itr_setting;
 	u16			tx_itr_setting;
 	struct ixl_queue	*queues;	/* head of queues */
 	bool			link_active;
+	u16			seid;
 	u16			uplink_seid;
 	u16			downlink_seid;
 	u16			max_frame_size;
@@ -498,14 +475,20 @@ struct ixl_ifx {
 	bool			link_up;
 	u32			fc; /* local flow ctrl setting */
 
-	struct ixl_vsi		vsi;
-	
 	/* MAC/VLAN Filter list */
 	struct ixl_ftl_head ftl;
+	u16			num_macs;
+
+	struct i40e_aqc_vsi_properties_data info;
 
 	eventhandler_tag 	vlan_attach;
 	eventhandler_tag 	vlan_detach;
+	u16			num_vlans;
 
+	/* Per-VSI stats from hardware */
+	struct i40e_eth_stats	eth_stats;
+	struct i40e_eth_stats	eth_stats_offsets;
+	bool 			stat_offsets_loaded;
 	/* VSI stat counters */
 	u64			ipackets;
 	u64			ierrors;
@@ -519,9 +502,15 @@ struct ixl_ifx {
 	u64			oqdrops;
 	u64			noproto;
 
+	/* Driver statistics */
+	u64			hw_filters_del;
+	u64			hw_filters_add;
+
+
 	/* Misc. */
 	u64 			active_queues;
 	u64 			flags;
+	struct sysctl_oid	*vsi_node;
 };
 
 /*
@@ -616,7 +605,7 @@ int	ixl_mq_start(struct ifnet *, struct mbuf *);
 int	ixl_mq_start_locked(struct ifnet *, struct tx_ring *);
 void	ixl_deferred_mq_start(void *, int);
 void	ixl_qflush(struct ifnet *);
-void	ixl_free_ifx(struct ixl_ifx *);
+void	ixl_free_vsi(struct ixl_vsi *);
 void	ixl_free_que_tx(struct ixl_queue *);
 void	ixl_free_que_rx(struct ixl_queue *);
 #ifdef IXL_FDIR
