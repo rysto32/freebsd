@@ -117,7 +117,7 @@ static int	ixl_enable_rings(struct ixl_vsi *);
 static int	ixl_disable_rings(struct ixl_vsi *);
 static void	ixl_enable_intr(struct ixl_ifx *);
 static void	ixl_disable_intr(struct ixl_ifx *);
-static void	ixl_disable_rings_intr(struct ixl_ifx *);
+static void	ixl_disable_rings_intr(struct ixl_vsi *);
 
 static void     ixl_enable_adminq(struct i40e_hw *);
 static void     ixl_disable_adminq(struct i40e_hw *);
@@ -1907,10 +1907,10 @@ ixl_stop(struct ixl_pf *pf)
 
 	INIT_DEBUGOUT("ixl_stop: begin\n");
 	if (pf->num_vfs == 0)
-		ixl_disable_intr(ifx);
+		ixl_disable_intr(vsi);
 	else
-		ixl_disable_rings_intr(ifx);
-	ixl_disable_rings(&ifx->vsi);
+		ixl_disable_rings_intr(vsi);
+	ixl_disable_rings(vsi);
 
 	/* Tell the stack that the interface is no longer active */
 	ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
@@ -3963,20 +3963,20 @@ ixl_enable_intr(struct ixl_ifx *ifx)
 }
 
 static void
-ixl_disable_rings_intr(struct ixl_ifx *ifx)
+ixl_disable_rings_intr(struct ixl_vsi *vsi)
 {
 	struct i40e_hw		*hw = ifx->hw;
 	struct ixl_queue	*que = ifx->queues;
 	int i;
 
-	for (i = 0; i < ifx->vsi.num_queues; i++, que++)
+	for (i = 0; i < vsi->num_queues; i++, que++)
 		ixl_disable_queue(hw, que->me);
 }
 
 static void
-ixl_disable_intr(struct ixl_ifx *ifx)
+ixl_disable_intr(struct ixl_vsi *vsi)
 {
-	struct i40e_hw		*hw = ifx->hw;
+	struct i40e_hw		*hw = vsi->hw;
 
 	if (ixl_enable_msix)
 		ixl_disable_adminq(hw);
@@ -6596,15 +6596,15 @@ ixl_uninit_iov(device_t dev)
 {
 	struct ixl_pf *pf;
 	struct i40e_hw *hw;
-	struct ixl_ifx *ifx;
+	struct ixl_vsi *vsi;
 	struct ifnet *ifp;
 	struct ixl_vf *vfs;
 	int i, num_vfs;
 
 	pf = device_get_softc(dev);
 	hw = &pf->hw;
-	ifx = &pf->ifx;
-	ifp = ifx->ifp;
+	vsi = &pf->vsi;
+	ifp = vsi->ifp;
 
 	IXL_PF_LOCK(pf);
 	for (i = 0; i < pf->num_vfs; i++) {
@@ -6618,7 +6618,7 @@ ixl_uninit_iov(device_t dev)
 	}
 
 	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0)
-		ixl_disable_intr(ifx);
+		ixl_disable_intr(vsi);
 
 	vfs = pf->vfs;
 	num_vfs = pf->num_vfs;
