@@ -669,7 +669,6 @@ ixl_attach(device_t dev)
 
 	/* Initialize statistics */
 	ixl_pf_reset_stats(pf);
-	ixl_update_stats_counters(pf);
 	ixl_add_hw_stats(pf);
 
 	/* Register for VLAN events */
