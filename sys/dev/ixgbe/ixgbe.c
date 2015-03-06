@@ -4337,9 +4337,10 @@ ixgbe_txeof(struct tx_ring *txr)
 
 	mtx_assert(&txr->tx_mtx, MA_OWNED);
 
-#ifdef DEV_NETMAP
 	interface = txr->interface;
 	ifp = interface->ifp;
+
+#ifdef DEV_NETMAP
 	if (ifp->if_capenable & IFCAP_NETMAP) {
 		struct netmap_adapter *na = NA(ifp);
 		struct netmap_kring *kring = &na->tx_rings[txr->me];
