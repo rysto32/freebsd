@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_compat.h"
 #include "opt_posix.h"
 #include "opt_config.h"
+#include "opt_virtual_if.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -445,6 +446,10 @@ FEATURE(compat_freebsd6, "Compatible with FreeBSD 6");
 
 #ifdef COMPAT_FREEBSD7
 FEATURE(compat_freebsd7, "Compatible with FreeBSD 7");
+#endif
+
+#ifdef VLL_HOOKS
+FEATURE(vll_hooks, "Hooks required by vll(4) driver");
 #endif
 
 /*

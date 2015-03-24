@@ -46,6 +46,7 @@ SRCS+=	ifpfsync.c		# pfsync(4) support
 
 SRCS+=	ifbridge.c		# bridge support
 SRCS+=	iflagg.c		# lagg support
+SRCS+=	ifvll.c			# vll(4) support
 
 .if ${MK_INET6_SUPPORT} != "no"
 CFLAGS+= -DINET6

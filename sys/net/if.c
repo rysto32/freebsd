@@ -467,6 +467,7 @@ if_alloc(u_char type)
 
 	refcount_init(&ifp->if_refcount, 1);	/* Index reference. */
 	ifnet_setbyindex(ifp->if_index, ifp);
+	ifp->if_vll_funcs = NULL;
 	return (ifp);
 }
 

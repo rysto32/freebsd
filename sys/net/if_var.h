@@ -116,6 +116,8 @@ struct	ifqueue {
 	struct	mtx ifq_mtx;
 };
 
+struct vll_methods;
+
 /*
  * Structure defining a network interface.
  *
@@ -208,6 +210,7 @@ struct ifnet {
 					 * is (IP_MAXPACKET / 8).
 					 * XXXAO: Have to find a better place
 					 * for it eventually. */
+	struct vll_methods *if_vll_funcs;
 
 	/*
 	 * Spare fields are added so that we can modify sensitive data
