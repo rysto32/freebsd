@@ -133,6 +133,9 @@ static void	ixgbe_get_slot_info(struct ixgbe_hw *);
 static int      ixgbe_allocate_msix(struct adapter *);
 static int      ixgbe_allocate_legacy(struct adapter *);
 static int	ixgbe_allocate_phys_interface(struct adapter *);
+static int	ixgbe_alloc_bcast_pool(struct adapter *adapter);
+static int	ixgbe_allocate_rx_pool(struct ixgbe_rx_pool *pool,
+		    int pool_index, struct ixgbe_interface *interface);
 static int	ixgbe_init_interface(struct adapter *, int, 
 		    struct ixgbe_interface **);
 static void	ixgbe_free_interfaces(struct adapter *);
@@ -152,6 +155,7 @@ static void	ixgbe_enable_transmitter(struct adapter *);
 static void     ixgbe_free_transmit_structures(struct ixgbe_interface *);
 static void     ixgbe_free_transmit_buffers(struct tx_ring *);
 
+static void	ixgbe_set_max_interfaces(struct adapter *adapter);
 static int      ixgbe_allocate_receive_buffers(struct rx_ring *);
 static int      ixgbe_setup_receive_structures(struct ixgbe_rx_pool *);
 static int	ixgbe_setup_receive_ring(struct rx_ring *);
@@ -347,6 +351,12 @@ TUNABLE_INT("hw.ix.rxd", &ixgbe_rxd);
 SYSCTL_INT(_hw_ix, OID_AUTO, rxd, CTLFLAG_RDTUN, &ixgbe_rxd, 0,
     "Number of receive descriptors per queue");
 
+static int ixgbe_max_interfaces = 1;
+TUNABLE_INT("hw.ix.max_interfaces", &ixgbe_max_interfaces);
+SYSCTL_INT(_hw_ix, OID_AUTO, max_interfaces, CTLFLAG_RDTUN,
+    &ixgbe_max_interfaces, 0,
+    "Maximum number of interfaces supported per physical interface");
+
 /*
 ** Defining this on will allow the use
 ** of unsupported SFP+ modules, note that
@@ -518,6 +528,7 @@ ixgbe_attach(device_t dev)
 
 	/* Determine hardware revision */
 	ixgbe_identify_hardware(adapter);
+	ixgbe_set_max_interfaces(adapter);
 
 	/* Do base PCI setup - map BAR0 */
 	if (ixgbe_allocate_pci_resources(adapter)) {
@@ -541,7 +552,8 @@ ixgbe_attach(device_t dev)
 	*/
 	if (nmbclusters > 0 ) {
 		int s;
-		s = (ixgbe_rxd * adapter->num_queues) * ixgbe_total_ports;
+		s = (ixgbe_rxd * adapter->max_interfaces * adapter->num_queues)
+		    * ixgbe_total_ports;
 		if (s > nmbclusters) {
 			device_printf(dev, "RX Descriptors exceed "
 			    "system mbuf max, using default instead!\n");
@@ -560,6 +572,10 @@ ixgbe_attach(device_t dev)
 	
 	if (error)
 		goto err_out;
+
+	error = ixgbe_alloc_bcast_pool(adapter);
+	if (error)
+		goto err_late;
 
 	/* Allocate multicast array memory. */
 	adapter->mta = malloc(sizeof(u8) * IXGBE_ETH_LENGTH_OF_ADDRESS *
@@ -772,6 +788,51 @@ ixgbe_phys_get_interface(struct ifnet *ifp)
 {
 	
 	return (ifp->if_softc);
+}
+
+static void
+ixgbe_set_max_interfaces(struct adapter *adapter)
+{
+	device_t dev;
+	int max_supported;
+	int unit;
+
+	dev = adapter->dev;
+	unit = device_get_unit(dev);
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82598EB:
+		max_supported = IXGBE_MAX_QUEUES_82598 - 1;
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		max_supported = IXGBE_MAX_QUEUES_82599 - 1;
+		break;
+
+	/* To shut up the compiler: */
+	case ixgbe_mac_unknown:
+	case ixgbe_num_macs:
+	case ixgbe_mac_82599_vf:
+	case ixgbe_mac_X540_vf:
+		max_supported = 1;
+		break;
+	}
+
+	if (ixgbe_max_interfaces > max_supported) {
+		if (bootverbose) {
+			device_printf(dev,
+			    "Configured to allow too many interfaces(%d)",
+			    ixgbe_max_interfaces);
+			device_printf(dev, "Limiting to %d interfaces\n",
+			    max_supported);
+		}
+		adapter->max_interfaces = max_supported;
+	} else if (ixgbe_max_interfaces < 1) {
+		adapter->max_interfaces = 1;
+	} else
+		adapter->max_interfaces = ixgbe_max_interfaces;
+
+	adapter->num_interfaces = 1;
 }
 
 #ifdef IXGBE_LEGACY_TX
@@ -1573,6 +1634,13 @@ ixgbe_init_adapter(struct adapter *adapter)
 	ixgbe_enable_transmitter(adapter);
 	
 	ixgbe_initialize_receive_units(adapter);
+
+	if (adapter->num_interfaces > 1) {
+		adapter->bcast_pool.rx_mbuf_sz = MCLBYTES;
+		ixgbe_setup_receive_structures(&adapter->bcast_pool);
+		ixgbe_initialize_receive_rings(&adapter->bcast_pool);
+		ixgbe_start_rx_pool(hw, &adapter->bcast_pool);
+	}
 
 	gpie = IXGBE_READ_REG(&adapter->hw, IXGBE_GPIE);
 
@@ -2977,6 +3045,46 @@ ixgbe_allocate_msix(struct adapter *adapter)
 	return (0);
 }
 
+static int
+ixgbe_get_max_queues(struct adapter *adapter)
+{
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82598EB:
+		/* 3 to account for the bcast pool. */
+		if (adapter->max_interfaces > 3) {
+			adapter->pool_index_shift = 4;
+			return (1);
+		} else {
+			adapter->pool_index_shift = 4;
+			return (16);
+		}
+		break;
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		/* 31 to account for the bcast pool. */
+		if (adapter->max_interfaces > 31) {
+			adapter->pool_index_shift = 1;
+			return (2);
+		} else if (adapter->max_interfaces > 1) {
+			adapter->pool_index_shift = 2;
+			return (4);
+		} else {
+			adapter->pool_index_shift = 0;
+			return (16);
+		}
+		break;
+
+	/* Appease the compiler */
+	case ixgbe_mac_82599_vf:
+	case ixgbe_mac_unknown:
+	case ixgbe_mac_X540_vf:
+	case ixgbe_num_macs:
+		adapter->pool_index_shift = 0;
+		return (1);
+	}
+}
+
 /*
  * Setup Either MSI/X or MSI
  */
@@ -2986,6 +3094,7 @@ ixgbe_setup_msix(struct adapter *adapter)
 	struct ixgbe_interface *interface;
 	device_t dev = adapter->dev;
 	int rid, want, queues, msgs;
+	int default_queues, pool_queues;
 	
 	interface = &adapter->interface;
 
@@ -3012,33 +3121,23 @@ ixgbe_setup_msix(struct adapter *adapter)
 		goto msi;
 	}
 
-	/* Figure out a reasonable auto config value */
-	queues = (mp_ncpus > (msgs-1)) ? (msgs-1) : mp_ncpus;
-
 	if (ixgbe_num_queues != 0)
-		queues = ixgbe_num_queues;
-	/* Set max queues to 8 when autoconfiguring */
-	else if ((ixgbe_num_queues == 0) && (queues > 8))
-		queues = 8;
+		pool_queues = ixgbe_num_queues;
+	else
+		pool_queues = min(8, mp_ncpus);
+	pool_queues = min(ixgbe_get_max_queues(adapter), pool_queues);
+
+	if (adapter->max_interfaces > 1) {
+		/* "+1" for queue in broadcast pool. */
+		default_queues = adapter->max_interfaces * pool_queues + 1;
+	} else
+		default_queues = pool_queues;
+
+	/* Figure out a reasonable auto config value */
+	queues = (default_queues > (msgs-1)) ? (msgs-1) : default_queues;
 
 	/* reflect correct sysctl value */
-	ixgbe_num_queues = queues;
-
-	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_82598EB:
-		adapter->pool_index_shift = 4;
-		break;
-	case ixgbe_mac_82599EB:
-	case ixgbe_mac_X540:
-		adapter->pool_index_shift = 2;
-		break;
-	case ixgbe_mac_82599_vf:
-	case ixgbe_mac_X540_vf:
-	case ixgbe_mac_unknown:
-	case ixgbe_num_macs:
-		adapter->pool_index_shift = 0;
-		break;
-	}
+	ixgbe_num_queues = queues / adapter->max_interfaces;
 
 	/*
 	** Want one vector (RX/TX pair) per queue
@@ -3057,7 +3156,7 @@ ixgbe_setup_msix(struct adapter *adapter)
 	if ((pci_alloc_msix(dev, &msgs) == 0) && (msgs == want)) {
                	device_printf(adapter->dev,
 		    "Using MSIX interrupts with %d vectors\n", msgs);
-		adapter->num_queues = queues;
+		adapter->num_queues = queues / adapter->max_interfaces;
 		adapter->intr_unrhdr = new_unrhdr(0, msgs - 1, 
 		    &adapter->core_mtx);
 		return (msgs);
@@ -3415,6 +3514,26 @@ ixgbe_dma_free(struct ixgbe_dma_alloc *dma)
 }
 
 static int
+ixgbe_alloc_bcast_pool(struct adapter *adapter)
+{
+	int pool_index, error;
+
+	if (adapter->num_interfaces == 1)
+		return (0);
+
+	pool_index = alloc_unr(adapter->vll_unrhdr);
+
+	error = ixgbe_allocate_rx_pool(&adapter->bcast_pool, pool_index,
+	    &adapter->interface);
+	if (error != 0) {
+		free_unr(adapter->vll_unrhdr, pool_index);
+		return (error);
+	}
+
+	return (0);
+}
+
+static int
 ixgbe_allocate_phys_interface(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
@@ -3469,6 +3588,8 @@ ixgbe_free_interfaces(struct adapter *adapter)
 	sysctl_ctx_free(&interface->sysctl_ctx);
 	ixgbe_free_transmit_structures(interface);
 	ixgbe_free_receive_structures(&interface->rx_pool);
+
+	ixgbe_free_receive_structures(&adapter->bcast_pool);
 	delete_unrhdr(adapter->vll_unrhdr);
 }
 
@@ -3492,6 +3613,7 @@ ixgbe_allocate_rx_pool(struct ixgbe_rx_pool *pool, int pool_index,
 	pool->index = pool_index;
 	pool->num_rx_desc = adapter->num_rx_desc;
 	pool->num_queues = adapter->num_queues;
+	pool->flags = IXGBE_RX_POOL_INITED;
 
 	/* First allocate the top level queue structs */
         if (!(pool->queues =
@@ -3591,7 +3713,7 @@ ixgbe_allocate_queues(struct ixgbe_interface *interface)
 	if (error)
 		goto fail;
 	
-	interface->rx_pool.flags = IXGBE_RX_POOL_BROADCAST | 
+	interface->rx_pool.flags |= IXGBE_RX_POOL_BROADCAST |
 	    IXGBE_RX_POOL_HAS_INTERFACE;
 	interface->num_tx_queues = interface->adapter->num_queues;
 
@@ -4894,9 +5016,10 @@ static void
 ixgbe_initialize_receive_units(struct adapter *adapter)
 {
 	struct ixgbe_hw	*hw = &adapter->hw;
+	struct ixgbe_rx_pool *default_pool;
 	u32		rxctrl, fctrl, rxcsum;
 	u32		mrqc = 0, hlreg;
-	uint32_t	mhadd;
+	uint32_t	mhadd, vmdq;
 
 	/*
 	 * Make sure receives are disabled while
@@ -4940,6 +5063,11 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_PSRTYPE(0), psrtype);
 	}
 
+	if (adapter->num_interfaces == 1)
+		default_pool = &adapter->interface.rx_pool;
+	else
+		default_pool = &adapter->bcast_pool;
+
 	rxcsum = IXGBE_READ_REG(hw, IXGBE_RXCSUM);
 
 	/* Perform hash on these packet types */
@@ -4953,6 +5081,27 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		| IXGBE_MRQC_RSS_FIELD_IPV6_TCP
 		| IXGBE_MRQC_RSS_FIELD_IPV6_UDP
 		| IXGBE_MRQC_RSS_FIELD_IPV6_EX_UDP;
+
+	if (adapter->max_interfaces > 1) {
+		if (hw->mac.type == ixgbe_mac_82598EB) {
+			/* enable VMDq */
+			vmdq = IXGBE_VMD_CTL_VMDQ_EN | (default_pool->index <<
+			    IXGBE_VMD_CTL_VMDQ_DEFAULT_SHIFT);
+			IXGBE_WRITE_REG(&adapter->hw, IXGBE_VMD_CTL, vmdq);
+		} else {
+			/* enable VMDq */
+			if (adapter->max_interfaces > 31)
+				mrqc |= IXGBE_MRQC_VMDQRSS64EN;
+			else
+				mrqc |= IXGBE_MRQC_VMDQRSS32EN;
+
+			/* enable virtualization  */
+			IXGBE_WRITE_REG(&adapter->hw, IXGBE_VT_CTL,
+			    IXGBE_VT_CTL_REPLEN | IXGBE_VT_CTL_VT_ENABLE |
+			    (default_pool->index  << IXGBE_VT_CTL_POOL_SHIFT));
+		}
+	}
+
 	IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
 
 	/* RSS and RX IPP Checksum are mutually exclusive */
@@ -5045,6 +5194,9 @@ ixgbe_free_receive_structures(struct ixgbe_rx_pool *pool)
 	rxr = pool->rx_rings;
 
 	INIT_DEBUGOUT("ixgbe_free_receive_structures: begin");
+
+	if (!(pool->flags & IXGBE_RX_POOL_INITED))
+		return;
 
 	for (int i = 0; i < pool->num_queues; i++, rxr++) {
 		struct lro_ctrl		*lro = &rxr->lro;

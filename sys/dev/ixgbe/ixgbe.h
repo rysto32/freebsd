@@ -198,6 +198,24 @@
 #define IXGBE_TX_WRITEBACK_THRESH	8
 #define IXGBE_TXDCTL_WTHRESH_SHIFT	16
 
+/* The maximum number of VMDq queues supported by the various adapter types. */
+
+/*
+ * We are limited to only 8 virtual interfaces (+ 1 bcast queue) on the 82598
+ * because we only have 16 RAR entries, and require 2 RAR entries per interface
+ * (This is a Sandvine'ism to support multi-divert.  A normal driver would
+ *  require only 1 RAR per interface for the one MAC address.)
+ */
+#define IXGBE_MAX_QUEUES_82598		9
+
+/*
+ * Technically the 82599 supports 64 queues, but it can only use up to 64 MSI-X
+ * interrupts and we need one for the link interrupts.
+ */
+#define IXGBE_MAX_QUEUES_82599		63
+
+#define IXGBE_VMD_CTL_VMDQ_DEFAULT_SHIFT 4
+
 /* IOCTL define to gather SFP+ Diagnostic data */
 #define SIOCGI2C	SIOCGIFGENERIC
 
@@ -406,6 +424,9 @@ struct ixgbe_rx_pool {
 /* * This pool has an interface associated with it. */
 #define IXGBE_RX_POOL_HAS_INTERFACE		(1 << 1)
 
+/* This pool has been initialized. */
+#define IXGBE_RX_POOL_INITED		0x04
+
 struct ixgbe_interface {
 	struct adapter		*adapter;
 	struct ifnet		*ifp;	
@@ -469,6 +490,7 @@ struct adapter {
 	struct mtx		core_mtx;
 	
 	struct ixgbe_interface	interface;
+	struct ixgbe_rx_pool	bcast_pool;
 
 	/* Info about the interface */
 	u32			optics;
@@ -518,6 +540,9 @@ struct adapter {
 	 * Protected by the core lock.
 	 */
 	int			num_hw_inited_interfaces;
+
+	int			max_interfaces;
+	int			num_interfaces;
 };
 
 
