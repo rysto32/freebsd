@@ -98,10 +98,6 @@ static void	if_clone_free(struct if_clone *ifc);
 static int	if_clone_createif(struct if_clone *ifc, char *name, size_t len,
 		    caddr_t params);
 
-static int     ifc_simple_match(struct if_clone *, const char *);
-static int     ifc_simple_create(struct if_clone *, char *, size_t, caddr_t);
-static int     ifc_simple_destroy(struct if_clone *, struct ifnet *);
-
 static struct mtx	if_cloners_mtx;
 static VNET_DEFINE(int, if_cloners_count);
 VNET_DEFINE(LIST_HEAD(, if_clone), if_cloners);
@@ -607,7 +603,7 @@ ifc_free_unit(struct if_clone *ifc, int unit)
 	IF_CLONE_REMREF(ifc);
 }
 
-static int
+int
 ifc_simple_match(struct if_clone *ifc, const char *name)
 {
 	const char *cp;
@@ -628,7 +624,7 @@ ifc_simple_match(struct if_clone *ifc, const char *name)
 	return (1);
 }
 
-static int
+int
 ifc_simple_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 {
 	char *dp;
@@ -670,7 +666,7 @@ ifc_simple_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	return (0);
 }
 
-static int
+int
 ifc_simple_destroy(struct if_clone *ifc, struct ifnet *ifp)
 {
 	int unit;

@@ -53,6 +53,12 @@ struct if_clone *
 	if_clone_simple(const char *, ifcs_create_t, ifcs_destroy_t, u_int);
 void	if_clone_detach(struct if_clone *);
 
+int	ifc_simple_match(struct if_clone *ifc, const char *name);
+int	ifc_simple_create(struct if_clone *ifc, char *name, size_t len,
+	    caddr_t params);
+int	ifc_simple_destroy(struct if_clone *ifc, struct ifnet *ifp);
+
+
 /* Unit (de)allocating fucntions. */
 int	ifc_name2unit(const char *name, int *unit);
 int	ifc_alloc_unit(struct if_clone *, int *);
