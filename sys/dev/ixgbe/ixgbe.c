@@ -1226,11 +1226,18 @@ ixgbe_calc_max_frame_size(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
 	struct ifnet *ifp;
-	
-	interface = &adapter->interface;
-	ifp = interface->ifp;
-	interface->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
-	adapter->max_frame_size = interface->max_frame_size;
+	int max_mtu;
+
+	max_mtu = 0;
+
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		ifp = interface->ifp;
+		interface->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN +
+		    ETHER_CRC_LEN;
+		max_mtu = max(max_mtu, ifp->if_mtu);
+	}
+
+	adapter->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
 }
 
 
