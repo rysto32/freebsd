@@ -98,7 +98,11 @@ static char    *ixgbe_strings[] = {
 /*********************************************************************
  *  Function prototypes
  *********************************************************************/
-enum ixgbe_promisc { IXGBE_NORMAL, IXGBE_PROMISCUOUS, IXGBE_ALLMULTI };
+enum ixgbe_promisc {
+	IXGBE_NORMAL,
+	IXGBE_ALLMULTI,
+	IXGBE_PROMISCUOUS
+};
 
 static int      ixgbe_probe(device_t);
 static int      ixgbe_attach(device_t);
@@ -2421,15 +2425,13 @@ retry:
 }
 
 static enum ixgbe_promisc
-ixgbe_get_promisc_state(struct adapter *adapter)
+ixgbe_get_vll_promisc_state(struct ixgbe_interface *interface)
 {
-	struct ixgbe_interface *interface;
 	struct ifnet *ifp;
 	struct	ifmultiaddr *ifma;
 	enum ixgbe_promisc state;
 	int mcnt;
 	
-	interface = &adapter->interface;
 	ifp = interface->ifp;
 	
 	if (ifp->if_flags & IFF_PROMISC)
@@ -2462,6 +2464,21 @@ ixgbe_get_promisc_state(struct adapter *adapter)
 			state = IXGBE_ALLMULTI;
 	}
 	
+	return (state);
+}
+
+static enum ixgbe_promisc
+ixgbe_get_promisc_state(struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	enum ixgbe_promisc state, new_state;
+
+	state = IXGBE_NORMAL;
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		new_state = ixgbe_get_vll_promisc_state(interface);
+		state = max(state, new_state);
+	}
+
 	return (state);
 }
 
