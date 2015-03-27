@@ -464,6 +464,8 @@ struct ixgbe_interface {
 	unsigned long   	mbuf_defrag_failed;
 	
 	struct sysctl_ctx_list	sysctl_ctx;
+
+	TAILQ_ENTRY(ixgbe_interface) next;
 };
 
 /* Our adapter structure */
@@ -488,9 +490,12 @@ struct adapter {
 	int			msix;
 
 	struct mtx		core_mtx;
-	
+
 	struct ixgbe_interface	interface;
+	struct ixgbe_interface	*phys_interface;
 	struct ixgbe_rx_pool	bcast_pool;
+
+	TAILQ_HEAD(,ixgbe_interface) interface_list;
 
 	/* Info about the interface */
 	u32			optics;

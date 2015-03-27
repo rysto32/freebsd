@@ -144,7 +144,7 @@ static int	ixgbe_setup_msix(struct adapter *);
 static void	ixgbe_free_if_pci_resources(struct ixgbe_rx_pool *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
-static int	ixgbe_setup_interface(device_t, struct adapter *);
+static int	ixgbe_setup_phys_interface(device_t, struct adapter *);
 static void	ixgbe_config_link(struct adapter *);
 
 static int      ixgbe_allocate_transmit_buffers(struct tx_ring *);
@@ -645,7 +645,7 @@ ixgbe_attach(device_t dev)
 		goto err_late;
 
 	/* Setup OS specific network interface */
-	if (ixgbe_setup_interface(dev, adapter) != 0)
+	if (ixgbe_setup_phys_interface(dev, adapter) != 0)
 		goto err_late;
 
 	/* Initialize statistics */
@@ -3312,44 +3312,24 @@ mem:
  *  Setup networking device structure and register an interface.
  *
  **********************************************************************/
-static int
-ixgbe_setup_interface(device_t dev, struct adapter *adapter)
+static void
+ixgbe_setup_interface(struct ixgbe_interface *interface, struct ifnet *ifp,
+    ifm_change_cb_t change_callback, ifm_stat_cb_t status_callback,
+    void *register_vlan, void *unregister_vlan)
 {
-	struct ixgbe_interface *interface;
+	struct adapter *adapter;
 	struct ixgbe_hw *hw;
-	struct ifnet   *ifp;
 
-	INIT_DEBUGOUT("ixgbe_setup_interface: begin");
-	
-	interface = &adapter->interface;
+	adapter = interface->adapter;
 	hw = &adapter->hw;
 
-	ifp = interface->ifp = if_alloc(IFT_ETHER);
-	if (ifp == NULL) {
-		device_printf(dev, "can not allocate ifnet structure\n");
-		return (-1);
-	}
-	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
+	interface->ifp = ifp;
+
 #if __FreeBSD_version < 1000025
 	ifp->if_baudrate = 1000000000;
 #else
 	if_initbaudrate(ifp, IF_Gbps(10));
 #endif
-	ifp->if_init = ixgbe_init;
-	ifp->if_softc = interface;
-	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_ioctl = ixgbe_ioctl;
-#ifndef IXGBE_LEGACY_TX
-	ifp->if_transmit = ixgbe_mq_start;
-	ifp->if_qflush = ixgbe_qflush;
-#else
-	ifp->if_start = ixgbe_start;
-	IFQ_SET_MAXLEN(&ifp->if_snd, interface->num_tx_desc - 2);
-	ifp->if_snd.ifq_drv_maxlen = adapter->num_tx_desc - 2;
-	IFQ_SET_READY(&ifp->if_snd);
-#endif
-
-	ether_ifattach(ifp, hw->mac.addr);
 
 	ixgbe_calc_max_frame_size(adapter);
 
@@ -3381,8 +3361,8 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	 * Specify the media types supported by this adapter and register
 	 * callbacks to update media and link information
 	 */
-	ifmedia_init(&interface->media, IFM_IMASK, ixgbe_media_change,
-		     ixgbe_media_status);
+	ifmedia_init(&interface->media, IFM_IMASK, change_callback,
+		     status_callback);
 	ifmedia_add(&interface->media, IFM_ETHER | adapter->optics, 0, NULL);
 	ifmedia_set(&interface->media, IFM_ETHER | adapter->optics);
 	if (hw->device_id == IXGBE_DEV_ID_82598AT) {
@@ -3396,9 +3376,47 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 
 	/* Register for VLAN events */
 	interface->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
-	    ixgbe_register_vlan, interface, EVENTHANDLER_PRI_FIRST);
+	    register_vlan, interface, EVENTHANDLER_PRI_FIRST);
 	interface->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
-	    ixgbe_unregister_vlan, interface, EVENTHANDLER_PRI_FIRST);
+	    unregister_vlan, interface, EVENTHANDLER_PRI_FIRST);
+}
+
+static int
+ixgbe_setup_phys_interface(device_t dev, struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	struct ixgbe_hw *hw;
+	struct ifnet   *ifp;
+
+	INIT_DEBUGOUT("ixgbe_setup_interface: begin");
+
+	interface = adapter->phys_interface;
+	hw = &adapter->hw;
+
+	ifp = if_alloc(IFT_ETHER);
+	if (ifp == NULL) {
+		device_printf(dev, "can not allocate ifnet structure\n");
+		return (-1);
+	}
+	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
+	ixgbe_setup_interface(interface, ifp, ixgbe_media_change,
+	    ixgbe_media_status, ixgbe_register_vlan, ixgbe_unregister_vlan);
+
+	ifp->if_init = ixgbe_init;
+	ifp->if_softc = interface;
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	ifp->if_ioctl = ixgbe_ioctl;
+#ifndef IXGBE_LEGACY_TX
+	ifp->if_transmit = ixgbe_mq_start;
+	ifp->if_qflush = ixgbe_qflush;
+#else
+	ifp->if_start = ixgbe_start;
+	IFQ_SET_MAXLEN(&ifp->if_snd, interface->num_tx_desc - 2);
+	ifp->if_snd.ifq_drv_maxlen = adapter->num_tx_desc - 2;
+	IFQ_SET_READY(&ifp->if_snd);
+#endif
+
+	ether_ifattach(ifp, hw->mac.addr);
 
 	return (0);
 }
@@ -3538,6 +3556,8 @@ ixgbe_allocate_phys_interface(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
 	int error, pool_index;
+
+	TAILQ_INIT(&adapter->interface_list);
 	
 	adapter->vll_unrhdr = new_unrhdr(0, 1, &adapter->core_mtx);
 	
@@ -3547,6 +3567,8 @@ ixgbe_allocate_phys_interface(struct adapter *adapter)
 	
 	if (error)
 		goto err;
+
+	adapter->phys_interface = interface;
 	
 	return (0);
 	
@@ -3571,9 +3593,12 @@ ixgbe_init_interface(struct adapter *adapter, int index,
 	sysctl_ctx_init(&interface->sysctl_ctx);
 	
 	/* Allocate our TX/RX Queues */
-	if (ixgbe_allocate_queues(interface))
+	if (ixgbe_allocate_queues(interface)) {
+		sysctl_ctx_free(&interface->sysctl_ctx);
 		return (ENOMEM);
-	
+	}
+
+	TAILQ_INSERT_TAIL(&adapter->interface_list, interface, next);
 	*ifxpp = interface;
 	return (0);
 }
