@@ -705,28 +705,53 @@ ixgbe_detach(device_t dev)
 
 	INIT_DEBUGOUT("ixgbe_detach: begin");
 	
-	interface = &adapter->interface;
-	que = interface->rx_pool.queues;
-	txr = interface->tx_rings;
-
-	/* Make sure VLANS are not using driver */
-	if (interface->ifp->if_vlantrunk != NULL) {
-		device_printf(dev,"Vlan in use, detach first\n");
-		return (EBUSY);
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		/* Make sure VLANS are not using driver */
+		if (interface->ifp->if_vlantrunk != NULL) {
+			device_printf(dev,"Vlan in use, detach first\n");
+			return (EBUSY);
+		}
 	}
 
-	IXGBE_CORE_LOCK(adapter);
-	ixgbe_stop(interface);
-	IXGBE_CORE_UNLOCK(adapter);
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		que = interface->rx_pool.queues;
+		txr = interface->tx_rings;
 
-	for (int i = 0; i < interface->num_tx_queues; i++, que++, txr++) {
-		if (que->tq) {
+		IXGBE_CORE_LOCK(adapter);
+		ixgbe_stop(interface);
+		IXGBE_CORE_UNLOCK(adapter);
+
+		for (int i = 0; i < interface->num_tx_queues; i++, que++, txr++) {
+			if (que->tq) {
 #ifndef IXGBE_LEGACY_TX
-			taskqueue_drain(que->tq, &txr->txq_task);
+				taskqueue_drain(que->tq, &txr->txq_task);
 #endif
-			taskqueue_drain(que->tq, &que->que_task);
-			taskqueue_free(que->tq);
+				taskqueue_drain(que->tq, &que->que_task);
+				taskqueue_free(que->tq);
+			}
 		}
+
+		/* let hardware know driver is unloading */
+		ctrl_ext = IXGBE_READ_REG(&adapter->hw, IXGBE_CTRL_EXT);
+		ctrl_ext &= ~IXGBE_CTRL_EXT_DRV_LOAD;
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_CTRL_EXT, ctrl_ext);
+
+		/* Unregister VLAN events */
+		if (interface->vlan_attach != NULL)
+			EVENTHANDLER_DEREGISTER(vlan_config,
+			    interface->vlan_attach);
+		if (interface->vlan_detach != NULL)
+			EVENTHANDLER_DEREGISTER(vlan_unconfig,
+			    interface->vlan_detach);
+
+		ether_ifdetach(interface->ifp);
+#ifdef DEV_NETMAP
+		netmap_detach(interface->ifp);
+#endif /* DEV_NETMAP */
+		if_free(interface->ifp);
+
+		ixgbe_free_transmit_structures(interface);
+		ixgbe_free_receive_structures(&interface->rx_pool);
 	}
 
 	/* Drain the Link queue */
@@ -740,28 +765,9 @@ ixgbe_detach(device_t dev)
 		taskqueue_free(adapter->tq);
 	}
 
-	/* let hardware know driver is unloading */
-	ctrl_ext = IXGBE_READ_REG(&adapter->hw, IXGBE_CTRL_EXT);
-	ctrl_ext &= ~IXGBE_CTRL_EXT_DRV_LOAD;
-	IXGBE_WRITE_REG(&adapter->hw, IXGBE_CTRL_EXT, ctrl_ext);
-
-	/* Unregister VLAN events */
-	if (interface->vlan_attach != NULL)
-		EVENTHANDLER_DEREGISTER(vlan_config, interface->vlan_attach);
-	if (interface->vlan_detach != NULL)
-		EVENTHANDLER_DEREGISTER(vlan_unconfig, interface->vlan_detach);
-
-	ether_ifdetach(interface->ifp);
 	callout_drain(&adapter->timer);
-#ifdef DEV_NETMAP
-	netmap_detach(interface->ifp);
-#endif /* DEV_NETMAP */
 	ixgbe_free_pci_resources(adapter);
 	bus_generic_detach(dev);
-	if_free(interface->ifp);
-
-	ixgbe_free_transmit_structures(interface);
-	ixgbe_free_receive_structures(&interface->rx_pool);
 	free(adapter->mta, M_DEVBUF);
 
 	IXGBE_CORE_LOCK_DESTROY(adapter);
@@ -780,9 +786,9 @@ ixgbe_shutdown(device_t dev)
 	struct adapter *adapter = device_get_softc(dev);
 	struct ixgbe_interface *interface;
 	
-	interface = &adapter->interface;
 	IXGBE_CORE_LOCK(adapter);
-	ixgbe_stop(interface);
+	TAILQ_FOREACH(interface, &adapter->interface_list, next)
+		ixgbe_stop(interface);
 	IXGBE_CORE_UNLOCK(adapter);
 	return (0);
 }
