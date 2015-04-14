@@ -6786,8 +6786,6 @@ ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS)
 	int error, last;
 	struct adapter *adapter = (struct adapter *) arg1;
 	struct ixgbe_interface *ifx;
-	
-	ifx = &adapter->interface;
 
 	last = adapter->fc;
 	error = sysctl_handle_int(oidp, &adapter->fc, 0, req);
@@ -6803,13 +6801,17 @@ ixgbe_set_flowcntl(SYSCTL_HANDLER_ARGS)
 		case ixgbe_fc_tx_pause:
 		case ixgbe_fc_full:
 			adapter->hw.fc.requested_mode = adapter->fc;
-			if (ifx->rx_pool.num_queues > 1)
-				ixgbe_disable_rx_drop(ifx);
+			TAILQ_FOREACH(ifx, &adapter->interface_list, next) {
+				if (ifx->rx_pool.num_queues > 1)
+					ixgbe_disable_rx_drop(ifx);
+			}
 			break;
 		case ixgbe_fc_none:
 			adapter->hw.fc.requested_mode = ixgbe_fc_none;
-			if (ifx->rx_pool.num_queues > 1)
-				ixgbe_enable_rx_drop(ifx);
+			TAILQ_FOREACH(ifx, &adapter->interface_list, next) {
+				if (ifx->rx_pool.num_queues > 1)
+					ixgbe_enable_rx_drop(ifx);
+			}
 			break;
 		default:
 			adapter->fc = last;
