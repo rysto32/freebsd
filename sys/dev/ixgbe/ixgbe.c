@@ -148,6 +148,8 @@ static int	ixgbe_setup_msix(struct adapter *);
 static void	ixgbe_free_if_pci_resources(struct ixgbe_rx_pool *);
 static void	ixgbe_free_pci_resources(struct adapter *);
 static void	ixgbe_local_timer(void *);
+static void	ixgbe_check_watchdog(struct ixgbe_interface *, int );
+
 static int	ixgbe_setup_phys_interface(device_t, struct adapter *);
 static void	ixgbe_config_link(struct adapter *);
 
@@ -2627,23 +2629,15 @@ ixgbe_local_timer(void *arg)
 {
 	struct adapter	*adapter = arg;
 	struct ixgbe_interface *interface;
-	device_t	dev = adapter->dev;
-	struct ix_queue *que;
-	struct tx_ring	*txr;
-	int		hung = 0, paused = 0;
+	int		paused = 0;
 
 	mtx_assert(&adapter->core_mtx, MA_OWNED);
-
-	interface = &adapter->interface;
-	que = interface->rx_pool.queues;
-	txr = interface->tx_rings;
 
 	/* Check for pluggable optics */
 	if (adapter->sfp_probe)
 		if (!ixgbe_sfp_probe(adapter))
 			goto out; /* Nothing to do */
 
-	ixgbe_update_link_status(interface);
 	ixgbe_update_stats_counters(adapter);
 
 	/*
@@ -2652,6 +2646,30 @@ ixgbe_local_timer(void *arg)
 	 */
 	if (IXGBE_READ_REG(&adapter->hw, IXGBE_TFCS) & IXGBE_TFCS_TXOFF)
 		paused = 1;
+
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		ixgbe_update_link_status(interface);
+		ixgbe_check_watchdog(interface, paused);
+	}
+
+out:
+	callout_reset(&adapter->timer, hz, ixgbe_local_timer, adapter);
+}
+
+static void
+ixgbe_check_watchdog(struct ixgbe_interface *interface, int paused)
+{
+	device_t dev;
+	struct adapter *adapter;
+	struct ix_queue *que;
+	struct tx_ring	*txr;
+	int hung;
+
+	hung = 0;
+	adapter = interface->adapter;
+	dev = adapter->dev;
+	que = interface->rx_pool.queues;
+	txr = interface->tx_rings;
 
 	/*
 	** Check the TX queues status
@@ -2665,14 +2683,9 @@ ixgbe_local_timer(void *arg)
 			taskqueue_enqueue(que->tq, &txr->txq_task);
         }
 	/* Only truely watchdog if all queues show hung */
-        if (hung == interface->num_tx_queues)
-                goto watchdog;
+        if (hung != interface->num_tx_queues)
+                return;
 
-out:
-	callout_reset(&adapter->timer, hz, ixgbe_local_timer, adapter);
-	return;
-
-watchdog:
 	device_printf(adapter->dev, "Watchdog timeout -- resetting\n");
 	device_printf(dev,"Queue(%d) tdh = %d, hw tdt = %d\n", txr->me,
 	    IXGBE_READ_REG(&adapter->hw, IXGBE_TDH(txr->me)),
@@ -2682,6 +2695,7 @@ watchdog:
 	    txr->me, txr->tx_avail, txr->next_to_clean);
 	interface->ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	adapter->watchdog_events++;
+	/* XXX force reset */
 	ixgbe_init_locked(interface);
 }
 
