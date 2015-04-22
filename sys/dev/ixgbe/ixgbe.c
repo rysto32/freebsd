@@ -6637,7 +6637,7 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 			CTLFLAG_RD, &adapter->link_irq,
 			"Link MSIX IRQ Handled");
 	
-	ixgbe_add_if_sysctls(&adapter->interface);
+	ixgbe_add_if_sysctls(adapter->phys_interface);
 
 	/* MAC stats get the own sub node */
 
