@@ -178,7 +178,7 @@ static void	ixgbe_txeof(struct tx_ring *);
 static bool	ixgbe_rxeof(struct ix_queue *);
 static void	ixgbe_rx_checksum(u32, struct mbuf *, u32);
 static void     ixgbe_set_promisc(struct adapter *);
-static void     ixgbe_set_multi(struct adapter *);
+static void     ixgbe_set_multi(struct ixgbe_interface *);
 static void     ixgbe_update_link_status(struct ixgbe_interface *);
 static void	ixgbe_refresh_mbufs(struct rx_ring *, int);
 static int      ixgbe_xmit(struct tx_ring *, struct mbuf **);
@@ -1162,7 +1162,7 @@ ixgbe_ioctl_int(struct ixgbe_interface *interface, u_long command, caddr_t data)
 		if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 			IXGBE_CORE_LOCK(adapter);
 			ixgbe_disable_intr(interface);
-			ixgbe_set_multi(adapter);
+			ixgbe_set_multi(interface);
 			ixgbe_enable_intr(interface);
 			IXGBE_CORE_UNLOCK(adapter);
 		}
@@ -1291,7 +1291,8 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 	 * from the RAR registers or disabled multicast inexact filters.  
 	 * Make sure that they get put back.
 	 */
-	ixgbe_set_multi(adapter);
+	if (!(pool->flags & IXGBE_RX_POOL_BROADCAST))
+		ixgbe_set_multi(pool->interface);
 
 	for (i = 0; i < pool->num_queues; i++) {
 		rxr = &pool->rx_rings[i];
@@ -1808,7 +1809,7 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	ixgbe_initialize_transmit_units(interface);
 
 	/* Setup Multicast table */
-	ixgbe_set_multi(interface->adapter);
+	ixgbe_set_multi(interface);
 
 	/*
 	** Determine the correct mbuf pool
@@ -2549,18 +2550,24 @@ ixgbe_set_promisc(struct adapter *adapter)
 #define IXGBE_RAR_ENTRIES 16
 
 static void
-ixgbe_set_multi(struct adapter *adapter)
+ixgbe_set_multi(struct ixgbe_interface *interface)
 {
+	struct adapter *adapter;
 	u8	*mta;
 	u8	*update_ptr;
 	struct	ifmultiaddr *ifma;
 	int	mcnt = 0;
-	struct ixgbe_interface *interface;
 	struct ifnet   *ifp;
 
 	IOCTL_DEBUGOUT("ixgbe_set_multi: begin");
 
-	interface = &adapter->interface;
+	/* We only support multicast filters on the physical interface. */
+	adapter = interface->adapter;
+	if (interface != adapter->phys_interface) {
+		ixgbe_set_promisc(adapter);
+		return;
+	}
+
 	ifp = interface->ifp;
 	mta = adapter->mta;
 	bzero(mta, sizeof(u8) * IXGBE_ETH_LENGTH_OF_ADDRESS *
