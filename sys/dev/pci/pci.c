@@ -2646,8 +2646,8 @@ pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp,
 {
 	struct pci_devinfo *dinfo;
 	pci_addr_t map, testval;
-	int ln2range;
-	uint16_t cmd;
+	int ln2range, restore;
+	uint16_t cmd, mask;
 
 	/*
 	 * The device ROM BAR is special.  It is always a 32-bit
@@ -2673,13 +2673,19 @@ pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp,
 		map |= (pci_addr_t)pci_read_config(dev, reg + 4, 4) << 32;
 
 	/*
-	 * Disable decoding via the command register before
-	 * determining the BAR's length since we will be placing it in
+	 * If this is a standard BAR, disable decoding via the command register
+	 * before determining the BAR's length since we will be placing it in
 	 * a weird state.
 	 */
-	cmd = pci_read_config(dev, PCIR_COMMAND, 2);
-	pci_write_config(dev, PCIR_COMMAND,
-	    cmd & ~(PCI_BAR_MEM(map) ? PCIM_CMD_MEMEN : PCIM_CMD_PORTEN), 2);
+	if (reg >= PCIR_BAR(0) && reg <= PCIR_BAR(5)) {
+		cmd = pci_read_config(dev, PCIR_COMMAND, 2);
+		mask = PCI_BAR_MEM(map) ? PCIM_CMD_MEMEN : PCIM_CMD_PORTEN;
+		pci_write_config(dev, PCIR_COMMAND, cmd & ~mask, 2);
+		restore = 1;
+	} else {
+		cmd = 0; /* Appease gcc. */
+		restore = 0;
+	}
 
 	/*
 	 * Determine the BAR's length by writing all 1's.  The bottom
@@ -2701,7 +2707,8 @@ pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp,
 	pci_write_config(dev, reg, map, 4);
 	if (ln2range == 64)
 		pci_write_config(dev, reg + 4, map >> 32, 4);
-	pci_write_config(dev, PCIR_COMMAND, cmd, 2);
+	if (restore)
+		pci_write_config(dev, PCIR_COMMAND, cmd, 2);
 
 	*mapp = map;
 	*testvalp = testval;
