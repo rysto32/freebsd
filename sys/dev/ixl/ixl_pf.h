@@ -41,6 +41,7 @@
 #define	VF_FLAG_VLAN_CAP		0x04
 #define	VF_FLAG_PROMISC_CAP		0x08
 #define	VF_FLAG_MAC_ANTI_SPOOF		0x10
+#define	VF_FLAG_ALLOW_LOCAL_LOOPBACK	0x20
 
 struct ixl_vf {
 	struct ixl_vsi		vsi;

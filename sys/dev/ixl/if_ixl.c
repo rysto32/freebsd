@@ -690,6 +690,8 @@ ixl_attach(device_t dev)
 		    IOV_SCHEMA_HASDEFAULT, FALSE);
 		pci_iov_schema_add_bool(vf_schema, "allow-promisc",
 		    IOV_SCHEMA_HASDEFAULT, FALSE);
+		pci_iov_schema_add_bool(vf_schema, "allow-local-loopback",
+		    IOV_SCHEMA_HASDEFAULT, FALSE);
 
 		iov_error = pci_iov_attach(dev, pf_schema, vf_schema);
 		if (iov_error != 0)
@@ -5183,6 +5185,10 @@ ixl_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 	vsi_ctx.info.valid_sections = htole16(I40E_AQ_VSI_PROP_SWITCH_VALID);
 	vsi_ctx.info.switch_id = htole16(0);
 
+	if (vf->vf_flags & VF_FLAG_ALLOW_LOCAL_LOOPBACK)
+		vsi_ctx.info.switch_id |=
+		    htole16(I40E_AQ_VSI_SW_ID_FLAG_LOCAL_LB);
+
 	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_SECURITY_VALID);
 	vsi_ctx.info.sec_flags = 0;
 	if (vf->vf_flags & VF_FLAG_MAC_ANTI_SPOOF)
@@ -6587,6 +6593,9 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 
 	if (nvlist_get_bool(params, "allow-promisc"))
 		vf->vf_flags |= VF_FLAG_PROMISC_CAP;
+	
+	if (nvlist_get_bool(params, "allow-local-loopback"))
+		vf->vf_flags |= VF_FLAG_ALLOW_LOCAL_LOOPBACK;
 
 	vf->vf_flags |= VF_FLAG_VLAN_CAP;
 
