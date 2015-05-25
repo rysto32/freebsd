@@ -3948,14 +3948,16 @@ static void ixl_handle_mdd_event(struct ixl_pf *pf)
 	if (reg & I40E_GL_MDET_TX_VALID_MASK) {
 		u8 pf_num = (reg & I40E_GL_MDET_TX_PF_NUM_MASK) >>
 				I40E_GL_MDET_TX_PF_NUM_SHIFT;
+		u8 vf_num = (reg & I40E_GL_MDET_TX_VF_NUM_MASK) >>
+				I40E_GL_MDET_TX_VF_NUM_SHIFT;
 		u8 event = (reg & I40E_GL_MDET_TX_EVENT_MASK) >>
 				I40E_GL_MDET_TX_EVENT_SHIFT;
 		u8 queue = (reg & I40E_GL_MDET_TX_QUEUE_MASK) >>
 				I40E_GL_MDET_TX_QUEUE_SHIFT;
 		device_printf(dev,
 			 "Malicious Driver Detection event 0x%02x"
-			 " on TX queue %d pf number 0x%02x\n",
-			 event, queue, pf_num);
+			 " on TX queue %d pf number 0x%02x vf %d\n",
+			 event, queue, pf_num, vf_num);
 		wr32(hw, I40E_GL_MDET_TX, 0xffffffff);
 		mdd_detected = true;
 	}
@@ -3980,7 +3982,7 @@ static void ixl_handle_mdd_event(struct ixl_pf *pf)
 		if (reg & I40E_PF_MDET_TX_VALID_MASK) {
 			wr32(hw, I40E_PF_MDET_TX, 0xFFFF);
 			device_printf(dev,
-				 "MDD TX event is for this function 0x%08x",
+				 "MDD TX event is for this function 0x%08x\n",
 				 reg);
 			pf_mdd_detected = true;
 		}
@@ -3988,7 +3990,7 @@ static void ixl_handle_mdd_event(struct ixl_pf *pf)
 		if (reg & I40E_PF_MDET_RX_VALID_MASK) {
 			wr32(hw, I40E_PF_MDET_RX, 0xFFFF);
 			device_printf(dev,
-				 "MDD RX event is for this function 0x%08x",
+				 "MDD RX event is for this function 0x%08x\n",
 				 reg);
 			pf_mdd_detected = true;
 		}
