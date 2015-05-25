@@ -2639,7 +2639,11 @@ ixl_switch_config(struct ixl_pf *pf)
 	vsi->uplink_seid = sw_config->element[0].uplink_seid;
 	vsi->downlink_seid = sw_config->element[0].downlink_seid;
 	vsi->seid = sw_config->element[0].seid;
-	return (ret);
+	ixl_vsi_reset_stats(vsi);
+
+	vsi->first_queue = 0;
+
+	return (0);
 }
 
 /*********************************************************************
@@ -2699,8 +2703,6 @@ ixl_initialize_vsi(struct ixl_vsi *vsi)
 	/* Keep copy of VSI info in VSI for statistic counters */
 	memcpy(&vsi->info, &ctxt.info, sizeof(ctxt.info));
 
-	/* Reset VSI statistics */
-	ixl_vsi_reset_stats(vsi);
 	vsi->hw_filters_add = 0;
 	vsi->hw_filters_del = 0;
 
