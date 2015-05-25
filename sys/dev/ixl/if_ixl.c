@@ -3169,6 +3169,30 @@ ixl_add_vsi_sysctls(struct ixl_pf *pf, struct ixl_vsi *vsi,
 	ixl_add_sysctls_eth_stats(ctx, vsi_list, &vsi->eth_stats);
 }
 
+static int
+ixl_sysctl_tx_avail(SYSCTL_HANDLER_ARGS)
+{
+	struct tx_ring *txr;
+	int avail;
+
+	txr = arg1;
+	avail = txr->avail;
+
+	return (sysctl_handle_int(oidp, &avail, 0, req));
+}
+
+static int
+ixl_sysctl_reg(SYSCTL_HANDLER_ARGS)
+{
+	struct ixl_queue *que;
+	int tail;
+
+	que = arg1;
+	tail = rd32(que->vsi->hw, arg2);
+
+	return (sysctl_handle_int(oidp, &tail, 0, req));
+}
+
 static void
 ixl_add_hw_stats(struct ixl_pf *pf)
 {
@@ -3244,6 +3268,21 @@ ixl_add_hw_stats(struct ixl_pf *pf)
 		SYSCTL_ADD_UQUAD(ctx, queue_list, OID_AUTO, "rx_bytes",
 				CTLFLAG_RD, &(rxr->rx_bytes),
 				"Queue Bytes Received");
+
+		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "tx_avail",
+		    CTLFLAG_RD | CTLTYPE_INT, txr, 0,
+		    ixl_sysctl_tx_avail, "I",
+		    "Number of available tx descriptors");
+
+		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "tx_tail",
+		    CTLFLAG_RD | CTLTYPE_INT, &queues[q],
+		    I40E_QTX_TAIL(txr->que->me), ixl_sysctl_reg, "I",
+		    "Value of TX queue tail");
+
+		SYSCTL_ADD_PROC(ctx, queue_list, OID_AUTO, "rx_tail",
+		    CTLFLAG_RD | CTLTYPE_INT, &queues[q],
+		    I40E_QRX_TAIL(rxr->que->me), ixl_sysctl_reg, "I",
+		    "Value of RX queue tail");
 	}
 
 	/* MAC stats */
@@ -3304,6 +3343,7 @@ ixl_add_sysctls_mac_stats(struct sysctl_ctx_list *ctx,
 		{&stats->mac_local_faults, "local_faults", "MAC Local Faults"},
 		{&stats->mac_remote_faults, "remote_faults", "MAC Remote Faults"},
 		{&stats->rx_length_errors, "rx_length_errors", "Receive Length Errors"},
+		{&stats->tx_dropped_link_down, "tx_dropped_link_down", "Link Down Transmit Drops"},
 		/* Packet Reception Stats */
 		{&stats->rx_size_64, "rx_frames_64", "64 byte frames received"},
 		{&stats->rx_size_127, "rx_frames_65_127", "65-127 byte frames received"},
@@ -4395,6 +4435,9 @@ void ixl_update_eth_stats(struct ixl_vsi *vsi)
 	ixl_stat_update32(hw, I40E_GLV_RDPC(stat_idx),
 			   vsi->stat_offsets_loaded,
 			   &oes->rx_discards, &es->rx_discards);
+
+	/* GLV_TDPC Error counter is not implemented in current design */
+	es->tx_discards = 0;
 
 	ixl_stat_update48(hw, I40E_GLV_GORCH(stat_idx),
 			   I40E_GLV_GORCL(stat_idx),
