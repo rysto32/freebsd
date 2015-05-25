@@ -562,6 +562,7 @@ ixl_attach(device_t dev)
 		    "because the NVM image is newer than expected.\n"
 		    "You must install the most recent version of "
 		    " the network driver.\n");
+		error = ENXIO;
 		goto err_out;
 	}
 	device_printf(dev, "%s\n", ixl_fw_version_str(hw));
@@ -592,12 +593,14 @@ ixl_attach(device_t dev)
 	    hw->func_caps.num_rx_qp, 0, 0);
 	if (error) {
 		device_printf(dev, "init_lan_hmc failed: %d\n", error);
+		error = EIO;
 		goto err_get_cap;
 	}
 
 	error = i40e_configure_lan_hmc(hw, I40E_HMC_MODEL_DIRECT_ONLY);
 	if (error) {
 		device_printf(dev, "configure_lan_hmc failed: %d\n", error);
+		error = EIO;
 		goto err_mac_hmc;
 	}
 
@@ -879,6 +882,8 @@ retry:
 	    hw->func_caps.num_rx_qp,
 	    hw->func_caps.base_queue);
 #endif
+	if (error)
+		error = EIO;
 	return (error);
 }
 
@@ -2615,7 +2620,7 @@ ixl_switch_config(struct ixl_pf *pf)
 	if (ret) {
 		device_printf(dev,"aq_get_switch_config failed (ret=%d)!!\n",
 		    ret);
-		return (ret);
+		return (EIO);
 	}
 #ifdef IXL_DEBUG
 	device_printf(dev,
@@ -4595,7 +4600,7 @@ ixl_set_flowcntl(SYSCTL_HANDLER_ARGS)
 		device_printf(dev,
 		    "%s: Error setting new fc mode %d; fc_err %#x\n",
 		    __func__, aq_error, fc_aq_err);
-		return (EAGAIN);
+		return (EINVAL);
 	}
 
 	return (0);
@@ -4665,7 +4670,7 @@ ixl_set_advertised_speeds(struct ixl_pf *pf, int speeds)
 		    "%s: Error getting phy capabilities %d,"
 		    " aq error: %d\n", __func__, aq_error,
 		    hw->aq.asq_last_status);
-		return (EAGAIN);
+		return (EINVAL);
 	}
 
 	/* Prepare new config */
@@ -4693,7 +4698,7 @@ ixl_set_advertised_speeds(struct ixl_pf *pf, int speeds)
 		    "%s: Error setting new phy config %d,"
 		    " aq error: %d\n", __func__, aq_error,
 		    hw->aq.asq_last_status);
-		return (EAGAIN);
+		return (EINVAL);
 	}
 
 	/*
