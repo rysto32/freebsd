@@ -760,6 +760,7 @@ ixlv_request_reset(struct ixlv_sc *sc)
 	*/
 	wr32(&sc->hw, I40E_VFGEN_RSTAT, I40E_VFR_INPROGRESS);
 	ixlv_send_pf_msg(sc, I40E_VIRTCHNL_OP_RESET_VF, NULL, 0);
+	sc->reset_start = ticks;
 }
 
 /*
@@ -850,8 +851,8 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 			break;
 		case I40E_VIRTCHNL_EVENT_RESET_IMPENDING:
 			device_printf(dev, "PF initiated reset!\n");
-			sc->init_state = IXLV_RESET_PENDING;
-			ixlv_init(sc);
+			ixlv_start_reset(sc, 1);
+			ixlv_init_locked(sc);
 			break;
 		default:
 			device_printf(dev, "%s: Unknown event %d from AQ\n",
@@ -910,9 +911,6 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 			ixlv_update_link_status(sc);
 			/* Turn on all interrupts */
 			ixlv_enable_intr(vsi);
-			/* And inform the stack we're ready */
-			vsi->ifp->if_drv_flags |= IFF_DRV_RUNNING;
-			vsi->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 		}
 		break;
 	case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
@@ -921,8 +919,7 @@ ixlv_vc_completion(struct ixlv_sc *sc,
 		if (v_retval == 0) {
 			/* Turn off all interrupts */
 			ixlv_disable_intr(vsi);
-			/* Tell the stack that the interface is no longer active */
-			vsi->ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
+			sc->vc_flags &= ~IXLV_VC_FLAG_QUEUES_EN;
 		}
 		break;
 	case I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES:
@@ -999,8 +996,14 @@ ixl_vc_process_completion(struct ixl_vc_mgr *mgr, enum i40e_status_code err)
 	mgr->current = NULL;
 	cmd->flags &= ~IXLV_VC_CMD_FLAG_BUSY;
 
-	cmd->callback(cmd, cmd->arg, err);
 	ixl_vc_process_next(mgr);
+
+	/*
+	 * The ordering is important here -- we have to be sure that we don't
+	 * call into the callback until we've put mgr in a consistent state
+	 * by processing the next message.
+	 */
+	cmd->callback(cmd, cmd->arg, err);
 }
 
 static void

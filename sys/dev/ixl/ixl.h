@@ -486,6 +486,13 @@ struct ixl_queue {
 	u64			dropped_pkts;
 };
 
+/* Flags for ixl_vsi.vsi_flags field */
+/* Interface is in the process of initializing */
+#define IXL_IFX_INITIALIZING		0x00000001U
+
+/* Interface is up. */
+#define IXL_IFX_QUEUES_ENABLED		0x00000002U
+
 /*
 ** Virtual Station interface: 
 **	there would be one of these per traffic class/type
@@ -548,6 +555,8 @@ struct ixl_vsi {
 	u64 			active_queues;
 	u64 			flags;
 	struct sysctl_oid	*vsi_node;
+
+	u32			vsi_flags;
 };
 
 /*
@@ -651,5 +660,8 @@ void	ixl_atr(struct ixl_queue *, struct tcphdr *, int);
 #if __FreeBSD_version >= 1100000
 uint64_t ixl_get_counter(if_t ifp, ift_counter cnt);
 #endif
+
+void	ixl_lock_all_queues(struct ixl_vsi *vsi);
+void	ixl_unlock_all_queues(struct ixl_vsi *vsi);
 
 #endif /* _IXL_H_ */

@@ -1207,6 +1207,10 @@ ixl_init_locked(struct ixl_pf *pf)
 			"aq_set_mac_config in init error, code %d\n",
 		    aq_error);
 
+	ixl_lock_all_queues(vsi);
+	vsi->vsi_flags |= IXL_IFX_QUEUES_ENABLED;
+	ixl_unlock_all_queues(vsi);
+
 	/* And now turn on interrupts */
 	ixl_enable_intr(vsi);
 
@@ -1893,6 +1897,10 @@ ixl_stop(struct ixl_pf *pf)
 
 	/* Tell the stack that the interface is no longer active */
 	ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
+
+	ixl_lock_all_queues(vsi);
+	vsi->vsi_flags &= ~IXL_IFX_QUEUES_ENABLED;
+	ixl_unlock_all_queues(vsi);
 
 	/* Stop the local timer */
 	callout_stop(&pf->timer);
@@ -6020,6 +6028,10 @@ ixl_vf_enable_queues_msg(struct ixl_pf *pf, struct ixl_vf *vf, void *msg,
 	select = msg;
 	if (select->vsi_id != vf->vsi.vsi_num ||
 	    select->rx_queues == 0 || select->tx_queues == 0) {
+		I40E_VC_DEBUG(pf, 1,
+		    "VF-%d sent invalid queues: vsi_id=%d vsi_num=%d rx_queues=%d tx_queues=%d\n",
+		    vf->vf_num, select->vsi_id, vf->vsi.vsi_num,
+		    select->rx_queues, select->tx_queues);
 		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_ENABLE_QUEUES,
 		    I40E_ERR_PARAM);
 		return;
@@ -6051,6 +6063,10 @@ ixl_vf_disable_queues_msg(struct ixl_pf *pf, struct ixl_vf *vf,
 	select = msg;
 	if (select->vsi_id != vf->vsi.vsi_num ||
 	    select->rx_queues == 0 || select->tx_queues == 0) {
+		I40E_VC_DEBUG(pf, 1,
+		    "VF-%d sent invalid queues: vsi_id=%d vsi_num=%d rx_queues=%d tx_queues=%d\n",
+		    vf->vf_num, select->vsi_id, vf->vsi.vsi_num,
+		    select->rx_queues, select->tx_queues);
 		i40e_send_vf_nack(pf, vf, I40E_VIRTCHNL_OP_DISABLE_QUEUES,
 		    I40E_ERR_PARAM);
 		return;

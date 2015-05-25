@@ -38,30 +38,25 @@
 
 #include "ixlv_vc_mgr.h"
 
+
 #define IXLV_AQ_MAX_ERR		1000
 #define IXLV_MAX_FILTERS	128
-#define IXLV_MAX_QUEUES		16
 #define IXLV_AQ_TIMEOUT		(1 * hz)
 #define IXLV_CALLOUT_TIMO	(hz / 50)	/* 20 msec */
+#define IXLV_RESET_TIMO		(1 * hz)	/* 1 sec */
 
-#define IXLV_FLAG_AQ_ENABLE_QUEUES            (u32)(1)
-#define IXLV_FLAG_AQ_DISABLE_QUEUES           (u32)(1 << 1)
-#define IXLV_FLAG_AQ_ADD_MAC_FILTER           (u32)(1 << 2)
-#define IXLV_FLAG_AQ_ADD_VLAN_FILTER          (u32)(1 << 3)
-#define IXLV_FLAG_AQ_DEL_MAC_FILTER           (u32)(1 << 4)
-#define IXLV_FLAG_AQ_DEL_VLAN_FILTER          (u32)(1 << 5)
-#define IXLV_FLAG_AQ_CONFIGURE_QUEUES         (u32)(1 << 6)
-#define IXLV_FLAG_AQ_MAP_VECTORS              (u32)(1 << 7)
-#define IXLV_FLAG_AQ_HANDLE_RESET             (u32)(1 << 8)
-#define IXLV_FLAG_AQ_CONFIGURE_PROMISC        (u32)(1 << 9)
-#define IXLV_FLAG_AQ_GET_STATS                (u32)(1 << 10)
-
-/* printf %b arg */
-#define IXLV_FLAGS \
-    "\20\1ENABLE_QUEUES\2DISABLE_QUEUES\3ADD_MAC_FILTER" \
-    "\4ADD_VLAN_FILTER\5DEL_MAC_FILTER\6DEL_VLAN_FILTER" \
-    "\7CONFIGURE_QUEUES\10MAP_VECTORS\11HANDLE_RESET" \
-    "\12CONFIGURE_PROMISC\13GET_STATS"
+#define IXLV_FLAG_AQ_ENABLE_QUEUES		0
+#define IXLV_FLAG_AQ_DISABLE_QUEUES		1
+#define IXLV_FLAG_AQ_ADD_MAC_FILTER		2
+#define IXLV_FLAG_AQ_ADD_VLAN_FILTER		3
+#define IXLV_FLAG_AQ_DEL_MAC_FILTER		4
+#define IXLV_FLAG_AQ_DEL_VLAN_FILTER		5
+#define IXLV_FLAG_AQ_CONFIGURE_QUEUES		6
+#define IXLV_FLAG_AQ_MAP_VECTORS		7
+#define IXLV_FLAG_AQ_HANDLE_RESET		8
+#define IXLV_FLAG_AQ_CONFIGURE_PROMISC		9
+#define IXLV_FLAG_AQ_GET_STATS			10
+#define IXLV_FLAG_AQ_SET_UDP_PRIO		11
 
 /* Hack for compatibility with 1.0.x linux pf driver */
 #define I40E_VIRTCHNL_OP_EVENT 17
@@ -72,15 +67,11 @@ enum ixlv_state_t {
 	IXLV_FAILED,
 	IXLV_RESET_REQUIRED,
 	IXLV_RESET_PENDING,
-	IXLV_VERSION_CHECK,
-	IXLV_GET_RESOURCES,
-	IXLV_INIT_READY,
+	IXLV_INIT_RESET_DONE,
+	IXLV_STOPPED,
 	IXLV_INIT_START,
-	IXLV_INIT_CONFIG,
-	IXLV_INIT_MAPPING,
-	IXLV_INIT_ENABLE,
 	IXLV_INIT_COMPLETE,
-	IXLV_RUNNING,	
+	IXLV_RUNNING,
 };
 
 struct ixlv_mac_filter {
@@ -97,6 +88,9 @@ struct ixlv_vlan_filter {
 };
 SLIST_HEAD(vlan_list, ixlv_vlan_filter);
 
+/* Flags for ixlv_sc.vc_flags. */
+#define IXLV_VC_FLAG_QUEUES_EN		0x0001
+
 /* Software controller structure */
 struct ixlv_sc {
 	struct i40e_hw		hw;
@@ -107,6 +101,7 @@ struct ixlv_sc {
 	struct resource		*msix_mem;
 
 	enum ixlv_state_t	init_state;
+	int			reset_start;
 
 	/*
 	 * Interrupt resources
@@ -118,6 +113,7 @@ struct ixlv_sc {
 	struct callout		timer;
 	int			msix;
 	int			if_flags;
+	int			detaching;
 
 	bool			link_up;
 	u32			link_speed;
@@ -126,9 +122,10 @@ struct ixlv_sc {
 
 	u32			qbase;
 	u32 			admvec;
-	struct timeout_task	timeout;
+	struct callout		timeout;
 	struct task     	aq_irq;
 	struct task     	aq_sched;
+	struct task		init_task;
 	struct taskqueue	*tq;
 
 	struct ixl_vsi		vsi;
@@ -142,8 +139,10 @@ struct ixlv_sc {
 
 	/* Admin queue task flags */
 	u32			aq_wait_count;
+	u32			aq_inited;
 
 	struct ixl_vc_mgr	vc_mgr;
+	struct ixl_vc_cmd	disable_queues_cmd;
 	struct ixl_vc_cmd	add_mac_cmd;
 	struct ixl_vc_cmd	del_mac_cmd;
 	struct ixl_vc_cmd	config_queues_cmd;
@@ -163,8 +162,12 @@ struct ixlv_sc {
 	u64			admin_irq;
 
 	u8			aq_buffer[IXL_AQ_BUF_SZ];
+
+	uint32_t		vc_flags;
 };
 
+#define IXLV_CORE_LOCK(sc)		mtx_lock(&(sc)->mtx)
+#define IXLV_CORE_UNLOCK(sc)		mtx_unlock(&(sc)->mtx)
 #define IXLV_CORE_LOCK_ASSERT(sc)	mtx_assert(&(sc)->mtx, MA_OWNED)
 /*
 ** This checks for a zero mac addr, something that will be likely
@@ -189,7 +192,8 @@ int	ixlv_verify_api_ver(struct ixlv_sc *);
 int	ixlv_send_vf_config_msg(struct ixlv_sc *);
 int	ixlv_get_vf_config(struct ixlv_sc *);
 void	ixlv_init(void *);
-int	ixlv_reinit_locked(struct ixlv_sc *);
+void	ixlv_init_locked(struct ixlv_sc *sc);
+void	ixlv_start_reset(struct ixlv_sc *sc, int delay);
 void	ixlv_configure_queues(struct ixlv_sc *);
 void	ixlv_enable_queues(struct ixlv_sc *);
 void	ixlv_disable_queues(struct ixlv_sc *);
@@ -208,5 +212,6 @@ void	ixlv_del_vlans(struct ixlv_sc *);
 void	ixlv_update_stats_counters(struct ixlv_sc *,
 		    struct i40e_eth_stats *);
 void	ixlv_update_link_status(struct ixlv_sc *);
+
 
 #endif /* _IXLV_H_ */

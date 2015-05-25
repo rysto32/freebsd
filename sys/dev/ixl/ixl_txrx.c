@@ -130,7 +130,10 @@ ixl_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr)
         int			err = 0;
 
 
-	if (((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) ||
+	if (vsi->vsi_flags & IXL_IFX_INITIALIZING)
+		return (0);
+
+	if (((vsi->vsi_flags & IXL_IFX_QUEUES_ENABLED) == 0) ||
 	    vsi->link_active == 0)
 		return (ENETDOWN);
 
@@ -1521,6 +1524,11 @@ ixl_rxeof(struct ixl_queue *que, int count)
 
 	IXL_RX_LOCK(rxr);
 
+	if (!(vsi->vsi_flags & IXL_IFX_QUEUES_ENABLED)) {
+		IXL_RX_UNLOCK(rxr);
+		return (FALSE);
+	}
+
 #ifdef DEV_NETMAP
 	if (netmap_rx_irq(ifp, que->me, &count)) {
 		IXL_RX_UNLOCK(rxr);
@@ -1830,3 +1838,26 @@ ixl_get_counter(if_t ifp, ift_counter cnt)
 }
 #endif
 
+void
+ixl_lock_all_queues(struct ixl_vsi *vsi)
+{
+	int i;
+
+	for (i = 0; i < vsi->num_queues; i++)
+		IXL_RX_LOCK(&vsi->queues[i].rxr);
+
+	for (i = 0; i < vsi->num_queues; i++)
+		IXL_TX_LOCK(&vsi->queues[i].txr);
+}
+
+void
+ixl_unlock_all_queues(struct ixl_vsi *vsi)
+{
+	int i;
+
+	for (i = 0; i < vsi->num_queues; i++)
+		IXL_TX_UNLOCK(&vsi->queues[i].txr);
+
+	for (i = 0; i < vsi->num_queues; i++)
+		IXL_RX_UNLOCK(&vsi->queues[i].rxr);
+}
