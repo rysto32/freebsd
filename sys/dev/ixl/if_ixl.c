@@ -781,7 +781,10 @@ ixl_detach(device_t dev)
 		    "Shutdown LAN HMC failed with code %d\n", status);
 
 	/* Shutdown admin queue */
+	IXL_PF_LOCK(pf);
 	status = i40e_shutdown_adminq(hw);
+	IXL_PF_UNLOCK(pf);
+
 	if (status)
 		device_printf(dev,
 		    "Shutdown Admin queue failed with code %d\n", status);
@@ -1822,6 +1825,8 @@ ixl_update_link_status(struct ixl_pf *pf)
 	struct i40e_hw		*hw = &pf->hw;
 	struct ifnet		*ifp = vsi->ifp;
 	device_t		dev = pf->dev;
+
+	IXL_PF_LOCK_ASSERT(pf);
 
 	if (pf->link_up){ 
 		if (vsi->link_active == FALSE) {
@@ -4582,7 +4587,10 @@ ixl_set_flowcntl(SYSCTL_HANDLER_ARGS)
 
 	/* Set fc ability for port */
 	hw->fc.requested_mode = pf->fc;
+	IXL_PF_LOCK(pf);
 	aq_error = i40e_set_fc(hw, &fc_aq_err, TRUE);
+	IXL_PF_UNLOCK(pf);
+
 	if (aq_error) {
 		device_printf(dev,
 		    "%s: Error setting new fc mode %d; fc_err %#x\n",
@@ -4609,7 +4617,9 @@ ixl_current_speed(SYSCTL_HANDLER_ARGS)
 		"20G"
 	};
 
+	IXL_PF_LOCK(pf);
 	ixl_update_link_status(pf);
+	IXL_PF_UNLOCK(pf);
 
 	switch (hw->phy.link_info.link_speed) {
 	case I40E_LINK_SPEED_100MB:
@@ -4690,10 +4700,8 @@ ixl_set_advertised_speeds(struct ixl_pf *pf, int speeds)
 	** This seems a bit heavy handed, but we
 	** need to get a reinit on some devices
 	*/
-	IXL_PF_LOCK(pf);
 	ixl_stop(pf);
 	ixl_init_locked(pf);
-	IXL_PF_UNLOCK(pf);
 
 	return (0);
 }
@@ -4760,16 +4768,22 @@ ixl_set_advertise(SYSCTL_HANDLER_ARGS)
 		break;
 	}
 
+	IXL_PF_LOCK(pf);
 	/* Exit if no change */
-	if (pf->advertised_speed == requested_ls)
-		return (0);
+	if (pf->advertised_speed == requested_ls) {
+		error = 0;
+		goto out;
+	}
 
 	error = ixl_set_advertised_speeds(pf, requested_ls);
 	if (error)
-		return (error);
+		goto out;
 
 	pf->advertised_speed = requested_ls;
 	ixl_update_link_status(pf);
+
+out:
+	IXL_PF_UNLOCK(pf);
 	return (0);
 }
 
@@ -4876,7 +4890,10 @@ ixl_sysctl_link_status(SYSCTL_HANDLER_ARGS)
 
 	enum i40e_status_code aq_error = 0;
 
+	IXL_PF_LOCK(pf);
 	aq_error = i40e_aq_get_link_info(hw, TRUE, &link_status, NULL);
+	IXL_PF_UNLOCK(pf);
+
 	if (aq_error) {
 		printf("i40e_aq_get_link_info() error %d\n", aq_error);
 		return (EPERM);
@@ -4904,9 +4921,11 @@ ixl_sysctl_phy_abilities(SYSCTL_HANDLER_ARGS)
 	enum i40e_status_code	aq_error = 0;
 
 	struct i40e_aq_get_phy_abilities_resp abilities;
-
+	IXL_PF_LOCK(pf);
 	aq_error = i40e_aq_get_phy_capabilities(hw,
 	    TRUE, FALSE, &abilities, NULL);
+	IXL_PF_UNLOCK(pf);
+
 	if (aq_error) {
 		printf("i40e_aq_get_phy_capabilities() error %d\n", aq_error);
 		return (EPERM);
@@ -5002,10 +5021,12 @@ ixl_sysctl_hw_res_alloc(SYSCTL_HANDLER_ARGS)
 	}
 
 	bzero(resp, sizeof(resp));
+	IXL_PF_LOCK(pf);
 	error = i40e_aq_get_switch_resource_alloc(hw, &num_entries,
 				resp,
 				IXL_SW_RES_SIZE,
 				NULL);
+	IXL_PF_UNLOCK(pf);
 	if (error) {
 		device_printf(dev,
 		    "%s: get_switch_resource_alloc() error %d, aq error %d\n",
@@ -5103,8 +5124,10 @@ ixl_sysctl_switch_config(SYSCTL_HANDLER_ARGS)
 		return (ENOMEM);
 	}
 
+	IXL_PF_LOCK(pf);
 	error = i40e_aq_get_switch_config(hw, sw_config,
 	    sizeof(aq_buf), &next, NULL);
+	IXL_PF_UNLOCK(pf);
 	if (error) {
 		device_printf(dev,
 		    "%s: aq_get_switch_config() error %d, aq error %d\n",
