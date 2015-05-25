@@ -5048,8 +5048,8 @@ static int
 ixl_res_alloc_cmp(const void *a, const void *b)
 {
 	const struct i40e_aqc_switch_resource_alloc_element_resp *one, *two;
-	one = (struct i40e_aqc_switch_resource_alloc_element_resp *)a;
-	two = (struct i40e_aqc_switch_resource_alloc_element_resp *)b;
+	one = (const struct i40e_aqc_switch_resource_alloc_element_resp *)a;
+	two = (const struct i40e_aqc_switch_resource_alloc_element_resp *)b;
 
 	return ((int)one->resource_type - (int)two->resource_type);
 }
