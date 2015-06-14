@@ -698,8 +698,8 @@ ixl_attach(device_t dev)
 		pf_schema = pci_iov_schema_alloc_node();
 		vf_schema = pci_iov_schema_alloc_node();
 		pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL);
-		pci_iov_schema_add_bool(vf_schema, "mac-anti-spoof",
-		    IOV_SCHEMA_HASDEFAULT, TRUE);
+		pci_iov_schema_add_bool(vf_schema, "allow-mac-spoof",
+		    IOV_SCHEMA_HASDEFAULT, FALSE);
 		pci_iov_schema_add_bool(vf_schema, "allow-set-mac",
 		    IOV_SCHEMA_HASDEFAULT, FALSE);
 		pci_iov_schema_add_bool(vf_schema, "allow-promisc",
@@ -5272,7 +5272,7 @@ ixl_vf_alloc_vsi(struct ixl_pf *pf, struct ixl_vf *vf)
 
 	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_SECURITY_VALID);
 	vsi_ctx.info.sec_flags = 0;
-	if (vf->vf_flags & VF_FLAG_MAC_ANTI_SPOOF)
+	if (!(vf->vf_flags & VF_FLAG_ALLOW_MAC_SPOOF))
 		vsi_ctx.info.sec_flags |= I40E_AQ_VSI_SEC_FLAG_ENABLE_MAC_CHK;
 
 	vsi_ctx.info.valid_sections |= htole16(I40E_AQ_VSI_PROP_VLAN_VALID);
@@ -6669,8 +6669,8 @@ ixl_add_vf(device_t dev, uint16_t vfnum, const nvlist_t *params)
 		 */
 		vf->vf_flags |= VF_FLAG_SET_MAC_CAP;
 
-	if (nvlist_get_bool(params, "mac-anti-spoof"))
-		vf->vf_flags |= VF_FLAG_MAC_ANTI_SPOOF;
+	if (nvlist_get_bool(params, "allow-mac-spoof"))
+		vf->vf_flags |= VF_FLAG_ALLOW_MAC_SPOOF;
 
 	if (nvlist_get_bool(params, "allow-promisc"))
 		vf->vf_flags |= VF_FLAG_PROMISC_CAP;
