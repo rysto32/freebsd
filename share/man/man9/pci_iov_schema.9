@@ -47,25 +47,25 @@
 .Fn pci_iov_schema_alloc_node "void"
 .Ft void
 .Fn pci_iov_schema_add_bool "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "int defaultVal"
+"uint32_t flags" "int defaultVal" "const char *descr"
 .Ft void
 .Fn pci_iov_schema_add_string "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "const char *defaultVal"
+"uint32_t flags" "const char *defaultVal" "const char *descr"
 .Ft void
 .Fn pci_iov_schema_add_uint8 "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "uint8_t defaultVal"
+"uint32_t flags" "uint8_t defaultVal" "const char *descr"
 .Ft void
 .Fn pci_iov_schema_add_uint16 "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "uint16_t defaultVal"
+"uint32_t flags" "uint16_t defaultVal" "const char *descr"
 .Ft void
 .Fn pci_iov_schema_add_uint32 "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "uint32_t defaultVal"
+"uint32_t flags" "uint32_t defaultVal" "const char *descr"
 .Ft void
 .Fn pci_iov_schema_add_uint64 "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "uint64_t defaultVal"
+"uint32_t flags" "uint64_t defaultVal" "const char *descr"
 .Ft void
 .Fn pci_iov_schema_add_unicast_mac "nvlist_t *schema" "const char *name" \
-"uint32_t flags" "const uint8_t *defaultVal"
+"uint32_t flags" "const uint8_t *defaultVal" "const char *descr"
 .Sh DESCRIPTION
 The PCI Single-Root I/O Virtualization 
 .Pq SR-IOV
@@ -124,6 +124,11 @@ argument is ignored.
 This flag is not compatible with the
 .Dv IOV_SCHEMA_REQUIRED
 flag; it is an error to specify both on the same parameter.
+.Pp
+The
+.Pa descr
+argument specifies a human-readable description of the configuation parameter.
+It is an error for this parameter to be NULL or an empty string.
 .Pp
 The SR-IOV infrastructure guarantees that all configuration parameters that are
 either specified as required or given a default value will be present in the

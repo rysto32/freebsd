@@ -152,9 +152,21 @@ pci_iov_schema_add_required(nvlist_t *entry, uint32_t flags)
 	}
 }
 
+static void
+pci_iov_schema_add_desc(nvlist_t *entry, const char *desc)
+{
+
+	if (desc == NULL || strlen(desc) == 0) {
+		nvlist_set_error(entry, EINVAL);
+		return;
+	}
+
+	nvlist_add_string(entry, DESCR_SCHEMA_NAME, desc);
+}
+
 void
 pci_iov_schema_add_bool(nvlist_t *schema, const char *name, uint32_t flags,
-    int defaultVal)
+    int defaultVal, const char *desc)
 {
 	nvlist_t *entry;
 
@@ -168,13 +180,14 @@ pci_iov_schema_add_bool(nvlist_t *schema, const char *name, uint32_t flags,
 	if (flags & IOV_SCHEMA_HASDEFAULT)
 		nvlist_add_bool(entry, "default", defaultVal);
 	pci_iov_schema_add_required(entry, flags);
+	pci_iov_schema_add_desc(entry, desc);
 
 	nvlist_move_nvlist(schema, name, entry);
 }
 
 void
 pci_iov_schema_add_string(nvlist_t *schema, const char *name, uint32_t flags,
-    const char *defaultVal)
+    const char *defaultVal, const char *desc)
 {
 	nvlist_t *entry;
 
@@ -188,13 +201,14 @@ pci_iov_schema_add_string(nvlist_t *schema, const char *name, uint32_t flags,
 	if (flags & IOV_SCHEMA_HASDEFAULT)
 		nvlist_add_string(entry, "default", defaultVal);
 	pci_iov_schema_add_required(entry, flags);
+	pci_iov_schema_add_desc(entry, desc);
 
 	nvlist_move_nvlist(schema, name, entry);
 }
 
 static void
 pci_iov_schema_int(nvlist_t *schema, const char *name, const char *type,
-    uint32_t flags, uint64_t defaultVal)
+    uint32_t flags, uint64_t defaultVal, const char *desc)
 {
 	nvlist_t *entry;
 
@@ -208,45 +222,46 @@ pci_iov_schema_int(nvlist_t *schema, const char *name, const char *type,
 	if (flags & IOV_SCHEMA_HASDEFAULT)
 		nvlist_add_number(entry, "default", defaultVal);
 	pci_iov_schema_add_required(entry, flags);
+	pci_iov_schema_add_desc(entry, desc);
 
 	nvlist_move_nvlist(schema, name, entry);
 }
 
 void
 pci_iov_schema_add_uint8(nvlist_t *schema, const char *name, uint32_t flags,
-    uint8_t defaultVal)
+    uint8_t defaultVal, const char *desc)
 {
 
-	pci_iov_schema_int(schema, name, "uint8_t", flags, defaultVal);
+	pci_iov_schema_int(schema, name, "uint8_t", flags, defaultVal, desc);
 }
 
 void
 pci_iov_schema_add_uint16(nvlist_t *schema, const char *name, uint32_t flags,
-    uint16_t defaultVal)
+    uint16_t defaultVal, const char *desc)
 {
 
-	pci_iov_schema_int(schema, name, "uint16_t", flags, defaultVal);
+	pci_iov_schema_int(schema, name, "uint16_t", flags, defaultVal, desc);
 }
 
 void
 pci_iov_schema_add_uint32(nvlist_t *schema, const char *name, uint32_t flags,
-    uint32_t defaultVal)
+    uint32_t defaultVal, const char *desc)
 {
 
-	pci_iov_schema_int(schema, name, "uint32_t", flags, defaultVal);
+	pci_iov_schema_int(schema, name, "uint32_t", flags, defaultVal, desc);
 }
 
 void
 pci_iov_schema_add_uint64(nvlist_t *schema, const char *name, uint32_t flags,
-    uint64_t defaultVal)
+    uint64_t defaultVal, const char *desc)
 {
 
-	pci_iov_schema_int(schema, name, "uint64_t", flags, defaultVal);
+	pci_iov_schema_int(schema, name, "uint64_t", flags, defaultVal, desc);
 }
 
 void
 pci_iov_schema_add_unicast_mac(nvlist_t *schema, const char *name,
-    uint32_t flags, const uint8_t * defaultVal)
+    uint32_t flags, const uint8_t * defaultVal, const char *desc)
 {
 	nvlist_t *entry;
 
@@ -260,6 +275,7 @@ pci_iov_schema_add_unicast_mac(nvlist_t *schema, const char *name,
 	if (flags & IOV_SCHEMA_HASDEFAULT)
 		nvlist_add_binary(entry, "default", defaultVal, ETHER_ADDR_LEN);
 	pci_iov_schema_add_required(entry, flags);
+	pci_iov_schema_add_desc(entry, desc);
 
 	nvlist_move_nvlist(schema, name, entry);
 }

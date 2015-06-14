@@ -45,6 +45,7 @@
 #define	TYPE_SCHEMA_NAME	"TYPE"
 #define	DEFAULT_SCHEMA_NAME	"DEFAULT"
 #define	REQUIRED_SCHEMA_NAME	"REQUIRED"
+#define	DESCR_SCHEMA_NAME	"DESCRIPTION"
 
 /*
  * Because each PF device is expected to expose a unique set of possible
@@ -120,6 +121,10 @@
  *     the type specified by this schema.  If a configuration does not supply a
  *     value for the parameter specified by this schema, then the kernel will
  *     apply the value associated with this key in its place.
+ *  4) The parameter schema must contain a key with the name DESCR_SCHEMA_NAME.
+ *     The value associated with this key must be of type string.  The value is
+ *     a human-readable description of the meaning of the parameter specified
+ *     by this schema.
  *
  * The following is an example of a valid schema, as printed by nvlist_dump.
  * Keys are printed followed by the type of the value in parantheses.  The
@@ -133,27 +138,34 @@
  *          num_vfs (NVLIST):
  *              type (STRING): [uint16_t]
  *              required (BOOL): TRUE
+ *              description (STRING): [Number of VFs to create]
  *          device (NVLIST):
  *              type (STRING): [string]
  *              required (BOOL): TRUE
+ *              description (STRING): [The PF device]
  *      DRIVER (NVLIST):
  *  VF (NVLIST):
  *      IOV (NVLIST):
  *          passthrough (NVLIST):
  *              type (STRING): [bool]
  *              default (BOOL): FALSE
+ *              description (STRING): [Reserve this VF for PCI passthru]
  *      DRIVER (NVLIST):
  *          mac-addr (NVLIST):
  *              type (STRING): [mac-addr]
  *              default (BINARY): 6 000000000000
+ *              description (STRING): [MAC address for this VF]
  *          vlan (NVLIST):
- *               type (STRING): [uint16_t]
+ *              type (STRING): [uint16_t]
+ *              description (STRING): [VLAN tag for this VF]
  *          spoof-check (NVLIST):
  *              type (STRING): [bool]
  *              default (BOOL): TRUE
+ *              description (STRING): [Prevent MAC address spoofing]
  *          allow-set-mac (NVLIST):
  *              type (STRING): [bool]
  *              default (BOOL): FALSE
+ *              description (STRING): [Allow VF driver to change MAC address]
  */
 struct pci_iov_schema
 {

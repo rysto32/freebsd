@@ -45,7 +45,7 @@ __FBSDID("$FreeBSD$");
 
 static void	config_action(const char *filename, int dryrun);
 static void	delete_action(const char *device, int dryrun);
-static void	print_schema(const char *device);
+static void	print_schema(const char *device, int verbose);
 
 /*
  * Fetch the config schema from the kernel via ioctl.  This function has to
@@ -175,15 +175,16 @@ main(int argc, char **argv)
 {
 	char *device;
 	const char *filename;
-	int ch, dryrun;
+	int ch, dryrun, verbose;
 	enum main_action action;
 
 	device = NULL;
 	filename = NULL;
 	dryrun = 0;
 	action = NONE;
+	verbose = 0;
 
-	while ((ch = getopt(argc, argv, "Cd:Df:nS")) != -1) {
+	while ((ch = getopt(argc, argv, "Cd:Df:nSv")) != -1) {
 		switch (ch) {
 		case 'C':
 			if (action != NONE) {
@@ -217,6 +218,9 @@ main(int argc, char **argv)
 				usage();
 			}
 			action = PRINT_SCHEMA;
+			break;
+		case 'v':
+			verbose = 1;
 			break;
 		case '?':
 			warnx("Unrecognized argument '-%c'\n", optopt);
@@ -256,7 +260,7 @@ main(int argc, char **argv)
 		}
 		if (device == NULL)
 			device = find_device(filename);
-		print_schema(device);
+		print_schema(device, verbose);
 		free(device);
 		break;
 	default:
@@ -349,9 +353,9 @@ print_default_value(const nvlist_t *parameter, const char *type)
 }
 
 static void
-print_subsystem_schema(const nvlist_t * subsystem_schema)
+print_subsystem_schema(const nvlist_t * subsystem_schema, int verbose)
 {
-	const char *name, *type;
+	const char *name, *type, *desc;
 	const nvlist_t *parameter;
 	void *it;
 	int nvtype;
@@ -369,11 +373,16 @@ print_subsystem_schema(const nvlist_t * subsystem_schema)
 		else
 			printf(" (optional)");
 		printf("\n");
+
+		if (verbose) {
+			desc = nvlist_get_string(parameter, DESCR_SCHEMA_NAME);
+			printf("\t    %s\n", desc);
+		}
 	}
 }
 
 static void
-print_schema(const char *dev_name)
+print_schema(const char *dev_name, int verbose)
 {
 	nvlist_t *schema;
 	const nvlist_t *iov_schema, *driver_schema, *pf_schema, *vf_schema;
@@ -387,16 +396,16 @@ print_schema(const char *dev_name)
 	driver_schema = nvlist_get_nvlist(pf_schema, DRIVER_CONFIG_NAME);
 	printf(
 "The following configuration parameters may be configured on the PF:\n");
-	print_subsystem_schema(iov_schema);
-	print_subsystem_schema(driver_schema);
+	print_subsystem_schema(iov_schema, verbose);
+	print_subsystem_schema(driver_schema, verbose);
 
 	vf_schema = nvlist_get_nvlist(schema, VF_SCHEMA_NAME);
 	iov_schema = nvlist_get_nvlist(vf_schema, IOV_CONFIG_NAME);
 	driver_schema = nvlist_get_nvlist(vf_schema, DRIVER_CONFIG_NAME);
 	printf(
 "\nThe following configuration parameters may be configured on a VF:\n");
-	print_subsystem_schema(iov_schema);
-	print_subsystem_schema(driver_schema);
+	print_subsystem_schema(iov_schema, verbose);
+	print_subsystem_schema(driver_schema, verbose);
 
 	nvlist_destroy(schema);
 	close(fd);

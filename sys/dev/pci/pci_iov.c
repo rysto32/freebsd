@@ -294,8 +294,10 @@ pci_iov_get_pf_subsystem_schema(void)
 	if (pf == NULL)
 		return (NULL);
 
-	pci_iov_schema_add_uint16(pf, "num_vfs", IOV_SCHEMA_REQUIRED, -1);
-	pci_iov_schema_add_string(pf, "device", IOV_SCHEMA_REQUIRED, NULL);
+	pci_iov_schema_add_uint16(pf, "num_vfs", IOV_SCHEMA_REQUIRED, -1,
+	    "The number of VFs to allocate");
+	pci_iov_schema_add_string(pf, "device", IOV_SCHEMA_REQUIRED, NULL,
+	    "The PF device on which VFs will be allocated");
 
 	return (pf);
 }
@@ -309,7 +311,8 @@ pci_iov_get_vf_subsystem_schema(void)
 	if (vf == NULL)
 		return (NULL);
 
-	pci_iov_schema_add_bool(vf, "passthrough", IOV_SCHEMA_HASDEFAULT, 0);
+	pci_iov_schema_add_bool(vf, "passthrough", IOV_SCHEMA_HASDEFAULT, 0,
+	    "Reserve this VF for PCI passthrough to a VM.");
 
 	return (vf);
 }

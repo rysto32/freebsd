@@ -43,6 +43,7 @@
 .Nm
 .Fl S
 .Op Fl f Ar config-file | Fl d Ar device
+.Op Fl v
 .Sh DESCRIPTION
 The
 .Nm
@@ -114,6 +115,15 @@ Read the configuration schema from the specified device and print its contents
 to stdout.
 This action may be used to discover the configuration parameters supported on
 a given PF device.
+.It Fl v
+When printing the configuration schema with the
+.Fl S
+flag, also print a description of each configuration paramter.
+This flag has no effect when run with the
+.Fl C
+or
+.Fl D
+options.
 .El
 .Sh SEE ALSO
 .Xr iovctl.conf 5 ,

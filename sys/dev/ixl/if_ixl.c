@@ -697,13 +697,17 @@ ixl_attach(device_t dev)
 	if (pf->msix > 1) {
 		pf_schema = pci_iov_schema_alloc_node();
 		vf_schema = pci_iov_schema_alloc_node();
-		pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL);
+		pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL,
+		    "Default MAC address to assign to VF");
 		pci_iov_schema_add_bool(vf_schema, "allow-mac-spoof",
-		    IOV_SCHEMA_HASDEFAULT, FALSE);
+		    IOV_SCHEMA_HASDEFAULT, FALSE,
+"Allow VF to transmit packets from a source MAC that is not assigned to it");
 		pci_iov_schema_add_bool(vf_schema, "allow-set-mac",
-		    IOV_SCHEMA_HASDEFAULT, FALSE);
+		    IOV_SCHEMA_HASDEFAULT, FALSE,
+		    "Allow VF to override its MAC address");
 		pci_iov_schema_add_bool(vf_schema, "allow-promisc",
-		    IOV_SCHEMA_HASDEFAULT, FALSE);
+		    IOV_SCHEMA_HASDEFAULT, FALSE,
+		    "Allow VF to enter promiscuous mode");
 
 		iov_error = pci_iov_attach(dev, pf_schema, vf_schema);
 		if (iov_error != 0)

@@ -35,18 +35,18 @@
 nvlist_t	*pci_iov_schema_alloc_node(void);
 
 void	pci_iov_schema_add_bool(nvlist_t *schema, const char *name,
-	    uint32_t flags,  int defaultVal);
+	    uint32_t flags,  int defaultVal, const char *descr);
 void	pci_iov_schema_add_string(nvlist_t *schema, const char *name,
-	    uint32_t flags, const char *defaultVal);
+	    uint32_t flags, const char *defaultVal, const char *descr);
 void	pci_iov_schema_add_uint8(nvlist_t *schema, const char *name,
-	    uint32_t flags, uint8_t defaultVal);
+	    uint32_t flags, uint8_t defaultVal, const char *descr);
 void	pci_iov_schema_add_uint16(nvlist_t *schema, const char *name,
-	    uint32_t flags, uint16_t defaultVal);
+	    uint32_t flags, uint16_t defaultVal, const char *descr);
 void	pci_iov_schema_add_uint32(nvlist_t *schema, const char *name,
-	    uint32_t flags, uint32_t defaultVal);
+	    uint32_t flags, uint32_t defaultVal, const char *descr);
 void	pci_iov_schema_add_uint64(nvlist_t *schema, const char *name,
-	    uint32_t flags, uint64_t defaultVal);
+	    uint32_t flags, uint64_t defaultVal, const char *descr);
 void	pci_iov_schema_add_unicast_mac(nvlist_t *schema, const char *name,
-	    uint32_t flags, const uint8_t * defaultVal);
+	    uint32_t flags, const uint8_t * defaultVal, const char *descr);
 
 #endif
