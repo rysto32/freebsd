@@ -6181,12 +6181,12 @@ ixgbe_handle_link(void *context, int pending)
 {
 	struct adapter  *adapter = context;
 	struct ixgbe_interface *interface;
-	
-	interface = &adapter->interface;
 
 	ixgbe_check_link(&adapter->hw,
 	    &adapter->link_speed, &adapter->link_up, 0);
-       	ixgbe_update_link_status(interface);
+
+	TAILQ_FOREACH(interface, &adapter->interface_list, next)
+		ixgbe_update_link_status(interface);
 }
 
 /*
