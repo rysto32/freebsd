@@ -424,6 +424,8 @@ static int fdir_pballoc = 1;
 #include <dev/netmap/ixgbe_netmap.h>
 #endif /* DEV_NETMAP */
 
+static MALLOC_DEFINE(M_IXGBE, "ixgbe", "IXGBE driver");
+
 /*********************************************************************
  *  Device identification routine
  *
@@ -3644,8 +3646,7 @@ ixgbe_init_interface(struct adapter *adapter, int index,
 {
 	struct ixgbe_interface *interface;
 	
-	interface = &adapter->interface;
-	
+	interface = malloc(sizeof(*interface), M_IXGBE, M_WAITOK | M_ZERO);
 	interface->me = index;
 	interface->adapter = adapter;
 	interface->num_tx_desc = adapter->num_tx_desc;

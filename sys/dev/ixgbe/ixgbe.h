@@ -492,7 +492,6 @@ struct adapter {
 
 	struct mtx		core_mtx;
 
-	struct ixgbe_interface	interface;
 	struct ixgbe_interface	*phys_interface;
 	struct ixgbe_rx_pool	bcast_pool;
 
