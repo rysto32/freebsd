@@ -6251,11 +6251,6 @@ static void
 ixgbe_reinit_fdir(void *context, int pending)
 {
 	struct adapter  *adapter = context;
-	struct ixgbe_interface *interface;
-	struct ifnet   *ifp;
-	
-	interface = &adapter->interface;
-	ifp = interface->ifp;
 
 	if (adapter->fdir_reinit != 1) /* Shouldn't happen */
 		return;
@@ -6263,8 +6258,6 @@ ixgbe_reinit_fdir(void *context, int pending)
 	adapter->fdir_reinit = 0;
 	/* re-enable flow director interrupts */
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMS, IXGBE_EIMS_FLOW_DIR);
-	/* Restart the interface */
-	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	return;
 }
 #endif
