@@ -174,6 +174,9 @@ static void	ixgbe_setup_hw_rsc(struct rx_ring *);
 static void     ixgbe_enable_intr(struct ixgbe_interface *);
 static void     ixgbe_disable_intr(struct ixgbe_interface *);
 static void     ixgbe_update_stats_counters(struct adapter *);
+static void	ixgbe_update_phys_counters(struct adapter *, uint64_t);
+static void	ixgbe_update_phys_drops(struct adapter *);
+static void	ixgbe_update_if_counters(struct ixgbe_interface *, uint64_t);
 static void	ixgbe_txeof(struct tx_ring *);
 static bool	ixgbe_rxeof(struct ix_queue *);
 static void	ixgbe_rx_checksum(u32, struct mbuf *, u32);
@@ -2305,6 +2308,7 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	bus_dmamap_t	map;
 	struct ixgbe_tx_buf *txbuf;
 	union ixgbe_adv_tx_desc *txd = NULL;
+	uint64_t	tx_bytes;
 
 	m_head = *m_headp;
 	interface = txr->interface;
@@ -2392,6 +2396,7 @@ retry:
 	}
 #endif
 
+	tx_bytes = 0;
 	i = txr->next_avail_desc;
 	for (j = 0; j < nsegs; j++) {
 		bus_size_t seglen;
@@ -2406,6 +2411,8 @@ retry:
 		txd->read.cmd_type_len = htole32(txr->txd_cmd |
 		    cmd_type_len |seglen);
 		txd->read.olinfo_status = htole32(olinfo_status);
+
+		tx_bytes += seglen;
 
 		if (++i == txr->num_desc)
 			i = 0;
@@ -2438,6 +2445,7 @@ retry:
 	 * hardware that this frame is available to transmit.
 	 */
 	++txr->total_packets;
+	txr->tx_bytes += tx_bytes;
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_TDT(txr->me), i);
 
 	return (0);
@@ -4638,7 +4646,6 @@ ixgbe_txeof(struct tx_ring *txr)
 		}
 		++txr->packets;
 		++processed;
-		++ifp->if_opackets;
 		txr->watchdog_time = ticks;
 
 		/* Try the next packet */
@@ -6271,13 +6278,9 @@ static void
 ixgbe_update_stats_counters(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
-	struct ifnet   *ifp;
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32  missed_rx = 0, bprc, lxon, lxoff, total;
 	u64  total_missed_rx = 0;
-	
-	interface = &adapter->interface;
-	ifp = interface->ifp;
 
 	adapter->stats.crcerrs += IXGBE_READ_REG(hw, IXGBE_CRCERRS);
 	adapter->stats.illerrc += IXGBE_READ_REG(hw, IXGBE_ILLERRC);
@@ -6408,6 +6411,23 @@ ixgbe_update_stats_counters(struct adapter *adapter)
 		adapter->stats.fcoedwtc += IXGBE_READ_REG(hw, IXGBE_FCOEDWTC);
 	}
 
+	if (adapter->num_interfaces == 1)
+		ixgbe_update_phys_counters(adapter, total_missed_rx);
+	else {
+		TAILQ_FOREACH(interface, &adapter->interface_list, next)
+			ixgbe_update_if_counters(interface, total_missed_rx);
+	}
+
+	ixgbe_update_phys_drops(adapter);
+}
+
+static void
+ixgbe_update_phys_counters(struct adapter *adapter, uint64_t total_missed_rx)
+{
+	struct ifnet *ifp;
+
+	ifp = adapter->phys_interface->ifp;
+
 	/* Fill out the OS statistics structure */
 	ifp->if_ipackets = adapter->stats.gprc;
 	ifp->if_opackets = adapter->stats.gptc;
@@ -6415,12 +6435,74 @@ ixgbe_update_stats_counters(struct adapter *adapter)
 	ifp->if_obytes = adapter->stats.gotc;
 	ifp->if_imcasts = adapter->stats.mprc;
 	ifp->if_omcasts = adapter->stats.mptc;
+	ifp->if_iqdrops = total_missed_rx;
 	ifp->if_collisions = 0;
+}
+
+static void
+ixgbe_update_phys_drops(struct adapter *adapter)
+{
+	struct ifnet *ifp;
+
+	ifp = adapter->phys_interface->ifp;
 
 	/* Rx Errors */
-	ifp->if_iqdrops = total_missed_rx;
 	ifp->if_ierrors = adapter->stats.crcerrs + adapter->stats.rlec;
 }
+
+static void
+ixgbe_update_if_counters(struct ixgbe_interface *interface,
+    uint64_t global_missed_rx)
+{
+	struct adapter *adapter;
+	struct ifnet *ifp;
+	struct rx_ring *rxr;
+	struct tx_ring *txr;
+	uint64_t ipackets, ibytes, idiscards, opackets, obytes;
+	int i;
+
+	ifp = interface->ifp;
+	adapter = interface->adapter;
+	ipackets = 0;
+	ibytes = 0;
+	idiscards = 0;
+	opackets = 0;
+	obytes = 0;
+
+	if (interface == adapter->phys_interface)
+		idiscards += global_missed_rx;
+
+	if (interface->rx_pool.index < nitems(adapter->stats.qprdc))
+		idiscards += adapter->stats.qprdc[interface->rx_pool.index];
+
+	/* 
+	 * Drops from the broadcast queue are drops of packets 
+	 * that were directed to every interface, so count the
+	 * drops against every interface.
+	 */
+	if (adapter->bcast_pool.index < nitems(adapter->stats.qprdc))
+		idiscards += adapter->stats.qprdc[adapter->bcast_pool.index];
+
+	for (i = 0; i < interface->rx_pool.num_queues; i++) {
+		rxr = &interface->rx_pool.rx_rings[i];
+		IXGBE_RX_LOCK(rxr);
+		ipackets += rxr->rx_packets;
+		ibytes += rxr->rx_bytes;
+		IXGBE_RX_UNLOCK(rxr);
+
+		txr = &interface->tx_rings[i];
+		IXGBE_TX_LOCK(txr);
+		opackets += txr->total_packets;
+		obytes += txr->tx_bytes;
+		IXGBE_TX_UNLOCK(txr);
+	}
+
+	ifp->if_ipackets = ipackets;
+	ifp->if_opackets = opackets;
+	ifp->if_ibytes = ibytes;
+	ifp->if_obytes = obytes;
+}
+
 
 /** ixgbe_sysctl_tdh_handler - Handler function
  *  Retrieves the TDH value from the hardware

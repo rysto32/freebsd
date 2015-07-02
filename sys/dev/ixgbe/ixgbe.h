@@ -347,6 +347,7 @@ struct tx_ring {
 	unsigned long   	no_tx_dma_setup;
 	u64			no_desc_avail;
 	u64			total_packets;
+	u64			tx_bytes;
 	
 	uint32_t		tx_flags;
 };
