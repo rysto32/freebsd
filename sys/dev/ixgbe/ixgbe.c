@@ -196,7 +196,7 @@ static void	ixgbe_set_ivar(struct adapter *, u8, u8, s8);
 static void	ixgbe_configure_ivars(struct ixgbe_interface *);
 static u8 *	ixgbe_mc_array_itr(struct ixgbe_hw *, u8 **, u32 *);
 
-static void	ixgbe_setup_vlan_hw_support(struct adapter *);
+static void	ixgbe_setup_vlan_hw_support(struct adapter *, boolean_t);
 static void	ixgbe_register_vlan(void *, struct ifnet *, u16);
 static void	ixgbe_register_vlan_int(struct ixgbe_interface *, u16);
 static void	ixgbe_unregister_vlan(void *, struct ifnet *, u16);
@@ -1761,9 +1761,6 @@ ixgbe_init_adapter(struct adapter *adapter)
 
 	/* Initialize the FC settings */
 	ixgbe_start_hw(hw);
-
-	/* Set up VLAN support and filter */
-	ixgbe_setup_vlan_hw_support(adapter);
 }
 
 static void
@@ -1773,6 +1770,7 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	struct ifnet   *ifp;
 	device_t 	dev;
 	struct ixgbe_hw *hw;
+	boolean_t did_reset;
 	
 	adapter = interface->adapter;
 	ifp = interface->ifp;
@@ -1784,8 +1782,14 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	
 	ixgbe_stop(interface);
 
-	if (interface->adapter->num_hw_inited_interfaces == 0)
+	if (interface->adapter->num_hw_inited_interfaces == 0) {
 		ixgbe_init_adapter(interface->adapter);
+		did_reset = TRUE;
+	} else
+		did_reset = FALSE;
+
+	/* Set up VLAN support and filter */
+	ixgbe_setup_vlan_hw_support(adapter, did_reset);
 
 	/* Set the various hardware offload abilities */
 	ifp->if_hwassist = 0;
@@ -5713,7 +5717,7 @@ ixgbe_register_vlan_int(struct ixgbe_interface *interface, u16 vtag)
 	bit = vtag & 0x1F;
 	interface->shadow_vfta[index] |= (1 << bit);
 	++interface->num_vlans;
-	ixgbe_setup_vlan_hw_support(adapter);
+	ixgbe_setup_vlan_hw_support(adapter, TRUE);
 	IXGBE_CORE_UNLOCK(adapter);
 }
 
@@ -5749,7 +5753,7 @@ ixgbe_unregister_vlan_int(struct ixgbe_interface *interface, u16 vtag)
 	interface->shadow_vfta[index] &= ~(1 << bit);
 	--interface->num_vlans;
 	/* Re-init to load the changes */
-	ixgbe_setup_vlan_hw_support(adapter);
+	ixgbe_setup_vlan_hw_support(adapter, FALSE);
 	IXGBE_CORE_UNLOCK(adapter);
 }
 
@@ -5758,31 +5762,53 @@ ixgbe_has_vlans(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
 	
-	interface = &adapter->interface;
-	return (interface->num_vlans != 0);
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		if (interface->num_vlans != 0)
+			return (TRUE);
+	}
+
+	return (FALSE);
+}
+
+static boolean_t
+ixgbe_hwfilter_enabled(struct adapter *adapter)
+{
+	struct ixgbe_interface *interface;
+	struct ifnet *ifp;
+
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		ifp = interface->ifp;
+		if (ifp->if_capenable & IFCAP_VLAN_HWFILTER)
+			return (TRUE);
+	}
+
+	return (FALSE);
 }
 
 static uint32_t
 ixgbe_get_vfta(struct adapter *adapter, int index)
 {
 	struct ixgbe_interface *interface;
-	
-	interface = &adapter->interface;
-	return (interface->shadow_vfta[index]);
+	struct ifnet *ifp;
+	uint32_t vfta;
+
+	vfta = 0;
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		ifp = interface->ifp;
+		if (ifp->if_capenable & IFCAP_VLAN_HWFILTER)
+			vfta |= interface->shadow_vfta[index];
+	}
+	return (vfta);
 }
 
 static void
-ixgbe_setup_vlan_hw_support(struct adapter *adapter)
+ixgbe_setup_vlan_hw_support(struct adapter *adapter, boolean_t reset)
 {
 	struct ixgbe_interface *interface;
-	struct ifnet 	*ifp;
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct rx_ring	*rxr;
 	u32		ctrl;
 	uint32_t	vfta;
-
-	interface = &adapter->interface;
-	ifp = interface->ifp;
 
 	/*
 	** We get here thru init_locked, meaning
@@ -5794,18 +5820,20 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 		return;
 
 	/* Setup the queues for vlans */
-	for (int i = 0; i < interface->rx_pool.num_queues; i++) {
-		rxr = &interface->rx_pool.rx_rings[i];
-		/* On 82599 the VLAN enable is per/queue in RXDCTL */
-		if (hw->mac.type != ixgbe_mac_82598EB) {
-			ctrl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
-			ctrl |= IXGBE_RXDCTL_VME;
-			IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), ctrl);
+	TAILQ_FOREACH(interface, &adapter->interface_list, next) {
+		for (int i = 0; i < interface->rx_pool.num_queues; i++) {
+			rxr = &interface->rx_pool.rx_rings[i];
+			/* On 82599 the VLAN enable is per/queue in RXDCTL */
+			if (hw->mac.type != ixgbe_mac_82598EB) {
+				ctrl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
+				ctrl |= IXGBE_RXDCTL_VME;
+				IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), ctrl);
+			}
+			rxr->vtag_strip = TRUE;
 		}
-		rxr->vtag_strip = TRUE;
 	}
 
-	if ((ifp->if_capenable & IFCAP_VLAN_HWFILTER) == 0)
+	if (!ixgbe_hwfilter_enabled(adapter))
 		return;
 	/*
 	** A soft reset zero's out the VFTA, so
@@ -5813,16 +5841,14 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 	*/
 	for (int i = 0; i < IXGBE_VFTA_SIZE; i++) {
 		vfta = ixgbe_get_vfta(adapter, i);
-		if (vfta != 0)
+		if (!reset || vfta != 0)
 			IXGBE_WRITE_REG(hw, IXGBE_VFTA(i), vfta);
 	}
 
 	ctrl = IXGBE_READ_REG(hw, IXGBE_VLNCTRL);
 	/* Enable the Filter Table if enabled */
-	if (ifp->if_capenable & IFCAP_VLAN_HWFILTER) {
-		ctrl &= ~IXGBE_VLNCTRL_CFIEN;
-		ctrl |= IXGBE_VLNCTRL_VFE;
-	}
+	ctrl &= ~IXGBE_VLNCTRL_CFIEN;
+	ctrl |= IXGBE_VLNCTRL_VFE;
 	if (hw->mac.type == ixgbe_mac_82598EB)
 		ctrl |= IXGBE_VLNCTRL_VME;
 	IXGBE_WRITE_REG(hw, IXGBE_VLNCTRL, ctrl);
