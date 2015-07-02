@@ -2904,7 +2904,7 @@ ixgbe_allocate_legacy(struct adapter *adapter)
 #endif
 	int		error, rid = 0;
 	
-	interface = &adapter->interface;
+	interface = adapter->phys_interface;
 	que = interface->rx_pool.queues;
 
 #ifndef IXGBE_LEGACY_TX
@@ -3040,8 +3040,8 @@ ixgbe_allocate_msix(struct adapter *adapter)
 	struct 		ixgbe_interface *interface;
 	struct  	tx_ring *txr;
 	int 		error, rid, vector, i;
-	
-	interface = &adapter->interface;
+
+	interface = adapter->phys_interface;
 	txr = interface->tx_rings;
 
 	error = ixgbe_allocate_pool_msix(&interface->rx_pool, ixgbe_msix_que);
@@ -3146,12 +3146,9 @@ ixgbe_get_max_queues(struct adapter *adapter)
 static int
 ixgbe_setup_msix(struct adapter *adapter)
 {
-	struct ixgbe_interface *interface;
 	device_t dev = adapter->dev;
 	int rid, want, queues, msgs;
 	int default_queues, pool_queues;
-	
-	interface = &adapter->interface;
 
 	/* Override by tuneable */
 	if (ixgbe_enable_msix == 0)
@@ -3307,7 +3304,7 @@ ixgbe_free_pci_resources(struct adapter * adapter)
 	device_t	dev = adapter->dev;
 	int		rid, memrid;
 	
-	interface = &adapter->interface;
+	interface = adapter->phys_interface;
 
 	if (adapter->hw.mac.type == ixgbe_mac_82598EB)
 		memrid = PCIR_BAR(MSIX_82598_BAR);
@@ -3597,7 +3594,7 @@ ixgbe_alloc_bcast_pool(struct adapter *adapter)
 	pool_index = alloc_unr(adapter->vll_unrhdr);
 
 	error = ixgbe_allocate_rx_pool(&adapter->bcast_pool, pool_index,
-	    &adapter->interface);
+	    adapter->phys_interface);
 	if (error != 0) {
 		free_unr(adapter->vll_unrhdr, pool_index);
 		return (error);
@@ -3663,7 +3660,7 @@ ixgbe_free_interfaces(struct adapter *adapter)
 {
 	struct ixgbe_interface *interface;
 	
-	interface = &adapter->interface;
+	interface = adapter->phys_interface;
 
 	sysctl_ctx_free(&interface->sysctl_ctx);
 	ixgbe_free_transmit_structures(interface);
@@ -5144,7 +5141,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 	}
 
 	if (adapter->num_interfaces == 1)
-		default_pool = &adapter->interface.rx_pool;
+		default_pool = &adapter->phys_interface->rx_pool;
 	else
 		default_pool = &adapter->bcast_pool;
 
