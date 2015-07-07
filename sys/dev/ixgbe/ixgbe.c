@@ -1654,7 +1654,7 @@ ixgbe_init_adapter(struct adapter *adapter)
 	dev = adapter->dev;
 	hw = &adapter->hw;
 	
-	hw->addr_ctrl.rar_used_count = 1;
+	hw->addr_ctrl.rar_used_count = adapter->max_interfaces;
 	ixgbe_init_hw(hw);
 	ixgbe_enable_transmitter(adapter);
 	
