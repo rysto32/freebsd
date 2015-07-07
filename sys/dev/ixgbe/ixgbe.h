@@ -420,10 +420,10 @@ struct ixgbe_rx_pool {
 };
 
 /* This pool receives packets that pass inexact filters, like broadcasts. */
-#define IXGBE_RX_POOL_BROADCAST		(1 << 0)
+#define IXGBE_RX_POOL_BROADCAST		0x01
 
 /* * This pool has an interface associated with it. */
-#define IXGBE_RX_POOL_HAS_INTERFACE		(1 << 1)
+#define IXGBE_RX_POOL_HAS_INTERFACE	0x02
 
 /* This pool has been initialized. */
 #define IXGBE_RX_POOL_INITED		0x04
