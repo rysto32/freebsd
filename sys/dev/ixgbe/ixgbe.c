@@ -1824,11 +1824,11 @@ ixgbe_init_locked(struct ixgbe_interface *interface)
 	** Determine the correct mbuf pool
 	** for doing jumbo frames
 	*/
-	if (interface->max_frame_size <= 2048)
+	if (interface->max_frame_size <= MCLBYTES)
 		interface->rx_pool.rx_mbuf_sz = MCLBYTES;
-	else if (interface->max_frame_size <= 4096)
+	else if (interface->max_frame_size <= MJUMPAGESIZE)
 		interface->rx_pool.rx_mbuf_sz = MJUMPAGESIZE;
-	else if (interface->max_frame_size <= 9216)
+	else if (interface->max_frame_size <= MJUM9BYTES)
 		interface->rx_pool.rx_mbuf_sz = MJUM9BYTES;
 	else
 		interface->rx_pool.rx_mbuf_sz = MJUM16BYTES;
