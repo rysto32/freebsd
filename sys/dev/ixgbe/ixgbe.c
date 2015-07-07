@@ -1337,7 +1337,7 @@ ixgbe_start_rx_pool(struct ixgbe_hw *hw, struct ixgbe_rx_pool *pool)
 		 * they are not overwritten.
 		 *
 		 * In this driver the NIC ring starts at RDH = 0,
-		 * RDT points to the lastg1609 slot available for reception (?),
+		 * RDT points to the last slot available for reception (?),
 		 * so RDT = num_rx_desc - 1 means the whole ring is available.
 		 */
 		ifp = pool->interface->ifp;
