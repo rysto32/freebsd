@@ -179,6 +179,8 @@ static void	ixgbe_update_phys_drops(struct adapter *);
 static void	ixgbe_update_if_counters(struct ixgbe_interface *, uint64_t);
 static void	ixgbe_txeof(struct tx_ring *);
 static bool	ixgbe_rxeof(struct ix_queue *);
+static __inline bool	ixgbe_rxeof_generic(struct ix_queue *, int,
+		    ixgbe_input_t, void *) __always_inline;
 static void	ixgbe_rx_checksum(u32, struct mbuf *, u32);
 static void     ixgbe_set_promisc(struct adapter *);
 static void     ixgbe_set_multi(struct ixgbe_interface *);
@@ -5347,6 +5349,8 @@ ixgbe_free_receive_buffers(struct rx_ring *rxr)
 static __inline void
 ixgbe_rx_input(struct rx_ring *rxr, struct ifnet *ifp, struct mbuf *m, u32 ptype)
 {
+
+	m->m_pkthdr.rcvif = ifp;
                  
         /*
          * ATM LRO is only for IP/TCP packets and TCP checksum of the packet
@@ -5375,6 +5379,20 @@ ixgbe_rx_input(struct rx_ring *rxr, struct ifnet *ifp, struct mbuf *m, u32 ptype
 	IXGBE_RX_UNLOCK(rxr);
         (*ifp->if_input)(ifp, m);
 	IXGBE_RX_LOCK(rxr);
+}
+
+static void
+ixgbe_rxeof_input(void *arg, struct mbuf *m, u32 staterr, u32 ptype)
+{
+	struct rx_ring *rxr;
+	struct ifnet *ifp;
+
+	rxr = arg;
+	ifp = rxr->pool->interface->ifp;
+	if ((ifp->if_capenable & IFCAP_RXCSUM) != 0)
+		ixgbe_rx_checksum(staterr, m, ptype);
+
+	ixgbe_rx_input(rxr, ifp, m, ptype);
 }
 
 static __inline void
@@ -5407,6 +5425,45 @@ ixgbe_rx_discard(struct rx_ring *rxr, int i)
 	return;
 }
 
+static bool
+ixgbe_rxeof(struct ix_queue *que)
+{
+	struct rx_ring		*rxr = que->rxr;
+	struct lro_ctrl		*lro = &rxr->lro;
+	struct lro_entry	*queued;
+	struct ifnet		*ifp;
+	boolean_t		more;
+#ifdef DEV_NETMAP
+	int			processed;
+#endif
+
+	ifp = rxr->pool->interface->ifp;
+
+	IXGBE_RX_LOCK(rxr);
+
+#ifdef DEV_NETMAP
+	/* Same as the txeof routine: wakeup clients on intr. */
+	if (netmap_rx_irq(ifp, rxr->me, &processed)) {
+		IXGBE_RX_UNLOCK(rxr);
+		return (FALSE);
+	}
+#endif /* DEV_NETMAP */
+
+	more = ixgbe_rxeof_generic(que, rxr->process_limit, ixgbe_rxeof_input, rxr);
+
+	/*
+	 * Flush any outstanding LRO work
+	 */
+	while ((queued = SLIST_FIRST(&lro->lro_active)) != NULL) {
+		SLIST_REMOVE_HEAD(&lro->lro_active, next);
+		tcp_lro_flush(lro, queued);
+	}
+
+	IXGBE_RX_UNLOCK(rxr);
+
+	return (more);
+}
+
 
 /*********************************************************************
  *
@@ -5419,34 +5476,20 @@ ixgbe_rx_discard(struct rx_ring *rxr, int i)
  *
  *  Return TRUE for more work, FALSE for all clean.
  *********************************************************************/
-static bool
-ixgbe_rxeof(struct ix_queue *que)
+static __inline bool
+ixgbe_rxeof_generic(struct ix_queue *que, int count,
+    ixgbe_input_t input, void *arg)
 {
 	struct ixgbe_rx_pool	*pool;
-	struct ixgbe_interface	*interface;
 	struct rx_ring		*rxr = que->rxr;
-	struct ifnet		*ifp;
-	struct lro_ctrl		*lro = &rxr->lro;
-	struct lro_entry	*queued;
 	int			i, nextp, processed = 0;
 	u32			staterr = 0;
-	u16			count = rxr->process_limit;
 	union ixgbe_adv_rx_desc	*cur;
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
 
 	pool = rxr->pool;
-	interface = que->interface;
-	ifp = interface->ifp;
 
-	IXGBE_RX_LOCK(rxr);
-
-#ifdef DEV_NETMAP
-	/* Same as the txeof routine: wakeup clients on intr. */
-	if (netmap_rx_irq(ifp, rxr->me, &processed)) {
-		IXGBE_RX_UNLOCK(rxr);
-		return (FALSE);
-	}
-#endif /* DEV_NETMAP */
+	IXGBE_RX_LOCK_ASSERT(rxr);
 
 	for (i = rxr->next_to_check; count != 0;) {
 		struct mbuf	*sendmp, *mp;
@@ -5463,8 +5506,6 @@ ixgbe_rxeof(struct ix_queue *que)
 		staterr = le32toh(cur->wb.upper.status_error);
 
 		if ((staterr & IXGBE_RXD_STAT_DD) == 0)
-			break;
-		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 			break;
 
 		count--;
@@ -5577,8 +5618,6 @@ ixgbe_rxeof(struct ix_queue *que)
 			sendmp = NULL;
 			mp->m_next = nbuf->buf;
 		} else { /* Sending this frame */
-			sendmp->m_pkthdr.rcvif = ifp;
-			ifp->if_ipackets++;
 			rxr->rx_packets++;
 			/* capture data for AIM */
 			rxr->bytes += sendmp->m_pkthdr.len;
@@ -5591,8 +5630,6 @@ ixgbe_rxeof(struct ix_queue *que)
 				sendmp->m_pkthdr.ether_vtag = vtag;
 				sendmp->m_flags |= M_VLANTAG;
 			}
-			if ((ifp->if_capenable & IFCAP_RXCSUM) != 0)
-				ixgbe_rx_checksum(staterr, sendmp, ptype);
 #if __FreeBSD_version >= 800000
 			sendmp->m_pkthdr.flowid = que->msix;
 			sendmp->m_flags |= M_FLOWID;
@@ -5609,7 +5646,7 @@ next_desc:
 		/* Now send to the stack or do LRO */
 		if (sendmp != NULL) {
 			rxr->next_to_check = i;
-			ixgbe_rx_input(rxr, ifp, sendmp, ptype);
+			input(arg, sendmp, staterr, ptype);
 			i = rxr->next_to_check;
 		}
 
@@ -5625,16 +5662,6 @@ next_desc:
 		ixgbe_refresh_mbufs(rxr, i);
 
 	rxr->next_to_check = i;
-
-	/*
-	 * Flush any outstanding LRO work
-	 */
-	while ((queued = SLIST_FIRST(&lro->lro_active)) != NULL) {
-		SLIST_REMOVE_HEAD(&lro->lro_active, next);
-		tcp_lro_flush(lro, queued);
-	}
-
-	IXGBE_RX_UNLOCK(rxr);
 
 	/*
 	** Still have cleaning to do?

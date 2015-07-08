@@ -578,6 +578,21 @@ struct adapter {
 #define PCIER_LINK_STA PCIR_EXPRESS_LINK_STA
 #endif
 
+typedef void (*ixgbe_input_t)(void *a, struct mbuf *m, u32 stderr, u32 ptype);
+
+struct rx_stats {
+	uint64_t packets;
+	uint64_t bytes;
+	uint64_t drops;
+	uint64_t errors;
+};
+
+#define INIT_RX_STATS(stats)					\
+	do {							\
+		*(stats) = (struct rx_stats){0, 0, 0, 0};	\
+	} while(0)
+
+
 static inline bool
 ixgbe_is_sfp(struct ixgbe_hw *hw)
 {
