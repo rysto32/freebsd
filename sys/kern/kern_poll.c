@@ -29,6 +29,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_device_polling.h"
+#include "opt_kdtrace.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -37,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/eventhandler.h>
 #include <sys/resourcevar.h>
+#include <sys/sdt.h>
 #include <sys/socket.h>			/* needed by net/if.h		*/
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
@@ -50,6 +52,10 @@ __FBSDID("$FreeBSD$");
 void hardclock_device_poll(void);	/* hook from hardclock		*/
 
 static struct mtx	poll_mtx;
+
+enum poller_phase {
+	POLLER_SLEEPING, POLLER_POLL, POLLER_POLL_DONE, POLLER_POLLMORE
+};
 
 /*
  * Polling support for [network] device drivers.
@@ -82,55 +88,131 @@ static struct mtx	poll_mtx;
  * network processing, and other activities (typically userlevel tasks):
  * kern.polling.user_frac (between 0 and 100, default 50) sets the share
  * of CPU allocated to user tasks. CPU is allocated proportionally to the
- * shares, by dynamically adjusting the "count" (poll_burst).
- *
- * Other parameters can should be left to their default values.
- * The following constraints hold
- *
- *	1 <= poll_each_burst <= poll_burst <= poll_burst_max
- *	MIN_POLL_BURST_MAX <= poll_burst_max <= MAX_POLL_BURST_MAX
+ * shares, by dynamically adjusting the "count" (poll_each_burst).
  */
 
-#define MIN_POLL_BURST_MAX	10
-#define MAX_POLL_BURST_MAX	20000
+SDT_PROVIDER_DEFINE(device_polling);
 
-static uint32_t poll_burst = 5;
-static uint32_t poll_burst_max = 150;	/* good for 100Mbit net and HZ=1000 */
-static uint32_t poll_each_burst = 5;
+/*
+ * Probe called just before hardclock calls schedules this tick's set of
+ * polling iterations.
+ *
+ * Arguments:
+ *      0 - Poller index.  Currently always 0.
+ *      1 - Current time in us.  Value can wrap, ticks-style.
+ *      2 - The current poller phase.
+ */
+SDT_PROBE_DEFINE3(device_polling,,, netisr_sched, "int", "int", "int");
+
+/*
+ * Probe called before netisr_pollmore decides whether to schedule another
+ * iteration of polling.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Current time in us.
+ *       2 - Average ns per packet handled in an iteration.
+ *       3 - Current value of polling_done.  If 0, pollmore will not schedule
+ *           another iteration.
+ */
+SDT_PROBE_DEFINE4(device_polling,,, first_params, "int", "int", "int", "int");
+
+/*
+ * Probe called before netisr_pollmore decides whether to schedule another
+ * iteration of polling.  This is called at right after first_params.  The
+ * probe is split into two because I wanted to pass more than 5 arguments.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - The value of ticks when this polling iteration started.
+ *       2 - The value of ticks now.
+ */
+SDT_PROBE_DEFINE3(device_polling,,, second_params, "int", "int", "int");
+
+/*
+ * Probe called when netisr_pollmore is going to schedule another iteration.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ */
+SDT_PROBE_DEFINE1(device_polling,,, reschedule, "int");
+
+/*
+ * Probe called when netisr_pollmore is not going to schedule another iteration
+ * and the poller is going to "sleep" until the next tick.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Value of polling_done.
+ *       2 - 1 if we have not crossed a tick boundary.
+ */
+SDT_PROBE_DEFINE3(device_polling,,, sleep, "int", "int", "int");
+
+/*
+ * Probe called on the first polling iteration of a tick.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Time, in us, at which we must stop polling because we run out of
+ *           CPU time allocated to netisr.
+ */
+SDT_PROBE_DEFINE2(device_polling,,, first_poll, "int", "int");
+
+/*
+ * Probe called after the poller has calculated how many packets to handle in
+ * this iteration.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Number of packets that we have time to handle.
+ *       2 - Number of packets that we are going to handle in this iteration.
+ */
+SDT_PROBE_DEFINE3(device_polling,,, poll_cycles, "int", "int", "int");
+
+/*
+ * Probe called a polling handler is called.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Function pointer to the poller handler.
+ *       2 - Pointer to the ifnet being polled.
+ */
+SDT_PROBE_DEFINE3(device_polling,,, before_poller, "int", "void *",
+    "struct ifnet *");
+
+/*
+ * Probe called after a polling handler returns.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Function pointer to the poller handler.
+ *       2 - Pointer to the ifnet that was polled.
+ *       3 - The number of packets handled by the ifnet in this iteration.
+ *       4 - The maximum number of packets we told the ifnet to handle.
+ */
+SDT_PROBE_DEFINE5(device_polling,,, after_poller, "int", "void *",
+    "struct ifnet *", "int", "int");
+
+/*
+ * Probe called after netisr_poll has called into every poller.
+ *
+ * Arguments:
+ *       0 - Poller index.  Currently always 0.
+ *       1 - Largest number of packets handled by a handler in this iteration.
+ *       2 - Maximum number of packets we told handlers to handle.
+ *       3 - 1 if no handler did enough work to warrant another iteration in
+ *           this tick.
+ *       4 - The values of ticks at the start of this set of iterations.
+ */
+SDT_PROBE_DEFINE5(device_polling,,, pollers_done, "int", "int", "int", "int",
+    "int");
+
+static uint32_t poll_each_burst = 30;
 
 static SYSCTL_NODE(_kern, OID_AUTO, polling, CTLFLAG_RW, 0,
 	"Device polling parameters");
 
-SYSCTL_UINT(_kern_polling, OID_AUTO, burst, CTLFLAG_RD,
-	&poll_burst, 0, "Current polling burst size");
-
-static int	netisr_poll_scheduled;
-static int	netisr_pollmore_scheduled;
 static int	poll_shutting_down;
-
-static int poll_burst_max_sysctl(SYSCTL_HANDLER_ARGS)
-{
-	uint32_t val = poll_burst_max;
-	int error;
-
-	error = sysctl_handle_int(oidp, &val, 0, req);
-	if (error || !req->newptr )
-		return (error);
-	if (val < MIN_POLL_BURST_MAX || val > MAX_POLL_BURST_MAX)
-		return (EINVAL);
-
-	mtx_lock(&poll_mtx);
-	poll_burst_max = val;
-	if (poll_burst > poll_burst_max)
-		poll_burst = poll_burst_max;
-	if (poll_each_burst > poll_burst_max)
-		poll_each_burst = MIN_POLL_BURST_MAX;
-	mtx_unlock(&poll_mtx);
-
-	return (0);
-}
-SYSCTL_PROC(_kern_polling, OID_AUTO, burst_max, CTLTYPE_UINT | CTLFLAG_RW,
-	0, sizeof(uint32_t), poll_burst_max_sysctl, "I", "Max Polling burst size");
 
 static int poll_each_burst_sysctl(SYSCTL_HANDLER_ARGS)
 {
@@ -144,10 +226,6 @@ static int poll_each_burst_sysctl(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 
 	mtx_lock(&poll_mtx);
-	if (val > poll_burst_max) {
-		mtx_unlock(&poll_mtx);
-		return (EINVAL);
-	}
 	poll_each_burst = val;
 	mtx_unlock(&poll_mtx);
 
@@ -220,17 +298,13 @@ static uint32_t pending_polls;
 SYSCTL_UINT(_kern_polling, OID_AUTO, pending_polls, CTLFLAG_RD,
 	&pending_polls, 0, "Do we need to poll again");
 
-static int residual_burst = 0;
-SYSCTL_INT(_kern_polling, OID_AUTO, residual_burst, CTLFLAG_RD,
-	&residual_burst, 0, "# of residual cycles in burst");
-
 static uint32_t poll_handlers; /* next free entry in pr[]. */
 SYSCTL_UINT(_kern_polling, OID_AUTO, handlers, CTLFLAG_RD,
 	&poll_handlers, 0, "Number of registered poll handlers");
 
-static uint32_t phase;
-SYSCTL_UINT(_kern_polling, OID_AUTO, phase, CTLFLAG_RD,
-	&phase, 0, "Polling phase");
+static enum poller_phase poll_phase;
+SYSCTL_INT(_kern_polling, OID_AUTO, phase, CTLFLAG_RD,
+	&poll_phase, 0, "Polling phase");
 
 static uint32_t suspect;
 SYSCTL_UINT(_kern_polling, OID_AUTO, suspect, CTLFLAG_RD,
@@ -244,6 +318,22 @@ static uint32_t idlepoll_sleeping; /* idlepoll is sleeping */
 SYSCTL_UINT(_kern_polling, OID_AUTO, idlepoll_sleeping, CTLFLAG_RD,
 	&idlepoll_sleeping, 0, "idlepoll is sleeping");
 
+static int poll_min_reschedule = 2;
+SYSCTL_INT(_kern_polling, OID_AUTO, min_reschedule, CTLFLAG_RW,
+    &poll_min_reschedule, 0,
+    "minimum number of packets to handle in a polling iteration");
+
+static int poll_ns_per_count;
+SYSCTL_INT(_kern_polling, OID_AUTO, ns_per_packet, CTLFLAG_RD,
+    &poll_ns_per_count, 0,
+    "Average number of nanoseconds required to handle 1 packet");
+
+static int poll_end_usec;
+static int poll_done_usec;
+static int polling_done;
+static int poll_ticks_at_start;
+static int poll_tick_packets;
+static int last_hardclock;
 
 #define POLL_LIST_LEN  128
 struct pollrec {
@@ -270,6 +360,24 @@ init_device_poll(void)
 }
 SYSINIT(device_poll, SI_SUB_SOFTINTR, SI_ORDER_MIDDLE, init_device_poll, NULL);
 
+/*
+ * Exponentially weighted moving average constants for smoothing ns_per_count.
+ * a = POLL_NS_AVG_OLD / POLL_NS_AVG_DEN.  X represents the sequence of
+ * measured ns_per_count values and y is the sequence of averaged values.
+ *
+ * y  = (1-a) x  + a y
+ *  k          k      k-1
+ */
+#define	POLL_NS_AVG_OLD	64
+#define	POLL_NS_AVG_DEN	128
+#define	POLL_NS_AVG_NEW	(POLL_NS_AVG_DEN - POLL_NS_AVG_OLD)
+
+/* Convert timeval into ticks-style wrapping around signed int. */
+static __inline int
+tv_to_usec(struct timeval tv)
+{
+	return ((int)(tv.tv_sec * 1000000 + tv.tv_usec));
+}
 
 /*
  * Hook from hardclock. Tries to schedule a netisr, but keeps track
@@ -287,41 +395,36 @@ SYSINIT(device_poll, SI_SUB_SOFTINTR, SI_ORDER_MIDDLE, init_device_poll, NULL);
 void
 hardclock_device_poll(void)
 {
-	static struct timeval prev_t, t;
+	static int prev_usec;
+	struct timeval t;
+	int usec;
 	int delta;
+	int pending;
 
 	if (poll_handlers == 0 || poll_shutting_down)
 		return;
 
 	microuptime(&t);
-	delta = (t.tv_usec - prev_t.tv_usec) +
-		(t.tv_sec - prev_t.tv_sec)*1000000;
+	usec = tv_to_usec(t);
+	delta = usec - prev_usec;
 	if (delta * hz < 500000)
 		short_ticks++;
 	else
-		prev_t = t;
+		prev_usec = usec;
 
-	if (pending_polls > 100) {
-		/*
-		 * Too much, assume it has stalled (not always true
-		 * see comment above).
-		 */
+	pending = atomic_fetchadd_int(&pending_polls, 1);
+	if (pending > 100) {
 		stalled++;
 		pending_polls = 0;
-		phase = 0;
-	}
-
-	if (phase <= 2) {
-		if (phase != 0)
-			suspect++;
-		phase = 1;
-		netisr_poll_scheduled = 1;
-		netisr_pollmore_scheduled = 1;
-		netisr_sched_poll();
-		phase = 2;
-	}
-	if (pending_polls++ > 0)
+	} else if (pending > 0)
 		lost_polls++;
+
+	if (poll_phase != POLLER_SLEEPING)
+		suspect++;
+
+	last_hardclock = usec;
+	SDT_PROBE3(device_polling,,, netisr_sched, 0, usec, poll_phase);
+	netisr_sched_poll();
 }
 
 /*
@@ -359,61 +462,52 @@ ether_poll(int count)
  * handling and forwarding.
  */
 
-static struct timeval poll_start_t;
+static int poll_start_usec;
 
 void
-netisr_pollmore()
+netisr_pollmore(void)
 {
-	struct timeval t;
-	int kern_load;
+	struct timeval now;
+	int usec;
+	int ticks_now;
 
 	if (poll_handlers == 0)
 		return;
 
 	mtx_lock(&poll_mtx);
-	if (!netisr_pollmore_scheduled) {
-		mtx_unlock(&poll_mtx);
-		return;
-	}
-	netisr_pollmore_scheduled = 0;
-	phase = 5;
-	if (residual_burst > 0) {
-		netisr_poll_scheduled = 1;
-		netisr_pollmore_scheduled = 1;
-		netisr_sched_poll();
-		mtx_unlock(&poll_mtx);
-		/* will run immediately on return, followed by netisrs */
-		return;
-	}
-	/* here we can account time spent in netisr's in this tick */
-	microuptime(&t);
-	kern_load = (t.tv_usec - poll_start_t.tv_usec) +
-		(t.tv_sec - poll_start_t.tv_sec)*1000000;	/* us */
-	kern_load = (kern_load * hz) / 10000;			/* 0..100 */
-	if (kern_load > (100 - user_frac)) { /* try decrease ticks */
-		if (poll_burst > 1)
-			poll_burst--;
-	} else {
-		if (poll_burst < poll_burst_max)
-			poll_burst++;
-	}
+	poll_phase = POLLER_POLLMORE;
 
-	pending_polls--;
-	if (pending_polls == 0) /* we are done */
-		phase = 0;
-	else {
-		/*
-		 * Last cycle was long and caused us to miss one or more
-		 * hardclock ticks. Restart processing again, but slightly
-		 * reduce the burst size to prevent that this happens again.
-		 */
-		poll_burst -= (poll_burst / 8);
-		if (poll_burst < 1)
-			poll_burst = 1;
-		netisr_poll_scheduled = 1;
-		netisr_pollmore_scheduled = 1;
+	/* here we can account time spent in netisr's in this tick */
+	microuptime(&now);
+	usec = tv_to_usec(now);
+
+	ticks_now = ticks;
+
+	SDT_PROBE4(device_polling,,, first_params, 0, usec, poll_ns_per_count, polling_done);
+	SDT_PROBE3(device_polling,,, second_params, 0, poll_ticks_at_start, ticks_now);
+
+	/*
+	 * Schedule another poll if we have enough time to do at least
+	 * poll_min_reschedule packets, if we aren't done polling for lack of
+	 * work to do and if we haven't crossed a tick boundary(if we've crossed
+	 * a tick boundary there is a pending wakeup waiting from hardclock
+	 * which kick off this tick's round of polling).
+	 */
+	if ((poll_end_usec - usec) * 1000 >
+	    poll_ns_per_count * poll_min_reschedule &&
+	    !polling_done && poll_ticks_at_start == ticks_now) {
+		polling_done = 0;
 		netisr_sched_poll();
-		phase = 6;
+
+		SDT_PROBE1(device_polling,,, reschedule, 0);
+	} else {
+		SDT_PROBE3(device_polling,,, sleep, 0, polling_done,
+		    poll_ticks_at_start == ticks_now);
+
+		polling_done = 0;
+		pending_polls = 0;
+		poll_phase = POLLER_SLEEPING;
+		poll_done_usec = usec;
 	}
 	mtx_unlock(&poll_mtx);
 }
@@ -424,36 +518,92 @@ netisr_pollmore()
 void
 netisr_poll(void)
 {
+	struct timeval now_t;
 	int i, cycles;
 	enum poll_cmd arg = POLL_ONLY;
+	int rxcount, remaining_usec, max_rx, deltausec;
+	int newnsper, residual_burst, now_usec;
 
 	if (poll_handlers == 0)
 		return;
 
 	mtx_lock(&poll_mtx);
-	if (!netisr_poll_scheduled) {
-		mtx_unlock(&poll_mtx);
-		return;
-	}
-	netisr_poll_scheduled = 0;
-	phase = 3;
-	if (residual_burst == 0) { /* first call in this tick */
-		microuptime(&poll_start_t);
+	microuptime(&now_t);
+	now_usec = tv_to_usec(now_t);
+	if (poll_phase == POLLER_SLEEPING) { /* first call in this tick */
+		atomic_subtract_int(&pending_polls, 1);
+
+		if (poll_tick_packets > 0) {
+			deltausec = poll_done_usec - poll_start_usec;
+			newnsper = deltausec * 1000 / poll_tick_packets;
+
+			poll_ns_per_count = (newnsper * POLL_NS_AVG_NEW
+			    + poll_ns_per_count * POLL_NS_AVG_OLD)
+			    / POLL_NS_AVG_DEN;
+			poll_tick_packets = 0;
+		}
+		poll_start_usec = now_usec;
+		poll_ticks_at_start = ticks;
 		if (++reg_frac_count == reg_frac) {
 			arg = POLL_AND_CHECK_STATUS;
 			reg_frac_count = 0;
 		}
 
-		residual_burst = poll_burst;
+		/*
+		 * 10000 = 1000000 us/s divided by 100 to convert user_frac to a
+		 * percentage.
+		 */
+		poll_end_usec = last_hardclock + (100 - user_frac) * 10000 / hz;
+
+		SDT_PROBE2(device_polling,,, first_poll, 0, poll_end_usec);
 	}
-	cycles = (residual_burst < poll_each_burst) ?
-		residual_burst : poll_each_burst;
-	residual_burst -= cycles;
+	poll_phase = POLLER_POLL;
+	remaining_usec = poll_end_usec - now_usec;
 
-	for (i = 0 ; i < poll_handlers ; i++)
-		pr[i].handler(pr[i].ifp, arg, cycles);
+	/*
+	 * If poll_ns_per_count is invalid replace it with an arbitrary,
+	 * conservative value.
+	 */
+	if (poll_ns_per_count <= 0)
+		poll_ns_per_count = 50000;
 
-	phase = 4;
+	/* Calculate how many more packets we have time to do in this tick. */
+	residual_burst = remaining_usec * 1000 / poll_ns_per_count;
+	if (residual_burst <= 0)
+		residual_burst = 1;
+	/*
+	 * Don't do more than poll_each_burst packets in this iteration.  If
+	 * there's a lot of packets waiting we'll get them in the next
+	 * iteration.
+	 */
+	cycles = min(residual_burst, poll_each_burst);
+
+	SDT_PROBE3(device_polling,,, poll_cycles, 0, residual_burst, cycles);
+
+	max_rx = 0;
+	for (i = 0 ; i < poll_handlers ; i++) {
+		SDT_PROBE3(device_polling,,, before_poller, 0,
+		    pr[i].handler, pr[i].ifp);
+
+		rxcount = pr[i].handler(pr[i].ifp, arg, cycles);
+		max_rx = max(rxcount, max_rx);
+
+		SDT_PROBE5(device_polling,,, after_poller, 0,
+		    pr[i].handler, pr[i].ifp, rxcount, cycles);
+	}
+	poll_tick_packets += max_rx;
+
+	/*
+	 * Check whether any poller handled enough packets for it to be
+	 * worthwhile to do another iteration of polling.  netisr_pollmore()
+	 * will reschedule another iteration if !polling_done.
+	 */
+	polling_done = max_rx < (cycles / 2 + 1);
+	poll_phase = POLLER_POLL_DONE;
+
+	SDT_PROBE5(device_polling,,, pollers_done, 0, max_rx, cycles,
+	    polling_done, poll_ticks_at_start);
+
 	mtx_unlock(&poll_mtx);
 }
 
