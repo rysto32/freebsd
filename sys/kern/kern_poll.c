@@ -449,7 +449,7 @@ hardclock_device_poll(void)
 
 	poller->last_hardclock = usec;
 	SDT_PROBE1(device_polling,,, netisr_sched, poller);
-	netisr_sched_poll();
+	netisr_sched_poll(poller->index);
 }
 
 // XXX axe?
@@ -491,7 +491,7 @@ ether_poll(int count)
  */
 
 void
-netisr_pollmore(void)
+netisr_pollmore(u_int id)
 {
 	struct poller_instance *poller;
 	struct timeval now;
@@ -524,7 +524,7 @@ netisr_pollmore(void)
 	    poller->poll_ns_per_count * poll_min_reschedule &&
 	    !poller->polling_done && poller->poll_ticks_at_start == ticks_now) {
 		poller->polling_done = 0;
-		netisr_sched_poll();
+		netisr_sched_poll(poller->index);
 
 		SDT_PROBE1(device_polling,,, reschedule, poller);
 	} else {
@@ -542,7 +542,7 @@ netisr_pollmore(void)
  * netisr_poll is typically scheduled once per tick.
  */
 void
-netisr_poll(void)
+netisr_poll(u_int id)
 {
 	struct timeval now_t;
 	struct poller_instance *poller;

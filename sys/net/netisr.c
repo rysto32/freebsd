@@ -795,7 +795,7 @@ swi_net(void *arg)
 #ifdef DEVICE_POLLING
 	KASSERT(nws_count == 1,
 	    ("%s: device_polling but nws_count != 1", __func__));
-	netisr_poll();
+	netisr_poll(nwsp->nws_cpu);
 #endif
 #ifdef NETISR_LOCKING
 	NETISR_RLOCK(&tracker);
@@ -820,7 +820,7 @@ out:
 	NETISR_RUNLOCK(&tracker);
 #endif
 #ifdef DEVICE_POLLING
-	netisr_pollmore();
+	netisr_pollmore(nwsp->nws_cpu);
 #endif
 }
 
@@ -1071,11 +1071,11 @@ netisr_dispatch(u_int proto, struct mbuf *m)
  * scheduled even if no packets are pending for protocols.
  */
 void
-netisr_sched_poll(void)
+netisr_sched_poll(u_int index)
 {
 	struct netisr_workstream *nwsp;
 
-	nwsp = DPCPU_ID_PTR(nws_array[0], nws);
+	nwsp = DPCPU_ID_PTR(nws_array[index], nws);
 	NWS_SIGNAL(nwsp);
 }
 #endif
