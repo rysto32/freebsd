@@ -51,8 +51,6 @@ __FBSDID("$FreeBSD$");
 
 void hardclock_device_poll(void);	/* hook from hardclock		*/
 
-static struct mtx	poll_mtx;
-
 enum poller_phase {
 	POLLER_SLEEPING, POLLER_POLL, POLLER_POLL_DONE, POLLER_POLLMORE
 };
@@ -98,114 +96,130 @@ SDT_PROVIDER_DEFINE(device_polling);
  * polling iterations.
  *
  * Arguments:
- *      0 - Poller index.  Currently always 0.
- *      1 - Current time in us.  Value can wrap, ticks-style.
- *      2 - The current poller phase.
+ *      0 - Poller instance.
  */
-SDT_PROBE_DEFINE3(device_polling,,, netisr_sched, "int", "int", "int");
+SDT_PROBE_DEFINE1(device_polling,,, netisr_sched, "struct poller_instance *");
 
 /*
  * Probe called before netisr_pollmore decides whether to schedule another
  * iteration of polling.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
+ *       0 - Poller instance.
  *       1 - Current time in us.
- *       2 - Average ns per packet handled in an iteration.
- *       3 - Current value of polling_done.  If 0, pollmore will not schedule
- *           another iteration.
+ *       2 - Current value of ticks
  */
-SDT_PROBE_DEFINE4(device_polling,,, first_params, "int", "int", "int", "int");
-
-/*
- * Probe called before netisr_pollmore decides whether to schedule another
- * iteration of polling.  This is called at right after first_params.  The
- * probe is split into two because I wanted to pass more than 5 arguments.
- *
- * Arguments:
- *       0 - Poller index.  Currently always 0.
- *       1 - The value of ticks when this polling iteration started.
- *       2 - The value of ticks now.
- */
-SDT_PROBE_DEFINE3(device_polling,,, second_params, "int", "int", "int");
+SDT_PROBE_DEFINE3(device_polling,,, pollmore, "struct poller_instance *", "int", "int");
 
 /*
  * Probe called when netisr_pollmore is going to schedule another iteration.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
+ *       0 - Poller instance.
  */
-SDT_PROBE_DEFINE1(device_polling,,, reschedule, "int");
+SDT_PROBE_DEFINE1(device_polling,,, reschedule, "struct poller_instance *");
 
 /*
  * Probe called when netisr_pollmore is not going to schedule another iteration
  * and the poller is going to "sleep" until the next tick.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
- *       1 - Value of polling_done.
- *       2 - 1 if we have not crossed a tick boundary.
+ *       0 - Poller instance.
+ *       1 - Current time in us.
+ *       2 - Current value of ticks
  */
-SDT_PROBE_DEFINE3(device_polling,,, sleep, "int", "int", "int");
+SDT_PROBE_DEFINE3(device_polling,,, sleep, "struct poller_instance *", "int", "int");
 
 /*
  * Probe called on the first polling iteration of a tick.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
- *       1 - Time, in us, at which we must stop polling because we run out of
- *           CPU time allocated to netisr.
+ *       0 - Poller instance.
  */
-SDT_PROBE_DEFINE2(device_polling,,, first_poll, "int", "int");
+SDT_PROBE_DEFINE1(device_polling,,, first_poll, "struct poller_instance *");
 
 /*
  * Probe called after the poller has calculated how many packets to handle in
  * this iteration.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
+ *       0 - Poller instance.
  *       1 - Number of packets that we have time to handle.
  *       2 - Number of packets that we are going to handle in this iteration.
  */
-SDT_PROBE_DEFINE3(device_polling,,, poll_cycles, "int", "int", "int");
+SDT_PROBE_DEFINE3(device_polling,,, poll_cycles, "struct poller_instance *", "int", "int");
 
 /*
  * Probe called a polling handler is called.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
+ *       0 - Poller instance.
  *       1 - Function pointer to the poller handler.
  *       2 - Pointer to the ifnet being polled.
  */
-SDT_PROBE_DEFINE3(device_polling,,, before_poller, "int", "void *",
-    "struct ifnet *");
+SDT_PROBE_DEFINE2(device_polling,,, before_poller, "struct poller_instance *",
+    "struct pollrec *");
 
 /*
  * Probe called after a polling handler returns.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
+ *       0 - Poller instance.
  *       1 - Function pointer to the poller handler.
  *       2 - Pointer to the ifnet that was polled.
  *       3 - The number of packets handled by the ifnet in this iteration.
  *       4 - The maximum number of packets we told the ifnet to handle.
  */
-SDT_PROBE_DEFINE5(device_polling,,, after_poller, "int", "void *",
-    "struct ifnet *", "int", "int");
+SDT_PROBE_DEFINE4(device_polling,,, after_poller, "struct poller_instance *",
+    "struct pollrec *", "int", "int");
 
 /*
  * Probe called after netisr_poll has called into every poller.
  *
  * Arguments:
- *       0 - Poller index.  Currently always 0.
+ *       0 - Poller instance.
  *       1 - Largest number of packets handled by a handler in this iteration.
  *       2 - Maximum number of packets we told handlers to handle.
- *       3 - 1 if no handler did enough work to warrant another iteration in
- *           this tick.
- *       4 - The values of ticks at the start of this set of iterations.
  */
-SDT_PROBE_DEFINE5(device_polling,,, pollers_done, "int", "int", "int", "int",
-    "int");
+SDT_PROBE_DEFINE3(device_polling,,, pollers_done, "struct poller_instance *",
+    "int", "int");
+
+#define POLL_LIST_LEN  128
+struct pollrec {
+	poll_handler_t	*handler;
+	struct ifnet	*ifp;
+};
+
+struct poller_instance
+{
+	struct mtx poll_mtx;
+
+	int index;
+	uint32_t lost_polls;
+	uint32_t pending_polls;
+	uint32_t poll_handlers; /* next free entry in pr[]. */
+	enum poller_phase poll_phase;
+	uint32_t suspect;
+	uint32_t stalled;
+	u_int poll_min_reschedule;
+	int poll_ns_per_count;
+
+	int poll_start_usec;
+	int poll_end_usec;
+	int poll_done_usec;
+	int polling_done;
+	int poll_ticks_at_start;
+	int poll_tick_packets;
+	int last_hardclock;
+	uint32_t reg_frac_count;
+
+	struct pollrec pr[POLL_LIST_LEN];
+};
+
+#define POLLER_LOCK(p) mtx_lock(&(p)->poll_mtx)
+#define POLLER_UNLOCK(p) mtx_unlock(&(p)->poll_mtx)
+
+static struct poller_instance instance;
 
 static uint32_t poll_each_burst = 30;
 
@@ -225,14 +239,13 @@ static int poll_each_burst_sysctl(SYSCTL_HANDLER_ARGS)
 	if (val < 1)
 		return (EINVAL);
 
-	mtx_lock(&poll_mtx);
+	// XXX locking
 	poll_each_burst = val;
-	mtx_unlock(&poll_mtx);
 
 	return (0);
 }
 SYSCTL_PROC(_kern_polling, OID_AUTO, each_burst, CTLTYPE_UINT | CTLFLAG_RW,
-	0, sizeof(uint32_t), poll_each_burst_sysctl, "I",
+	NULL, 0, poll_each_burst_sysctl, "I",
 	"Max size of each burst");
 
 static uint32_t poll_in_idle_loop=0;	/* do we poll in idle loop ? */
@@ -251,22 +264,23 @@ static int user_frac_sysctl(SYSCTL_HANDLER_ARGS)
 	if (val > 99)
 		return (EINVAL);
 
-	mtx_lock(&poll_mtx);
+	// XXX locking?
 	user_frac = val;
-	mtx_unlock(&poll_mtx);
 
 	return (0);
 }
 SYSCTL_PROC(_kern_polling, OID_AUTO, user_frac, CTLTYPE_UINT | CTLFLAG_RW,
-	0, sizeof(uint32_t), user_frac_sysctl, "I",
+	NULL, 0, user_frac_sysctl, "I",
 	"Desired user fraction of cpu time");
 
-static uint32_t reg_frac_count = 0;
 static uint32_t reg_frac = 20 ;
 static int reg_frac_sysctl(SYSCTL_HANDLER_ARGS)
 {
+	struct poller_instance *poller;
 	uint32_t val = reg_frac;
 	int error;
+
+	poller = arg1;
 
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error || !req->newptr )
@@ -274,45 +288,24 @@ static int reg_frac_sysctl(SYSCTL_HANDLER_ARGS)
 	if (val < 1 || val > hz)
 		return (EINVAL);
 
-	mtx_lock(&poll_mtx);
+	// XXX locking?
 	reg_frac = val;
-	if (reg_frac_count >= reg_frac)
-		reg_frac_count = 0;
-	mtx_unlock(&poll_mtx);
+
+	poller = &instance;
+	POLLER_LOCK(poller);
+	if (poller->reg_frac_count >= reg_frac)
+		poller->reg_frac_count = 0;
+	POLLER_UNLOCK(poller);
 
 	return (0);
 }
 SYSCTL_PROC(_kern_polling, OID_AUTO, reg_frac, CTLTYPE_UINT | CTLFLAG_RW,
-	0, sizeof(uint32_t), reg_frac_sysctl, "I",
+	&instance, 0, reg_frac_sysctl, "I",
 	"Every this many cycles check registers");
 
 static uint32_t short_ticks;
 SYSCTL_UINT(_kern_polling, OID_AUTO, short_ticks, CTLFLAG_RD,
 	&short_ticks, 0, "Hardclock ticks shorter than they should be");
-
-static uint32_t lost_polls;
-SYSCTL_UINT(_kern_polling, OID_AUTO, lost_polls, CTLFLAG_RD,
-	&lost_polls, 0, "How many times we would have lost a poll tick");
-
-static uint32_t pending_polls;
-SYSCTL_UINT(_kern_polling, OID_AUTO, pending_polls, CTLFLAG_RD,
-	&pending_polls, 0, "Do we need to poll again");
-
-static uint32_t poll_handlers; /* next free entry in pr[]. */
-SYSCTL_UINT(_kern_polling, OID_AUTO, handlers, CTLFLAG_RD,
-	&poll_handlers, 0, "Number of registered poll handlers");
-
-static enum poller_phase poll_phase;
-SYSCTL_INT(_kern_polling, OID_AUTO, phase, CTLFLAG_RD,
-	&poll_phase, 0, "Polling phase");
-
-static uint32_t suspect;
-SYSCTL_UINT(_kern_polling, OID_AUTO, suspect, CTLFLAG_RD,
-	&suspect, 0, "suspect event");
-
-static uint32_t stalled;
-SYSCTL_UINT(_kern_polling, OID_AUTO, stalled, CTLFLAG_RD,
-	&stalled, 0, "potential stalls");
 
 static uint32_t idlepoll_sleeping; /* idlepoll is sleeping */
 SYSCTL_UINT(_kern_polling, OID_AUTO, idlepoll_sleeping, CTLFLAG_RD,
@@ -323,38 +316,68 @@ SYSCTL_INT(_kern_polling, OID_AUTO, min_reschedule, CTLFLAG_RW,
     &poll_min_reschedule, 0,
     "minimum number of packets to handle in a polling iteration");
 
-static int poll_ns_per_count;
-SYSCTL_INT(_kern_polling, OID_AUTO, ns_per_packet, CTLFLAG_RD,
-    &poll_ns_per_count, 0,
-    "Average number of nanoseconds required to handle 1 packet");
-
-static int poll_end_usec;
-static int poll_done_usec;
-static int polling_done;
-static int poll_ticks_at_start;
-static int poll_tick_packets;
-static int last_hardclock;
-
-#define POLL_LIST_LEN  128
-struct pollrec {
-	poll_handler_t	*handler;
-	struct ifnet	*ifp;
-};
-
-static struct pollrec pr[POLL_LIST_LEN];
+static struct sysctl_ctx_list poller_ctx;
 
 static void
 poll_shutdown(void *arg, int howto)
 {
 
 	poll_shutting_down = 1;
+	sysctl_ctx_free(&poller_ctx);
+}
+
+static void
+init_poller_sysctls(struct poller_instance *poller, int index)
+{
+	struct sysctl_oid *oid;
+	char name [32];
+
+	snprintf(name, sizeof(name), "%d", index);
+	oid = SYSCTL_ADD_NODE(&poller_ctx, SYSCTL_STATIC_CHILDREN(_kern_polling),
+	    OID_AUTO, name, CTLFLAG_RD, NULL, "Poller instance stats");
+
+	SYSCTL_ADD_UINT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
+	    "lost_polls", CTLFLAG_RD, &poller->lost_polls, 0,
+	    "How many times we would have lost a poll tick");
+
+	SYSCTL_ADD_UINT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
+	     "pending_polls", CTLFLAG_RD, &poller->pending_polls, 0,
+	     "Do we need to poll again");
+
+	SYSCTL_ADD_UINT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO, "handlers",
+	    CTLFLAG_RD, &poller->poll_handlers, 0,
+	    "Number of registered poll handlers");
+
+	SYSCTL_ADD_INT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO, "phase",
+	    CTLFLAG_RD, (int*)&poller->poll_phase, 0, "Polling phase");
+
+	SYSCTL_ADD_UINT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO, "suspect",
+	    CTLFLAG_RD, &poller->suspect, 0, "suspect event");
+
+	SYSCTL_ADD_UINT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO, "stalled",
+	    CTLFLAG_RD, &poller->stalled, 0, "potential stalls");
+
+	SYSCTL_ADD_INT(&poller_ctx, SYSCTL_CHILDREN(oid), OID_AUTO, "ns_per_packet",
+	    CTLFLAG_RD, &poller->poll_ns_per_count, 0,
+	    "Average number of nanoseconds required to handle 1 packet");
+}
+
+static void
+init_poller(struct poller_instance *poller, int index)
+{
+
+	mtx_init(&poller->poll_mtx, "polling", NULL, MTX_DEF);
+	poller->index = index;
+
+	init_poller_sysctls(poller, index);
 }
 
 static void
 init_device_poll(void)
 {
 
-	mtx_init(&poll_mtx, "polling", NULL, MTX_DEF);
+	sysctl_ctx_init(&poller_ctx);
+	init_poller(&instance, 0);
 	EVENTHANDLER_REGISTER(shutdown_post_sync, poll_shutdown, NULL,
 	    SHUTDOWN_PRI_LAST);
 }
@@ -395,13 +418,14 @@ tv_to_usec(struct timeval tv)
 void
 hardclock_device_poll(void)
 {
+	struct poller_instance *poller;
 	static int prev_usec;
 	struct timeval t;
 	int usec;
 	int delta;
 	int pending;
 
-	if (poll_handlers == 0 || poll_shutting_down)
+	if (poll_shutting_down)
 		return;
 
 	microuptime(&t);
@@ -412,21 +436,24 @@ hardclock_device_poll(void)
 	else
 		prev_usec = usec;
 
-	pending = atomic_fetchadd_int(&pending_polls, 1);
+	poller = &instance;
+	pending = atomic_fetchadd_int(&poller->pending_polls, 1);
 	if (pending > 100) {
-		stalled++;
-		pending_polls = 0;
+		poller->stalled++;
+		poller->pending_polls = 0;
 	} else if (pending > 0)
-		lost_polls++;
+		poller->lost_polls++;
 
-	if (poll_phase != POLLER_SLEEPING)
-		suspect++;
+	if (poller->poll_phase != POLLER_SLEEPING)
+		poller->suspect++;
 
-	last_hardclock = usec;
-	SDT_PROBE3(device_polling,,, netisr_sched, 0, usec, poll_phase);
+	poller->last_hardclock = usec;
+	SDT_PROBE1(device_polling,,, netisr_sched, poller);
 	netisr_sched_poll();
 }
 
+// XXX axe?
+#if 0
 /*
  * ether_poll is called from the idle loop.
  */
@@ -445,6 +472,7 @@ ether_poll(int count)
 
 	mtx_unlock(&poll_mtx);
 }
+#endif
 
 /*
  * netisr_pollmore is called after other netisr's, possibly scheduling
@@ -462,20 +490,20 @@ ether_poll(int count)
  * handling and forwarding.
  */
 
-static int poll_start_usec;
-
 void
 netisr_pollmore(void)
 {
+	struct poller_instance *poller;
 	struct timeval now;
 	int usec;
 	int ticks_now;
 
-	if (poll_handlers == 0)
+	poller = &instance;
+	if (poller->poll_handlers == 0)
 		return;
 
-	mtx_lock(&poll_mtx);
-	poll_phase = POLLER_POLLMORE;
+	POLLER_LOCK(poller);
+	poller->poll_phase = POLLER_POLLMORE;
 
 	/* here we can account time spent in netisr's in this tick */
 	microuptime(&now);
@@ -483,8 +511,7 @@ netisr_pollmore(void)
 
 	ticks_now = ticks;
 
-	SDT_PROBE4(device_polling,,, first_params, 0, usec, poll_ns_per_count, polling_done);
-	SDT_PROBE3(device_polling,,, second_params, 0, poll_ticks_at_start, ticks_now);
+	SDT_PROBE3(device_polling,,, pollmore, poller, usec, ticks_now);
 
 	/*
 	 * Schedule another poll if we have enough time to do at least
@@ -493,23 +520,22 @@ netisr_pollmore(void)
 	 * a tick boundary there is a pending wakeup waiting from hardclock
 	 * which kick off this tick's round of polling).
 	 */
-	if ((poll_end_usec - usec) * 1000 >
-	    poll_ns_per_count * poll_min_reschedule &&
-	    !polling_done && poll_ticks_at_start == ticks_now) {
-		polling_done = 0;
+	if ((poller->poll_end_usec - usec) * 1000 >
+	    poller->poll_ns_per_count * poll_min_reschedule &&
+	    !poller->polling_done && poller->poll_ticks_at_start == ticks_now) {
+		poller->polling_done = 0;
 		netisr_sched_poll();
 
-		SDT_PROBE1(device_polling,,, reschedule, 0);
+		SDT_PROBE1(device_polling,,, reschedule, poller);
 	} else {
-		SDT_PROBE3(device_polling,,, sleep, 0, polling_done,
-		    poll_ticks_at_start == ticks_now);
+		SDT_PROBE3(device_polling,,, sleep, poller, usec, ticks_now);
 
-		polling_done = 0;
-		pending_polls = 0;
-		poll_phase = POLLER_SLEEPING;
-		poll_done_usec = usec;
+		poller->polling_done = 0;
+		poller->pending_polls = 0;
+		poller->poll_phase = POLLER_SLEEPING;
+		poller->poll_done_usec = usec;
 	}
-	mtx_unlock(&poll_mtx);
+	POLLER_UNLOCK(poller);
 }
 
 /*
@@ -519,56 +545,61 @@ void
 netisr_poll(void)
 {
 	struct timeval now_t;
+	struct poller_instance *poller;
+	struct pollrec *pr;
 	int i, cycles;
 	enum poll_cmd arg = POLL_ONLY;
 	int rxcount, remaining_usec, max_rx, deltausec;
 	int newnsper, residual_burst, now_usec;
 
-	if (poll_handlers == 0)
+	poller = &instance;
+
+	if (poller->poll_handlers == 0)
 		return;
 
-	mtx_lock(&poll_mtx);
+	POLLER_LOCK(poller);
 	microuptime(&now_t);
 	now_usec = tv_to_usec(now_t);
-	if (poll_phase == POLLER_SLEEPING) { /* first call in this tick */
-		atomic_subtract_int(&pending_polls, 1);
+	if (poller->poll_phase == POLLER_SLEEPING) { /* first call in this tick */
+		atomic_subtract_int(&poller->pending_polls, 1);
 
-		if (poll_tick_packets > 0) {
-			deltausec = poll_done_usec - poll_start_usec;
-			newnsper = deltausec * 1000 / poll_tick_packets;
+		if (poller->poll_tick_packets > 0) {
+			deltausec = poller->poll_done_usec - poller->poll_start_usec;
+			newnsper = deltausec * 1000 / poller->poll_tick_packets;
 
-			poll_ns_per_count = (newnsper * POLL_NS_AVG_NEW
-			    + poll_ns_per_count * POLL_NS_AVG_OLD)
+			poller->poll_ns_per_count = (newnsper * POLL_NS_AVG_NEW
+			    + poller->poll_ns_per_count * POLL_NS_AVG_OLD)
 			    / POLL_NS_AVG_DEN;
-			poll_tick_packets = 0;
+			poller->poll_tick_packets = 0;
 		}
-		poll_start_usec = now_usec;
-		poll_ticks_at_start = ticks;
-		if (++reg_frac_count == reg_frac) {
+		poller->poll_start_usec = now_usec;
+		poller->poll_ticks_at_start = ticks;
+		if (++poller->reg_frac_count == reg_frac) {
 			arg = POLL_AND_CHECK_STATUS;
-			reg_frac_count = 0;
+			poller->reg_frac_count = 0;
 		}
 
 		/*
 		 * 10000 = 1000000 us/s divided by 100 to convert user_frac to a
 		 * percentage.
 		 */
-		poll_end_usec = last_hardclock + (100 - user_frac) * 10000 / hz;
+		poller->poll_end_usec = poller->last_hardclock +
+		    (100 - user_frac) * 10000 / hz;
 
-		SDT_PROBE2(device_polling,,, first_poll, 0, poll_end_usec);
+		SDT_PROBE1(device_polling,,, first_poll, poller);
 	}
-	poll_phase = POLLER_POLL;
-	remaining_usec = poll_end_usec - now_usec;
+	poller->poll_phase = POLLER_POLL;
+	remaining_usec = poller->poll_end_usec - now_usec;
 
 	/*
 	 * If poll_ns_per_count is invalid replace it with an arbitrary,
 	 * conservative value.
 	 */
-	if (poll_ns_per_count <= 0)
-		poll_ns_per_count = 50000;
+	if (poller->poll_ns_per_count <= 0)
+		poller->poll_ns_per_count = 50000;
 
 	/* Calculate how many more packets we have time to do in this tick. */
-	residual_burst = remaining_usec * 1000 / poll_ns_per_count;
+	residual_burst = remaining_usec * 1000 /poller-> poll_ns_per_count;
 	if (residual_burst <= 0)
 		residual_burst = 1;
 	/*
@@ -578,33 +609,32 @@ netisr_poll(void)
 	 */
 	cycles = min(residual_burst, poll_each_burst);
 
-	SDT_PROBE3(device_polling,,, poll_cycles, 0, residual_burst, cycles);
+	SDT_PROBE3(device_polling,,, poll_cycles, poller, residual_burst, cycles);
 
 	max_rx = 0;
-	for (i = 0 ; i < poll_handlers ; i++) {
-		SDT_PROBE3(device_polling,,, before_poller, 0,
-		    pr[i].handler, pr[i].ifp);
+	for (i = 0 ; i < poller->poll_handlers ; i++) {
+		pr = &poller->pr[i];
+		SDT_PROBE2(device_polling,,, before_poller, poller, pr);
 
-		rxcount = pr[i].handler(pr[i].ifp, arg, cycles);
+		rxcount = pr->handler(pr->ifp, arg, cycles);
 		max_rx = max(rxcount, max_rx);
 
-		SDT_PROBE5(device_polling,,, after_poller, 0,
-		    pr[i].handler, pr[i].ifp, rxcount, cycles);
+		SDT_PROBE4(device_polling,,, after_poller, poller, pr, rxcount,
+		    cycles);
 	}
-	poll_tick_packets += max_rx;
+	poller->poll_tick_packets += max_rx;
 
 	/*
 	 * Check whether any poller handled enough packets for it to be
 	 * worthwhile to do another iteration of polling.  netisr_pollmore()
 	 * will reschedule another iteration if !polling_done.
 	 */
-	polling_done = max_rx < (cycles / 2 + 1);
-	poll_phase = POLLER_POLL_DONE;
+	poller->polling_done = max_rx < (cycles / 2 + 1);
+	poller->poll_phase = POLLER_POLL_DONE;
 
-	SDT_PROBE5(device_polling,,, pollers_done, 0, max_rx, cycles,
-	    polling_done, poll_ticks_at_start);
+	SDT_PROBE3(device_polling,,, pollers_done, poller, max_rx, cycles);
 
-	mtx_unlock(&poll_mtx);
+	POLLER_UNLOCK(poller);
 }
 
 /*
@@ -617,13 +647,16 @@ netisr_poll(void)
 int
 ether_poll_register(poll_handler_t *h, if_t ifp)
 {
+	struct poller_instance *poller;
 	int i;
 
 	KASSERT(h != NULL, ("%s: handler is NULL", __func__));
 	KASSERT(ifp != NULL, ("%s: ifp is NULL", __func__));
 
-	mtx_lock(&poll_mtx);
-	if (poll_handlers >= POLL_LIST_LEN) {
+	poller = &instance;
+
+	POLLER_LOCK(poller);
+	if (poller->poll_handlers >= POLL_LIST_LEN) {
 		/*
 		 * List full, cannot register more entries.
 		 * This should never happen; if it does, it is probably a
@@ -637,22 +670,22 @@ ether_poll_register(poll_handler_t *h, if_t ifp)
 			    "maybe a broken driver ?\n");
 			verbose--;
 		}
-		mtx_unlock(&poll_mtx);
+		POLLER_UNLOCK(poller);
 		return (ENOMEM); /* no polling for you */
 	}
 
-	for (i = 0 ; i < poll_handlers ; i++)
-		if (pr[i].ifp == ifp && pr[i].handler != NULL) {
-			mtx_unlock(&poll_mtx);
+	for (i = 0 ; i < poller->poll_handlers ; i++)
+		if (poller->pr[i].ifp == ifp && poller->pr[i].handler != NULL) {
+			POLLER_UNLOCK(poller);
 			log(LOG_DEBUG, "ether_poll_register: %s: handler"
 			    " already registered\n", ifp->if_xname);
 			return (EEXIST);
 		}
 
-	pr[poll_handlers].handler = h;
-	pr[poll_handlers].ifp = ifp;
-	poll_handlers++;
-	mtx_unlock(&poll_mtx);
+	poller->pr[poller->poll_handlers].handler = h;
+	poller->pr[poller->poll_handlers].ifp = ifp;
+	poller->poll_handlers++;
+	POLLER_UNLOCK(poller);
 	if (idlepoll_sleeping)
 		wakeup(&idlepoll_sleeping);
 	return (0);
@@ -664,30 +697,36 @@ ether_poll_register(poll_handler_t *h, if_t ifp)
 int
 ether_poll_deregister(if_t ifp)
 {
-	int i;
+	struct poller_instance *poller;
+	int i, last;
 
 	KASSERT(ifp != NULL, ("%s: ifp is NULL", __func__));
 
-	mtx_lock(&poll_mtx);
+	poller = &instance;
 
-	for (i = 0 ; i < poll_handlers ; i++)
-		if (pr[i].ifp == ifp) /* found it */
+	POLLER_LOCK(poller);
+
+	for (i = 0 ; i < poller->poll_handlers ; i++)
+		if (poller->pr[i].ifp == ifp) /* found it */
 			break;
-	if (i == poll_handlers) {
+	if (i == poller->poll_handlers) {
 		log(LOG_DEBUG, "ether_poll_deregister: %s: not found!\n",
 		    ifp->if_xname);
-		mtx_unlock(&poll_mtx);
+		POLLER_UNLOCK(poller);
 		return (ENOENT);
 	}
-	poll_handlers--;
-	if (i < poll_handlers) { /* Last entry replaces this one. */
-		pr[i].handler = pr[poll_handlers].handler;
-		pr[i].ifp = pr[poll_handlers].ifp;
+	poller->poll_handlers--;
+	if (i < poller->poll_handlers) { /* Last entry replaces this one. */
+		last = poller->poll_handlers;
+		poller->pr[i].handler = poller->pr[last].handler;
+		poller->pr[i].ifp = poller->pr[last].ifp;
 	}
-	mtx_unlock(&poll_mtx);
+	POLLER_UNLOCK(poller);
 	return (0);
 }
 
+	// XXX axe?
+#if 0
 static void
 poll_idle(void)
 {
@@ -722,3 +761,4 @@ static struct kproc_desc idlepoll_kp = {
 };
 SYSINIT(idlepoll, SI_SUB_KTHREAD_VM, SI_ORDER_ANY, kproc_start,
     &idlepoll_kp);
+#endif
