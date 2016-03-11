@@ -68,7 +68,8 @@ struct	route;			/* if_output */
 struct	vnet;
 struct	ifmedia;
 struct	netmap_adapter;
-struct	pollee_entry;
+struct	dev_poll_entry;
+struct	ether_pollee_entry;
 
 #ifdef _KERNEL
 #include <sys/mbuf.h>		/* ifqueue only? */
@@ -313,7 +314,7 @@ struct ifnet {
 	 * binary interface.
 	 */
 
-	struct pollee_entry *pollee;
+	struct ether_pollee_entry *pollee;
 };
 
 /* for compatibility with other BSDs */
@@ -656,11 +657,22 @@ int if_hw_tsomax_update(if_t ifp, struct ifnet_hw_tsomax *);
 enum poll_cmd { POLL_ONLY, POLL_AND_CHECK_STATUS };
 
 typedef	int poll_handler_t(if_t ifp, enum poll_cmd cmd, int count);
+typedef int dev_poll_handler_t(void *arg, enum poll_cmd cmd, int count);
 int    ether_poll_register(poll_handler_t *h, if_t ifp);
 int    ether_poll_deregister(if_t ifp);
 
-struct pollee_entry *pollee_entry_alloc(void);
-void pollee_entry_free(struct pollee_entry *entry);
+int dev_poll_register(dev_poll_handler_t *, void *, u_int,
+    struct dev_poll_entry *, const char *format, ...) __printflike(5, 6);
+int dev_poll_deregister(struct dev_poll_entry *);
+
+struct dev_poll_entry *dev_poll_entry_alloc(void);
+void dev_poll_entry_free(struct dev_poll_entry *entry);
+
+struct ether_pollee_entry *ether_pollee_entry_alloc(void);
+void ether_pollee_entry_free(struct ether_pollee_entry *entry);
+
+#define	DEV_POLL_ANY	UINT_MAX
+
 #endif /* DEVICE_POLLING */
 
 #endif /* _KERNEL */

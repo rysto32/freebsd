@@ -232,8 +232,8 @@ MALLOC_DEFINE(M_IFMADDR, "ether_multi", "link-level multicast address");
 
 #ifdef DEVICE_POLLING
 
-#define if_alloc_pollee() pollee_entry_alloc()
-#define if_free_pollee(p) pollee_entry_free(p)
+#define if_alloc_pollee() ether_pollee_entry_alloc()
+#define if_free_pollee(p) ether_pollee_entry_free(p)
 
 #else
 

@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/proc.h>
 #include <sys/eventhandler.h>
@@ -49,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include <net/if_var.h>
 #include <net/netisr.h>			/* for NETISR_POLL		*/
 #include <net/vnet.h>
+
+#include <machine/stdarg.h>
 
 void hardclock_device_poll(void);	/* hook from hardclock		*/
 
@@ -158,7 +161,7 @@ SDT_PROBE_DEFINE3(device_polling,,, poll_cycles, "struct poller_instance *", "in
  *       1 - Pointer to the object being polled.
  */
 SDT_PROBE_DEFINE2(device_polling,,, before_poller, "struct poller_instance *",
-    "struct pollee_entry *");
+    "struct dev_poll_entry *");
 
 /*
  * Probe called after a polling handler returns.
@@ -170,7 +173,7 @@ SDT_PROBE_DEFINE2(device_polling,,, before_poller, "struct poller_instance *",
  *       3 - The maximum number of packets we told the ifnet to handle.
  */
 SDT_PROBE_DEFINE4(device_polling,,, after_poller, "struct poller_instance *",
-    "struct pollee_entry *", "int", "int");
+    "struct dev_poll_entry *", "int", "int");
 
 /*
  * Probe called after netisr_poll has called into every poller.
@@ -187,12 +190,19 @@ SDT_PROBE_DEFINE3(device_polling,,, pollers_done, "struct poller_instance *",
 
 struct poller_instance;
 
-struct pollee_entry {
+struct dev_poll_entry {
 	struct poller_instance *instance;
-	poll_handler_t *handler;
-	struct ifnet *arg;
+	dev_poll_handler_t *handler;
+	void *arg;
 	char name[POLLEE_ENTRY_NAME_LEN];
-	TAILQ_ENTRY(pollee_entry) next;
+	TAILQ_ENTRY(dev_poll_entry) next;
+};
+
+struct ether_pollee_entry
+{
+	struct dev_poll_entry pollee;
+	poll_handler_t *handler;
+	struct ifnet *ifp;
 };
 
 struct poller_instance
@@ -218,7 +228,7 @@ struct poller_instance
 	int last_hardclock;
 	uint32_t reg_frac_count;
 
-	TAILQ_HEAD(, pollee_entry) pollee_list;
+	TAILQ_HEAD(, dev_poll_entry) pollee_list;
 };
 
 #define POLLER_LOCK(p) mtx_lock(&(p)->poll_mtx)
@@ -335,6 +345,8 @@ SYSCTL_INT(_kern_polling, OID_AUTO, min_reschedule, CTLFLAG_RW,
 static struct sysctl_ctx_list poller_ctx;
 
 static MALLOC_DEFINE(M_DEVICE_POLL, "device_polling", "Network polling subsystem");
+
+static dev_poll_handler_t ether_poll_handler;
 
 static void
 poll_shutdown(void *arg, int howto)
@@ -576,7 +588,7 @@ netisr_poll(u_int id)
 {
 	struct timeval now_t;
 	struct poller_instance *poller;
-	struct pollee_entry *entry;
+	struct dev_poll_entry *entry;
 	int cycles;
 	enum poll_cmd cmd;
 	int rxcount, remaining_usec, max_rx, deltausec;
@@ -691,32 +703,30 @@ get_least_loaded(void)
  *
  * This is called from within the *_ioctl() functions.
  */
-int
-ether_poll_register(poll_handler_t *h, if_t ifp)
+static int
+dev_poll_register_locked(dev_poll_handler_t * h, void *arg, u_int index,
+    struct dev_poll_entry *entry, const char *format, __va_list ap)
 {
 	struct poller_instance *poller;
-	struct pollee_entry *entry;
-	int error;
-
-	KASSERT(h != NULL, ("%s: handler is NULL", __func__));
-	KASSERT(ifp != NULL, ("%s: ifp is NULL", __func__));
-
-	mtx_lock(&poll_register_mtx);
-	entry = ifp->pollee;
 
 	if (entry->instance != NULL) {
-		log(LOG_DEBUG, "ether_poll_register: %s: handler"
-			" already registered\n", ifp->if_xname);
-		error = EEXIST;
-		goto out;
+		log(LOG_DEBUG, "dev_poll_register: %s: handler"
+			" already registered\n", entry->name);
+		return (EEXIST);
 	}
 
-	poller = get_least_loaded();
+	if (index == DEV_POLL_ANY)
+		poller = get_least_loaded();
+	else if(index < num_instances)
+		poller = &instances[index];
+	else
+		return (ENOENT);
 
 	entry->handler = h;
-	entry->arg = ifp;
+	entry->arg = arg;
 	entry->instance = poller;
-	strlcpy(entry->name, ifp->if_xname, sizeof(entry->name));
+
+	vsnprintf(entry->name, sizeof(entry->name), format, ap);
 
 	POLLER_LOCK(poller);
 	TAILQ_INSERT_TAIL(&poller->pollee_list, entry, next);
@@ -726,31 +736,53 @@ ether_poll_register(poll_handler_t *h, if_t ifp)
 	if (idlepoll_sleeping)
 		wakeup(&idlepoll_sleeping);
 
-	error = 0;
-out:
+	return (0);
+}
+
+static int
+dev_poll_register_locked_va(dev_poll_handler_t * h, void *arg, u_int index,
+    struct dev_poll_entry *entry, const char *format, ...)
+{
+	__va_list ap;
+	int error;
+
+	va_start(ap, format);
+	error = dev_poll_register_locked(h, arg, index, entry, format, ap);
+	va_end(ap);
+	return (error);
+}
+
+int
+dev_poll_register(dev_poll_handler_t * h, void *arg, u_int index,
+    struct dev_poll_entry *entry, const char *format, ...)
+{
+	int error;
+	__va_list ap;
+
+	mtx_lock(&poll_register_mtx);
+	va_start(ap, format);
+	error = dev_poll_register_locked(h, arg, index, entry, format, ap);
+	va_end(ap);
 	mtx_unlock(&poll_register_mtx);
 
 	return (error);
 }
 
+
 /*
  * Remove interface from the polling list. Called from *_ioctl(), too.
  */
 int
-ether_poll_deregister(if_t ifp)
+dev_poll_deregister(struct dev_poll_entry *entry)
 {
 	struct poller_instance *poller;
-	struct pollee_entry *entry;
 	int error;
 
-	KASSERT(ifp != NULL, ("%s: ifp is NULL", __func__));
-	
 	mtx_lock(&poll_register_mtx);
-	entry = ifp->pollee;
 
 	if (entry->instance == NULL) {
-		log(LOG_DEBUG, "ether_poll_deregister: %s: not found!\n",
-		    ifp->if_xname);
+		log(LOG_DEBUG, "ether_poll_deregister: '%s': not found!\n",
+		    entry->name);
 		error = ENOENT;
 		goto out;
 	}
@@ -758,6 +790,7 @@ ether_poll_deregister(if_t ifp)
 	poller = entry->instance;
 
 	POLLER_LOCK(poller);
+	entry->instance = NULL;
 	TAILQ_REMOVE(&poller->pollee_list, entry, next);
 	poller->poll_handlers--;
 	POLLER_UNLOCK(poller);
@@ -769,21 +802,84 @@ out:
 	return (error);
 }
 
-struct pollee_entry *
-pollee_entry_alloc(void)
+int
+ether_poll_register(poll_handler_t *h, if_t ifp)
 {
-	return (malloc(sizeof(struct pollee_entry), M_DEVICE_POLL,
+	struct ether_pollee_entry *entry;
+	int error;
+
+	mtx_lock(&poll_register_mtx);
+
+	entry = ifp->pollee;
+
+	if (entry->pollee.instance != NULL) {
+		log(LOG_DEBUG, "ether_poll_register: %s: handler"
+			" already registered\n", entry->pollee.name);
+		error = EEXIST;
+		goto out;
+	}
+
+	entry->handler = h;
+	entry->ifp = ifp;
+
+	error = dev_poll_register_locked_va(ether_poll_handler, entry,
+	    DEV_POLL_ANY, &entry->pollee, "%s", ifp->if_xname);
+
+out:
+	mtx_unlock(&poll_register_mtx);
+
+	return (error);
+}
+
+int
+ether_poll_deregister(if_t ifp)
+{
+	struct ether_pollee_entry *entry;
+
+	entry = ifp->pollee;
+	return (dev_poll_deregister(&entry->pollee));
+}
+
+struct ether_pollee_entry *
+ether_pollee_entry_alloc(void)
+{
+
+	return (malloc(sizeof(struct ether_pollee_entry), M_DEVICE_POLL,
 	    M_WAITOK | M_ZERO));
 }
 
 void
-pollee_entry_free(struct pollee_entry *entry)
+ether_pollee_entry_free(struct ether_pollee_entry *entry)
 {
 
 	free(entry, M_DEVICE_POLL);
 }
 
-	// XXX axe?
+struct dev_poll_entry *
+dev_poll_entry_alloc(void)
+{
+
+	return (malloc(sizeof(struct dev_poll_entry), M_DEVICE_POLL,
+	    M_WAITOK | M_ZERO));
+}
+
+void
+dev_poll_entry_free(struct dev_poll_entry *entry)
+{
+
+	free(entry, M_DEVICE_POLL);
+}
+
+static int
+ether_poll_handler(void *arg, enum poll_cmd cmd, int count)
+{
+	struct ether_pollee_entry *entry;
+
+	entry = arg;
+	return (entry->handler(entry->ifp, cmd, count));
+}
+
+// XXX axe?
 #if 0
 static void
 poll_idle(void)
