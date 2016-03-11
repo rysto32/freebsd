@@ -68,6 +68,7 @@ struct	route;			/* if_output */
 struct	vnet;
 struct	ifmedia;
 struct	netmap_adapter;
+struct	pollee_entry;
 
 #ifdef _KERNEL
 #include <sys/mbuf.h>		/* ifqueue only? */
@@ -311,6 +312,8 @@ struct ifnet {
 	 * that structure can be enhanced without changing the kernel
 	 * binary interface.
 	 */
+
+	struct pollee_entry *pollee;
 };
 
 /* for compatibility with other BSDs */
@@ -655,6 +658,9 @@ enum poll_cmd { POLL_ONLY, POLL_AND_CHECK_STATUS };
 typedef	int poll_handler_t(if_t ifp, enum poll_cmd cmd, int count);
 int    ether_poll_register(poll_handler_t *h, if_t ifp);
 int    ether_poll_deregister(if_t ifp);
+
+struct pollee_entry *pollee_entry_alloc(void);
+void pollee_entry_free(struct pollee_entry *entry);
 #endif /* DEVICE_POLLING */
 
 #endif /* _KERNEL */

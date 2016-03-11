@@ -1138,19 +1138,7 @@ netisr_init(void *arg)
 		    netisr_defaultqlimit, netisr_maxqlimit);
 		netisr_defaultqlimit = netisr_maxqlimit;
 	}
-#ifdef DEVICE_POLLING
-	/*
-	 * The device polling code is not yet aware of how to deal with
-	 * multiple netisr threads, so for the time being compiling in device
-	 * polling disables parallel netisr workers.
-	 */
-	if (netisr_maxthreads != 1 || netisr_bindthreads != 0) {
-		printf("netisr_init: forcing maxthreads to 1 and "
-		    "bindthreads to 0 for device polling\n");
-		netisr_maxthreads = 1;
-		netisr_bindthreads = 0;
-	}
-#endif
+
 	netisr_start_swi(curcpu, pcpu_find(curcpu));
 }
 SYSINIT(netisr_init, SI_SUB_SOFTINTR, SI_ORDER_FIRST, netisr_init, NULL);

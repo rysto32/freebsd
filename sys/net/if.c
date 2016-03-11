@@ -31,6 +31,7 @@
  */
 
 #include "opt_compat.h"
+#include "opt_device_polling.h"
 #include "opt_inet6.h"
 #include "opt_inet.h"
 
@@ -229,6 +230,18 @@ static MALLOC_DEFINE(M_IFNET, "ifnet", "interface internals");
 MALLOC_DEFINE(M_IFADDR, "ifaddr", "interface address");
 MALLOC_DEFINE(M_IFMADDR, "ether_multi", "link-level multicast address");
 
+#ifdef DEVICE_POLLING
+
+#define if_alloc_pollee() pollee_entry_alloc()
+#define if_free_pollee(p) pollee_entry_free(p)
+
+#else
+
+#define if_alloc_pollee() (NULL)
+#define if_free_pollee(p) (void)0
+
+#endif
+
 struct ifnet *
 ifnet_byindex_locked(u_short idx)
 {
@@ -424,6 +437,7 @@ if_alloc(u_char type)
 	u_short idx;
 
 	ifp = malloc(sizeof(struct ifnet), M_IFNET, M_WAITOK|M_ZERO);
+	ifp->pollee = if_alloc_pollee();
 	IFNET_WLOCK();
 	idx = ifindex_alloc();
 	ifnet_setbyindex_locked(idx, IFNET_HOLD);
@@ -488,6 +502,7 @@ if_free_internal(struct ifnet *ifp)
 	for (int i = 0; i < IFCOUNTERS; i++)
 		counter_u64_free(ifp->if_counters[i]);
 
+	if_free_pollee(ifp->pollee);
 	free(ifp, M_IFNET);
 }
 
