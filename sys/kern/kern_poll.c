@@ -856,11 +856,14 @@ ether_pollee_entry_free(struct ether_pollee_entry *entry)
 }
 
 struct dev_poll_entry *
-dev_poll_entry_alloc(void)
+dev_poll_entry_alloc(int how)
 {
 
+	KASSERT(how == M_WAITOK || how == M_NOWAIT,
+	    ("%s: how=%x is invalid", __func__, how));
+
 	return (malloc(sizeof(struct dev_poll_entry), M_DEVICE_POLL,
-	    M_WAITOK | M_ZERO));
+	    how | M_ZERO));
 }
 
 void

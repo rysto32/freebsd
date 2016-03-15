@@ -665,7 +665,7 @@ int dev_poll_register(dev_poll_handler_t *, void *, u_int,
     struct dev_poll_entry *, const char *format, ...) __printflike(5, 6);
 int dev_poll_deregister(struct dev_poll_entry *);
 
-struct dev_poll_entry *dev_poll_entry_alloc(void);
+struct dev_poll_entry *dev_poll_entry_alloc(int how);
 void dev_poll_entry_free(struct dev_poll_entry *entry);
 
 struct ether_pollee_entry *ether_pollee_entry_alloc(void);

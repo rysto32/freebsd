@@ -74,11 +74,15 @@ struct vtnet_rxq {
 	struct virtqueue	*vtnrx_vq;
 	struct sglist		*vtnrx_sg;
 	int			 vtnrx_id;
+	uint32_t		 vtnrx_flags;
 	struct vtnet_rxq_stats	 vtnrx_stats;
 	struct taskqueue	*vtnrx_tq;
 	struct task		 vtnrx_intrtask;
 	char			 vtnrx_name[16];
+	struct dev_poll_entry	*vtnrx_pollee;
 } __aligned(CACHE_LINE_SIZE);
+
+#define	VTNRX_POLL_MODE	0x0001
 
 #define VTNET_RXQ_LOCK(_rxq)	mtx_lock(&(_rxq)->vtnrx_mtx)
 #define VTNET_RXQ_UNLOCK(_rxq)	mtx_unlock(&(_rxq)->vtnrx_mtx)
@@ -113,7 +117,11 @@ struct vtnet_txq {
 	struct task		 vtntx_defrtask;
 #endif
 	char			 vtntx_name[16];
+	struct dev_poll_entry	*vtntx_pollee;
+	uint32_t		 vtntx_flags;
 } __aligned(CACHE_LINE_SIZE);
+
+#define	VTNTX_POLL_MODE	0x0001
 
 #define VTNET_TXQ_LOCK(_txq)	mtx_lock(&(_txq)->vtntx_mtx)
 #define VTNET_TXQ_TRYLOCK(_txq)	mtx_trylock(&(_txq)->vtntx_mtx)

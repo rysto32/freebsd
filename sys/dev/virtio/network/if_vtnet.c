@@ -26,6 +26,10 @@
 
 /* Driver for VirtIO network devices. */
 
+#include "opt_inet.h"
+#include "opt_inet6.h"
+#include "opt_device_polling.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -81,9 +85,6 @@ __FBSDID("$FreeBSD$");
 
 #include "virtio_if.h"
 
-#include "opt_inet.h"
-#include "opt_inet6.h"
-
 static int	vtnet_modevent(module_t, int, void *);
 
 static int	vtnet_probe(device_t);
@@ -125,7 +126,8 @@ static void	vtnet_rxq_discard_buf(struct vtnet_rxq *, struct mbuf *);
 static int	vtnet_rxq_merged_eof(struct vtnet_rxq *, struct mbuf *, int);
 static void	vtnet_rxq_input(struct vtnet_rxq *, struct mbuf *,
 		    struct virtio_net_hdr *);
-static int	vtnet_rxq_eof(struct vtnet_rxq *);
+static __inline int vtnet_rxq_eof(struct vtnet_rxq *);
+static int	vtnet_do_rxq_eof(struct vtnet_rxq *, int);
 static void	vtnet_rx_vq_intr(void *);
 static void	vtnet_rxq_tq_intr(void *, int);
 
@@ -152,6 +154,7 @@ static void	vtnet_txq_tq_deferred(void *, int);
 #endif
 static void	vtnet_txq_start(struct vtnet_txq *);
 static void	vtnet_txq_tq_intr(void *, int);
+static int	vtnet_do_txq_eof(struct vtnet_txq *, int);
 static int	vtnet_txq_eof(struct vtnet_txq *);
 static void	vtnet_tx_vq_intr(void *);
 static void	vtnet_tx_start_all(struct vtnet_softc *);
@@ -228,6 +231,11 @@ static void	vtnet_disable_tx_interrupts(struct vtnet_softc *);
 static void	vtnet_disable_interrupts(struct vtnet_softc *);
 
 static int	vtnet_tunable_int(struct vtnet_softc *, const char *, int);
+
+#ifdef DEVICE_POLLING
+static dev_poll_handler_t vtnet_rx_poll;
+static dev_poll_handler_t vtnet_tx_poll;
+#endif
 
 /* Tunables. */
 static int vtnet_csum_disable = 0;
@@ -687,6 +695,10 @@ vtnet_init_rxq(struct vtnet_softc *sc, int id)
 	rxq->vtnrx_sc = sc;
 	rxq->vtnrx_id = id;
 
+	rxq->vtnrx_pollee = dev_poll_entry_alloc(M_NOWAIT);
+	if (rxq->vtnrx_pollee == NULL)
+		return (ENOMEM);
+
 	rxq->vtnrx_sg = sglist_alloc(sc->vtnet_rx_nsegs, M_NOWAIT);
 	if (rxq->vtnrx_sg == NULL)
 		return (ENOMEM);
@@ -711,6 +723,10 @@ vtnet_init_txq(struct vtnet_softc *sc, int id)
 
 	txq->vtntx_sc = sc;
 	txq->vtntx_id = id;
+
+	txq->vtntx_pollee = dev_poll_entry_alloc(M_NOWAIT);
+	if (txq->vtntx_pollee == NULL)
+		return (ENOMEM);
 
 	txq->vtntx_sg = sglist_alloc(sc->vtnet_tx_nsegs, M_NOWAIT);
 	if (txq->vtntx_sg == NULL)
@@ -773,6 +789,11 @@ vtnet_destroy_rxq(struct vtnet_rxq *rxq)
 		rxq->vtnrx_sg = NULL;
 	}
 
+	if (rxq->vtnrx_pollee != NULL) {
+		dev_poll_entry_free(rxq->vtnrx_pollee);
+		rxq->vtnrx_pollee = NULL;
+	}
+
 	if (mtx_initialized(&rxq->vtnrx_mtx) != 0)
 		mtx_destroy(&rxq->vtnrx_mtx);
 }
@@ -787,6 +808,11 @@ vtnet_destroy_txq(struct vtnet_txq *txq)
 	if (txq->vtntx_sg != NULL) {
 		sglist_free(txq->vtntx_sg);
 		txq->vtntx_sg = NULL;
+	}
+
+	if (txq->vtntx_pollee != NULL) {
+		dev_poll_entry_free(txq->vtntx_pollee);
+		txq->vtntx_pollee = NULL;
 	}
 
 #ifndef VTNET_LEGACY_TX
@@ -1007,6 +1033,9 @@ vtnet_setup_interface(struct vtnet_softc *sc)
 		sc->vtnet_vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
 		    vtnet_unregister_vlan, sc, EVENTHANDLER_PRI_FIRST);
 	}
+#ifdef DEVICE_POLLING
+	ifp->if_capabilities |= IFCAP_POLLING;
+#endif
 
 	vtnet_set_rx_process_limit(sc);
 	vtnet_set_tx_intr_threshold(sc);
@@ -1051,6 +1080,62 @@ vtnet_change_mtu(struct vtnet_softc *sc, int new_mtu)
 	}
 
 	return (0);
+}
+
+static void
+vtnet_enter_polling(struct vtnet_softc *sc)
+{
+	struct vtnet_rxq *rxq;
+	struct vtnet_txq *txq;
+	int i;
+
+	for (i = 0; i < sc->vtnet_max_vq_pairs; i++) {
+		rxq = &sc->vtnet_rxqs[i];
+		VTNET_RXQ_LOCK(rxq);
+		vtnet_rxq_disable_intr(rxq);
+		rxq->vtnrx_flags |= VTNRX_POLL_MODE;
+		VTNET_RXQ_UNLOCK(rxq);
+
+		dev_poll_register(vtnet_rx_poll, rxq, DEV_POLL_ANY,
+		    rxq->vtnrx_pollee, "%s", rxq->vtnrx_name);
+
+		txq = &sc->vtnet_txqs[i];
+		VTNET_TXQ_LOCK(txq);
+		vtnet_txq_disable_intr(txq);
+		txq->vtntx_flags |= VTNTX_POLL_MODE;
+		VTNET_TXQ_UNLOCK(txq);
+
+		dev_poll_register(vtnet_tx_poll, txq, DEV_POLL_ANY,
+		    txq->vtntx_pollee, "%s", txq->vtntx_name);
+	}
+}
+
+static void
+vtnet_leave_polling(struct vtnet_softc *sc)
+{
+	struct vtnet_rxq *rxq;
+	struct vtnet_txq *txq;
+	int i;
+
+	for (i = 0; i < sc->vtnet_max_vq_pairs; i++) {
+		rxq = &sc->vtnet_rxqs[i];
+		VTNET_RXQ_LOCK(rxq);
+		rxq->vtnrx_flags &= ~VTNRX_POLL_MODE;
+		if (if_getdrvflags(sc->vtnet_ifp) & IFF_DRV_RUNNING)
+			vtnet_rxq_enable_intr(rxq);
+		VTNET_RXQ_UNLOCK(rxq);
+
+		dev_poll_deregister(rxq->vtnrx_pollee);
+
+		txq = &sc->vtnet_txqs[i];
+		VTNET_TXQ_LOCK(txq);
+		txq->vtntx_flags &= ~VTNTX_POLL_MODE;
+		if (if_getdrvflags(sc->vtnet_ifp) & IFF_DRV_RUNNING)
+			vtnet_txq_enable_intr(txq);
+		VTNET_TXQ_UNLOCK(txq);
+
+		dev_poll_deregister(txq->vtntx_pollee);
+	}
 }
 
 static int
@@ -1146,6 +1231,15 @@ vtnet_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			ifp->if_capenable ^= IFCAP_VLAN_HWTSO;
 		if (mask & IFCAP_VLAN_HWTAGGING)
 			ifp->if_capenable ^= IFCAP_VLAN_HWTAGGING;
+
+		if (mask & IFCAP_POLLING) {
+			ifp->if_capenable ^= IFCAP_POLLING;
+
+			if (ifp->if_capenable & IFCAP_POLLING)
+				vtnet_enter_polling(sc);
+			else
+				vtnet_leave_polling(sc);
+		}
 
 		if (reinit && (ifp->if_drv_flags & IFF_DRV_RUNNING)) {
 			ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
@@ -1734,7 +1828,7 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 }
 
 static int
-vtnet_rxq_eof(struct vtnet_rxq *rxq)
+vtnet_do_rxq_eof(struct vtnet_rxq *rxq, int max_count)
 {
 	struct virtio_net_hdr lhdr, *hdr;
 	struct vtnet_softc *sc;
@@ -1742,14 +1836,13 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 	struct virtqueue *vq;
 	struct mbuf *m;
 	struct virtio_net_hdr_mrg_rxbuf *mhdr;
-	int len, deq, nbufs, adjsz, count;
+	int len, deq, nbufs, adjsz;
 
 	sc = rxq->vtnrx_sc;
 	vq = rxq->vtnrx_vq;
 	ifp = sc->vtnet_ifp;
 	hdr = &lhdr;
 	deq = 0;
-	count = sc->vtnet_rx_process_limit;
 
 	VTNET_RXQ_LOCK_ASSERT(rxq);
 
@@ -1759,7 +1852,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 	}
 #endif /* DEV_NETMAP */
 
-	while (count-- > 0) {
+	while (deq < max_count) {
 		m = virtqueue_dequeue(vq, &len);
 		if (m == NULL)
 			break;
@@ -1825,7 +1918,35 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 	if (deq > 0)
 		virtqueue_notify(vq);
 
-	return (count > 0 ? 0 : EAGAIN);
+	return (deq);
+}
+
+static __inline int
+vtnet_rxq_eof(struct vtnet_rxq *rxq)
+{
+	int deq;
+
+	deq = vtnet_do_rxq_eof(rxq, rxq->vtnrx_sc->vtnet_rx_process_limit);
+
+	return (deq == rxq->vtnrx_sc->vtnet_rx_process_limit);
+}
+
+static int
+vtnet_rx_poll(void *arg, enum poll_cmd cmd, int count)
+{
+	struct vtnet_rxq *rxq;
+	int done;
+
+	rxq = arg;
+
+	VTNET_RXQ_LOCK(rxq);
+	if (if_getdrvflags(rxq->vtnrx_sc->vtnet_ifp) & IFF_DRV_RUNNING)
+		done = vtnet_do_rxq_eof(rxq, count);
+	else
+		done = 0;
+	VTNET_RXQ_UNLOCK(rxq);
+
+	return (done);
 }
 
 static void
@@ -2435,7 +2556,7 @@ vtnet_txq_tq_intr(void *xtxq, int pending)
 }
 
 static int
-vtnet_txq_eof(struct vtnet_txq *txq)
+vtnet_do_txq_eof(struct vtnet_txq *txq, int max)
 {
 	struct virtqueue *vq;
 	struct vtnet_tx_header *txhdr;
@@ -2453,7 +2574,7 @@ vtnet_txq_eof(struct vtnet_txq *txq)
 	}
 #endif /* DEV_NETMAP */
 
-	while ((txhdr = virtqueue_dequeue(vq, NULL)) != NULL) {
+	while (deq < max && (txhdr = virtqueue_dequeue(vq, NULL)) != NULL) {
 		m = txhdr->vth_mbuf;
 		deq++;
 
@@ -2470,6 +2591,34 @@ vtnet_txq_eof(struct vtnet_txq *txq)
 		txq->vtntx_watchdog = 0;
 
 	return (deq);
+}
+
+static __inline int
+vtnet_txq_eof(struct vtnet_txq *txq)
+{
+
+	return (vtnet_do_txq_eof(txq, INT_MAX));
+}
+
+static int
+vtnet_tx_poll(void *arg, enum poll_cmd cmd, int max)
+{
+	struct vtnet_txq *txq;
+	int count;
+
+	txq = arg;
+
+	VTNET_TXQ_LOCK(txq);
+	if (if_getdrvflags(txq->vtntx_sc->vtnet_ifp) & IFF_DRV_RUNNING) {
+		count = vtnet_do_txq_eof(txq, max);
+
+		// XXX Not limited to max
+		vtnet_txq_start(txq);
+	} else
+		count = 0;
+	VTNET_TXQ_UNLOCK(txq);
+
+	return (count);
 }
 
 static void
@@ -3862,6 +4011,9 @@ static int
 vtnet_rxq_enable_intr(struct vtnet_rxq *rxq)
 {
 
+	if (rxq->vtnrx_flags & VTNRX_POLL_MODE)
+		return (0);
+
 	return (virtqueue_enable_intr(rxq->vtnrx_vq));
 }
 
@@ -3876,6 +4028,9 @@ static int
 vtnet_txq_enable_intr(struct vtnet_txq *txq)
 {
 	struct virtqueue *vq;
+
+	if (txq->vtntx_flags & VTNTX_POLL_MODE)
+		return (0);
 
 	vq = txq->vtntx_vq;
 
