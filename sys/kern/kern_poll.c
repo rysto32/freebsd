@@ -490,7 +490,9 @@ hardclock_device_poll(void)
 
 		poller->last_hardclock = usec;
 		SDT_PROBE1(device_polling,,, netisr_sched, poller);
-		netisr_sched_poll(poller->index);
+
+		if (!poller->polling_done)
+			netisr_sched_poll(poller->index);
 	}
 }
 
@@ -880,6 +882,19 @@ ether_poll_handler(void *arg, enum poll_cmd cmd, int count)
 
 	entry = arg;
 	return (entry->handler(entry->ifp, cmd, count));
+}
+
+int
+dev_poll_filter(void *arg)
+{
+	struct dev_poll_entry *entry;
+	struct poller_instance *poller;
+
+	entry = arg;
+	poller = entry->instance;
+	netisr_sched_poll(poller->index);
+
+	return (FILTER_HANDLED);
 }
 
 // XXX axe?

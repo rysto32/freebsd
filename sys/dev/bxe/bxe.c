@@ -24,6 +24,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "opt_device_polling.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -9259,7 +9261,7 @@ bxe_interrupt_attach(struct bxe_softc *sc)
              */
             if ((rc = bus_setup_intr(sc->dev, sc->intr[i + 1].resource,
                                      (INTR_TYPE_NET | INTR_MPSAFE),
-                                     NULL, bxe_intr_fp, fp,
+                                     dev_poll_filter, NULL, fp->pollee,
                                      &sc->intr[i + 1].tag)) != 0) {
                 BLOGE(sc, "Failed to allocate MSI-X[%d] vector (%d)\n",
                       (i + 1), rc);

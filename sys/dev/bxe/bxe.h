@@ -701,6 +701,9 @@ struct bxe_fastpath {
 #define BXE_BR_SIZE 4096
     struct buf_ring *tx_br;
 #endif
+
+    struct dev_poll_entry *rx_pollee;
+    struct dev_poll_entry *tx_pollee;
 }; /* struct bxe_fastpath */
 
 /* sriov XXX */
