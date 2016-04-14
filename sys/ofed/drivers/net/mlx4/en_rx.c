@@ -52,14 +52,18 @@ static void mlx4_en_init_rx_desc(struct mlx4_en_priv *priv,
 	struct mlx4_en_rx_desc *rx_desc = (struct mlx4_en_rx_desc *)
 	    (ring->buf + (ring->stride * index));
 	int possible_frags;
+	int ip_align;
 	int i;
 
-
+	ip_align = MLX4_NET_IP_ALIGN;
 	/* Set size and memtype fields */
 	for (i = 0; i < priv->num_frags; i++) {
 		rx_desc->data[i].byte_count =
-			cpu_to_be32(priv->frag_info[i].frag_size);
+			cpu_to_be32(priv->frag_info[i].frag_size - ip_align);
 		rx_desc->data[i].lkey = cpu_to_be32(priv->mdev->mr.key);
+
+		/* Adjust only the first fragment for IP header alignment. */
+		ip_align = 0;
 	}
 
 	/* If the number of used fragments does not fill up the ring stride,
@@ -88,6 +92,9 @@ static int mlx4_en_alloc_buf(struct mlx4_en_priv *priv,
 		priv->port_stats.rx_alloc_failed++;
 		return -ENOMEM;
 	}
+
+	/* make sure IP header gets aligned */
+	m_adj(mb, MLX4_NET_IP_ALIGN);
 	err = -bus_dmamap_load_mbuf_sg(ring->dma_tag, mb_list->dma_map,
 	    mb, segs, &nsegs, BUS_DMA_NOWAIT);
 	if (unlikely(err != 0)) {
@@ -235,7 +242,8 @@ static int frag_sizes[] = {
 void mlx4_en_calc_rx_buf(struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
-	int eff_mtu = dev->if_mtu + ETH_HLEN + VLAN_HLEN + ETH_FCS_LEN;
+	int eff_mtu = dev->if_mtu + ETH_HLEN + VLAN_HLEN + ETH_FCS_LEN +
+	    MLX4_NET_IP_ALIGN;
 	int buf_size = 0;
 	int i, frag;
 
