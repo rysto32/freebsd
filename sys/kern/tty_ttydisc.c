@@ -226,7 +226,8 @@ ttydisc_read_raw_read_timer(struct tty *tp, struct uio *uio, int ioflag,
 	size_t vmin = MAX(tp->t_termios.c_cc[VMIN], 1);
 	unsigned int vtime = tp->t_termios.c_cc[VTIME];
 	struct timeval end, now, left;
-	int error, hz;
+	int error;
+	uint64_t hz;
 
 	MPASS(tp->t_termios.c_cc[VTIME] != 0);
 
@@ -254,7 +255,7 @@ ttydisc_read_raw_read_timer(struct tty *tp, struct uio *uio, int ioflag,
 			return (0);
 		left = end;
 		timevalsub(&left, &now);
-		hz = tvtohz(&left);
+		hz = tvtohz64(&left);
 
 		/*
 		 * We have to wait for more. If the timer expires, we

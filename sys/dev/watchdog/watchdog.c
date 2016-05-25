@@ -86,7 +86,7 @@ pow2ns_to_ts(int pow2ns, struct timespec *ts)
 	ts->tv_nsec = ns % 1000000000ULL;
 }
 
-static int
+static int64_t
 pow2ns_to_ticks(int pow2ns)
 {
 	struct timeval tv;
@@ -94,7 +94,7 @@ pow2ns_to_ticks(int pow2ns)
 
 	pow2ns_to_ts(pow2ns, &ts);
 	TIMESPEC_TO_TIMEVAL(&tv, &ts);
-	return (tvtohz(&tv));
+	return (tvtohz64(&tv));
 }
 
 static int
@@ -137,7 +137,7 @@ wdog_kern_pat(u_int utim)
 		 */
 		wd_last_u = (utim & WD_INTERVAL);
 		wd_last_u_sysctl = wd_last_u;
-		wd_last_u_sysctl_secs = pow2ns_to_ticks(wd_last_u) / hz;
+		wd_last_u_sysctl_secs = (int)(pow2ns_to_ticks(wd_last_u) / hz);
 	}
 	if ((utim & WD_INTERVAL) == WD_TO_NEVER) {
 		utim = 0;
@@ -254,7 +254,7 @@ wd_set_pretimeout(int newtimeout, int disableiftoolong)
 {
 	u_int utime;
 	struct timespec utime_ts;
-	int timeout_ticks;
+	int64_t timeout_ticks;
 
 	utime = wdog_kern_last_timeout();
 	pow2ns_to_ts(utime, &utime_ts);

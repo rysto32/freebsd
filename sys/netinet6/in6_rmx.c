@@ -247,7 +247,7 @@ in6_mtutimo(void *rock)
 
 	atv.tv_sec = MTUTIMO_DEFAULT;
 	atv.tv_usec = 0;
-	callout_reset(&V_rtq_mtutimer, tvtohz(&atv), in6_mtutimo, rock);
+	callout_reset(&V_rtq_mtutimer, tvtohz64(&atv), in6_mtutimo, rock);
 	CURVNET_RESTORE();
 }
 

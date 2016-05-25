@@ -51,12 +51,16 @@
 #define	CALLOUT_DIRECT 		0x0100 /* allow exec from hw int context */
 
 #define	C_DIRECT_EXEC		0x0001 /* direct execution of callout */
-#define	C_PRELBITS		7
+
+
+#define	C_PMS			7
+#define	C_PRELBITS		11
 #define	C_PRELRANGE		((1 << C_PRELBITS) - 1)
 #define	C_PREL(x)		(((x) + 1) << 1)
 #define	C_PRELGET(x)		(int)((((x) >> 1) & C_PRELRANGE) - 1)
-#define	C_HARDCLOCK		0x0100 /* align to hardclock() calls */
-#define	C_ABSOLUTE		0x0200 /* event time is absolute. */
+#define C_DEFAULT		C_PREL(C_PMS)
+#define	C_HARDCLOCK		0x1000 /* align to hardclock() calls */
+#define	C_ABSOLUTE		0x2000 /* event time is absolute. */
 
 struct callout_handle {
 	struct callout *callout;
@@ -85,6 +89,12 @@ struct callout_handle {
  * flags via callout_active(), callout_deactivate(), callout_reset*(), or
  * callout_stop() to avoid races.
  */
+
+/* if the passed precision is less than 1 microsecond set it to the resolution
+ * of hardclock
+ */
+#define prthresh(pr) ((pr) < tick_sbt ? htick_sbt : (pr))
+
 #define	callout_active(c)	((c)->c_flags & CALLOUT_ACTIVE)
 #define	callout_deactivate(c)	((c)->c_flags &= ~CALLOUT_ACTIVE)
 #define	callout_drain(c)	_callout_stop_safe(c, CS_DRAIN)
@@ -100,29 +110,31 @@ void	_callout_init_lock(struct callout *, struct lock_object *, int);
 	_callout_init_lock((c), ((rw) != NULL) ? &(rw)->lock_object :	\
 	   NULL, (flags))
 #define	callout_pending(c)	((c)->c_iflags & CALLOUT_PENDING)
-int	callout_reset_sbt_on(struct callout *, sbintime_t, sbintime_t,
-	    void (*)(void *), void *, int, int);
+int	callout_reset_sbt_on_(struct callout *, sbintime_t, sbintime_t,
+			      void (*)(void *), void *, int, int);
+#define callout_reset_sbt_on(c, sbt, pr, fn, arg, cpu, flags)	\
+	callout_reset_sbt_on_((c), (sbt), prthresh(pr), (fn), (arg), (cpu), (flags));
 #define	callout_reset_sbt(c, sbt, pr, fn, arg, flags)			\
-    callout_reset_sbt_on((c), (sbt), (pr), (fn), (arg), -1, (flags))
+	callout_reset_sbt_on_((c), (sbt), prthresh(pr) , (fn), (arg), -1, (flags))
 #define	callout_reset_sbt_curcpu(c, sbt, pr, fn, arg, flags)		\
-    callout_reset_sbt_on((c), (sbt), (pr), (fn), (arg), PCPU_GET(cpuid),\
+    callout_reset_sbt_on_((c), (sbt), prthresh(pr), (fn), (arg), PCPU_GET(cpuid),\
         (flags))
 #define	callout_reset_on(c, to_ticks, fn, arg, cpu)			\
-    callout_reset_sbt_on((c), tick_sbt * (to_ticks), 0, (fn), (arg),	\
+    callout_reset_sbt_on_((c), tick_sbt * (to_ticks), htick_sbt, (fn), (arg),	\
         (cpu), C_HARDCLOCK)
 #define	callout_reset(c, on_tick, fn, arg)				\
     callout_reset_on((c), (on_tick), (fn), (arg), -1)
 #define	callout_reset_curcpu(c, on_tick, fn, arg)			\
     callout_reset_on((c), (on_tick), (fn), (arg), PCPU_GET(cpuid))
 #define	callout_schedule_sbt_on(c, sbt, pr, cpu, flags)			\
-    callout_reset_sbt_on((c), (sbt), (pr), (c)->c_func, (c)->c_arg,	\
+    callout_reset_sbt_on_((c), (sbt), prthresh(pr), (c)->c_func, (c)->c_arg,	\
         (cpu), (flags))
 #define	callout_schedule_sbt(c, sbt, pr, flags)				\
-    callout_schedule_sbt_on((c), (sbt), (pr), -1, (flags))
+    callout_schedule_sbt_on((c), (sbt), prthresh(pr), -1, (flags))
 #define	callout_schedule_sbt_curcpu(c, sbt, pr, flags)			\
-    callout_schedule_sbt_on((c), (sbt), (pr), PCPU_GET(cpuid), (flags))
-int	callout_schedule(struct callout *, int);
-int	callout_schedule_on(struct callout *, int, int);
+    callout_schedule_sbt_on((c), (sbt), prthresh(pr), PCPU_GET(cpuid), (flags))
+int	callout_schedule(struct callout *, int64_t);
+int	callout_schedule_on(struct callout *, int64_t, int);
 #define	callout_schedule_curcpu(c, on_tick)				\
     callout_schedule_on((c), (on_tick), PCPU_GET(cpuid))
 #define	callout_stop(c)		_callout_stop_safe(c, 0)

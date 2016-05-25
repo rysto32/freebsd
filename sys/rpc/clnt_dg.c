@@ -342,9 +342,9 @@ clnt_dg_call(
 	int retrans;			/* number of re-transmits so far */
 	int nrefreshes = 2;		/* number of times to refresh cred */
 	struct timeval *tvp;
-	int timeout;
-	int retransmit_time;
-	int next_sendtime, starttime, rtt, time_waited, tv = 0;
+	int64_t timeout;
+	int64_t retransmit_time;
+	int64_t next_sendtime, starttime, rtt, time_waited, tv = 0;
 	struct sockaddr *sa;
 	socklen_t salen;
 	uint32_t xid = 0;
@@ -382,7 +382,7 @@ clnt_dg_call(
 		tvp = &cu->cu_total; /* use default timeout */
 	}
 	if (tvp->tv_sec || tvp->tv_usec)
-		timeout = tvtohz(tvp);
+		timeout = tvtohz64(tvp);
 	else
 		timeout = 0;
 
@@ -410,11 +410,11 @@ clnt_dg_call(
 	if (ext && ext->rc_timers) {
 		rt = ext->rc_timers;
 		if (!rt->rt_rtxcur)
-			rt->rt_rtxcur = tvtohz(&cu->cu_wait);
+			rt->rt_rtxcur = (u_long)tvtohz64(&cu->cu_wait);
 		retransmit_time = next_sendtime = rt->rt_rtxcur;
 	} else {
 		rt = NULL;
-		retransmit_time = next_sendtime = tvtohz(&cu->cu_wait);
+		retransmit_time = next_sendtime = tvtohz64(&cu->cu_wait);
 	}
 
 	starttime = ticks;

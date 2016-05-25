@@ -1980,7 +1980,7 @@ kern_aio_suspend(struct thread *td, int njoblist, struct aiocb **ujoblist,
 		TIMESPEC_TO_TIMEVAL(&atv, ts);
 		if (itimerfix(&atv))
 			return (EINVAL);
-		timo = tvtohz(&atv);
+		timo = tvtohz64(&atv);
 	}
 
 	ki = p->p_aioinfo;
@@ -2502,7 +2502,7 @@ kern_aio_waitcomplete(struct thread *td, struct aiocb **aiocbp,
 		TIMESPEC_TO_TIMEVAL(&atv, ts);
 		if (itimerfix(&atv))
 			return (EINVAL);
-		timo = tvtohz(&atv);
+		timo = tvtohz64(&atv);
 	}
 
 	if (p->p_aioinfo == NULL)

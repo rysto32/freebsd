@@ -163,6 +163,7 @@ handleevents(sbintime_t now, int fake)
 	int usermode;
 	int done, runs;
 
+	MPASS(tick_sbt <= htick_sbt);
 	CTR3(KTR_SPARE2, "handle at %d:  now  %d.%08x",
 	    curcpu, (int)(now >> 32), (u_int)(now & 0xffffffff));
 	done = 0;
@@ -184,6 +185,10 @@ handleevents(sbintime_t now, int fake)
 	if (runs) {
 		hct = DPCPU_PTR(hardclocktime);
 		*hct = state->nexthard - tick_sbt;
+		/* advance nexthard to next possible hardclock tick
+		 * if hardclock_hz < hz
+		 */
+		state->nexthard += (htick_sbt - tick_sbt);
 		if (fake < 2) {
 			hardclock_cnt(runs, usermode);
 			done = 1;

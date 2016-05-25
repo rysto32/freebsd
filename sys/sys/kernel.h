@@ -58,12 +58,14 @@
 extern char kernelname[MAXPATHLEN];
 
 extern int tick;			/* usec per tick (1000000 / hz) */
-extern int hz;				/* system clock's frequency */
+extern int hz;				/* system scheduling granularity */
+extern int hardclock_hz;		/* system clock's max frequency */
+extern int hardclock_scale;		/* ratio of hz to hardclock hz */
 extern int psratio;			/* ratio: prof / stat */
 extern int stathz;			/* statistics clock's frequency */
 extern int profhz;			/* profiling clock's frequency */
 extern int profprocs;			/* number of process's profiling */
-extern volatile int ticks;
+extern volatile long ticks;
 
 #endif /* _KERNEL */
 

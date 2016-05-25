@@ -851,7 +851,7 @@ kern_sem_wait(struct thread *td, semid_t id, int tryflag,
 					break;
 				}
 				error = cv_timedwait_sig(&ks->ks_cv,
-				    &sem_lock, tvtohz(&tv));
+				    &sem_lock, tvtohz64(&tv));
 				if (error != EWOULDBLOCK)
 					break;
 			}

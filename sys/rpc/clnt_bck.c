@@ -361,7 +361,7 @@ printf("emsgsize\n");
 	}
 
 	error = msleep(cr, &ct->ct_lock, ct->ct_waitflag, ct->ct_waitchan,
-	    tvtohz(&timeout));
+	    tvtohz64(&timeout));
 
 	TAILQ_REMOVE(&ct->ct_pending, cr, cr_link);
 

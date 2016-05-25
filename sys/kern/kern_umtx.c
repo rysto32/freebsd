@@ -704,13 +704,13 @@ umtxq_signal_thread(struct umtx_q *uq)
 	wakeup(uq);
 }
 
-static inline int 
+static inline int64_t
 tstohz(const struct timespec *tsp)
 {
 	struct timeval tv;
 
 	TIMESPEC_TO_TIMEVAL(&tv, tsp);
-	return tvtohz(&tv);
+	return tvtohz64(&tv);
 }
 
 static void
@@ -744,7 +744,7 @@ abs_timeout_update(struct abs_timeout *timo)
 	kern_clock_gettime(curthread, timo->clockid, &timo->cur);
 }
 
-static int
+static int64_t
 abs_timeout_gethz(struct abs_timeout *timo)
 {
 	struct timespec tts;
@@ -764,7 +764,8 @@ static inline int
 umtxq_sleep(struct umtx_q *uq, const char *wmesg, struct abs_timeout *abstime)
 {
 	struct umtxq_chain *uc;
-	int error, timo;
+	int error;
+	int64_t timo;
 
 	uc = umtxq_getchain(&uq->uq_key);
 	UMTXQ_LOCKED_ASSERT(uc);

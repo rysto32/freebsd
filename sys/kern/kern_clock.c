@@ -378,10 +378,10 @@ static void watchdog_config(void *, u_int, int *);
 int	stathz;
 int	profhz;
 int	profprocs;
-volatile int	ticks;
+volatile long	ticks;
 int	psratio;
 
-static DPCPU_DEFINE(int, pcputicks);	/* Per-CPU version of ticks. */
+static DPCPU_DEFINE(long, pcputicks);	/* Per-CPU version of ticks. */
 static int global_hardclock_run = 0;
 
 /*
@@ -411,6 +411,14 @@ initclocks(dummy)
 #ifdef SW_WATCHDOG
 	EVENTHANDLER_REGISTER(watchdog_list, watchdog_config, NULL, 0);
 #endif
+
+	/* Begin Isilon */
+	/*
+	 * Arrange for ticks to wrap 5 minutes after boot to help catch
+	 * sign problems sooner.
+	 */
+	ticks = INT_MAX - (((uint64_t)hz) * 5 * 60);
+	/* End Isilon */
 }
 
 /*
@@ -465,7 +473,7 @@ void
 hardclock(int usermode, uintfptr_t pc)
 {
 
-	atomic_add_int(&ticks, 1);
+	atomic_add_long(&ticks, hardclock_scale);
 	hardclock_cpu(usermode);
 	tc_ticktock(1);
 	cpu_tick_calibration();
@@ -493,8 +501,10 @@ hardclock_cnt(int cnt, int usermode)
 	struct pstats *pstats;
 	struct thread *td = curthread;
 	struct proc *p = td->td_proc;
-	int *t = DPCPU_PTR(pcputicks);
-	int flags, global, newticks;
+	long *t = DPCPU_PTR(pcputicks);
+	long global, newticks;
+	int flags;
+
 #ifdef SW_WATCHDOG
 	int i;
 #endif /* SW_WATCHDOG */
@@ -502,7 +512,7 @@ hardclock_cnt(int cnt, int usermode)
 	/*
 	 * Update per-CPU and possibly global ticks values.
 	 */
-	*t += cnt;
+	*t += cnt*hardclock_scale;
 	do {
 		global = ticks;
 		newticks = *t - global;
@@ -512,7 +522,7 @@ hardclock_cnt(int cnt, int usermode)
 			newticks = 0;
 			break;
 		}
-	} while (!atomic_cmpset_int(&ticks, global, *t));
+	} while (!atomic_cmpset_long(&ticks, global, *t));
 
 	/*
 	 * Run current process's virtual and profile time, as needed.
@@ -571,7 +581,7 @@ hardclock_cnt(int cnt, int usermode)
 void
 hardclock_sync(int cpu)
 {
-	int	*t = DPCPU_ID_PTR(cpu, pcputicks);
+	long	*t = DPCPU_ID_PTR(cpu, pcputicks);
 
 	*t = ticks;
 }
@@ -633,6 +643,62 @@ tvtohz(tv)
 	if (ticks > INT_MAX)
 		ticks = INT_MAX;
 	return ((int)ticks);
+}
+
+/*
+ * Compute number of ticks in the specified amount of time.
+ */
+int64_t
+tvtohz64(struct timeval *tv)
+{
+	uint64_t ticks;
+	int64_t sec, usec;
+
+	/*
+	 * If the number of usecs in the whole seconds part of the time
+	 * difference fits in a long, then the total number of usecs will
+	 * fit in an unsigned long.  Compute the total and convert it to
+	 * ticks, rounding up and adding 1 to allow for the current tick
+	 * to expire.  Rounding also depends on unsigned long arithmetic
+	 * to avoid overflow.
+	 *
+	 * Otherwise, if the number of ticks in the whole seconds part of
+	 * the time difference fits in a long, then convert the parts to
+	 * ticks separately and add, using similar rounding methods and
+	 * overflow avoidance.  This method would work in the previous
+	 * case but it is slightly slower and assumes that hz is integral.
+	 *
+	 * Otherwise, round the time difference down to the maximum
+	 * representable value.
+	 *
+	 */
+	sec = tv->tv_sec;
+	usec = tv->tv_usec;
+	if (usec < 0) {
+		sec--;
+		usec += 1000000;
+	}
+	if (sec < 0) {
+#ifdef DIAGNOSTIC
+		if (usec > 0) {
+			sec++;
+			usec -= 1000000;
+		}
+		printf("tvotohz: negative time difference %ld sec %ld usec\n",
+		       sec, usec);
+#endif
+		ticks = 1;
+	} else if (sec <= LONG_MAX / 1000000)
+		ticks = (sec * 1000000 + (uint64_t)usec + (tick - 1))
+			/ tick + 1;
+	else if (sec <= LONG_MAX / hz)
+		ticks = sec * hz
+			+ ((uint64_t)usec + (tick - 1)) / tick + 1;
+	else
+		ticks = LONG_MAX;
+	if (ticks > LONG_MAX)
+		ticks = LONG_MAX;
+	return (ticks);
 }
 
 /*

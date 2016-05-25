@@ -1277,7 +1277,7 @@ sample_stats(void *arg, struct ieee80211_node *ni)
 		for (y = 0; y < NUM_PACKET_SIZE_BINS; y++) {
 			if (sn->stats[y][rix].total_packets == 0)
 				continue;
-			printf("[%2u %s:%4u] %8ju:%-8ju (%3d%%) (EWMA %3d.%1d%%) T %8ju F %4d avg %5u last %u\n",
+			printf("[%2u %s:%4u] %8ju:%-8ju (%3d%%) (EWMA %3d.%1d%%) T %8ju F %4d avg %5u last %lu\n",
 			    dot11rate(rt, rix), dot11rate_label(rt, rix),
 			    bin_to_size(y),
 			    (uintmax_t) sn->stats[y][rix].total_packets,

@@ -34,6 +34,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/timex.h>
 #include <sys/vdso.h>
 
+#include <sys/pcpu.h>
+#include <machine/cpufunc.h>
+
+DPCPU_DECLARE(uint64_t, tsc);
+
+
+
 /*
  * A large step happens on boot.  This constant detects such steps.
  * It is relatively small so that ntp_update_second gets called enough
@@ -1256,7 +1263,9 @@ tc_windup(void)
 	u_int delta, ncount, ogen;
 	int i;
 	time_t t;
+	uint64_t tscval;
 
+	tscval = rdtscp();
 	/*
 	 * Make the next timehands a copy of the current one, but do not
 	 * overwrite the generation or next pointer.  While we update
@@ -1482,7 +1491,8 @@ abi_aware(struct pps_state *pps, int vers)
 static int
 pps_fetch(struct pps_fetch_args *fapi, struct pps_state *pps)
 {
-	int err, timo;
+	int err;
+	uint64_t timo;
 	pps_seq_t aseq, cseq;
 	struct timeval tv;
 
@@ -1502,7 +1512,7 @@ pps_fetch(struct pps_fetch_args *fapi, struct pps_state *pps)
 		else {
 			tv.tv_sec = fapi->timeout.tv_sec;
 			tv.tv_usec = fapi->timeout.tv_nsec / 1000;
-			timo = tvtohz(&tv);
+			timo = tvtohz64(&tv);
 		}
 		aseq = pps->ppsinfo.assert_sequence;
 		cseq = pps->ppsinfo.clear_sequence;
@@ -1890,6 +1900,8 @@ static uint64_t	cpu_tick_frequency;
 
 static DPCPU_DEFINE(uint64_t, tc_cpu_ticks_base);
 static DPCPU_DEFINE(unsigned, tc_cpu_ticks_last);
+static DPCPU_DEFINE(uint64_t, tc_tsc);
+
 
 static uint64_t
 tc_cpu_ticks(void)

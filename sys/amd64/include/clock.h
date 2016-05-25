@@ -18,6 +18,7 @@ extern int	clkintr_pending;
 extern u_int	i8254_freq;
 extern int	i8254_max_count;
 extern uint64_t	tsc_freq;
+extern uint64_t	tsc_sbt;
 extern int	tsc_is_invariant;
 extern int	tsc_perf_stat;
 #ifdef SMP
@@ -38,6 +39,8 @@ int	timer_spkr_acquire(void);
 int	timer_spkr_release(void);
 void	timer_spkr_setfreq(int freq);
 
+
+extern sbintime_t (*cpu_tcp_ts_getsbintime)(void);
 #endif /* _KERNEL */
 
 #endif /* !_MACHINE_CLOCK_H_ */

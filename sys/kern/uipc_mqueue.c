@@ -248,9 +248,9 @@ static int	mqueue_receive(struct mqueue *mq, char *msg_ptr,
 			size_t msg_len, unsigned *msg_prio, int waitok,
 			const struct timespec *abs_timeout);
 static int	_mqueue_send(struct mqueue *mq, struct mqueue_msg *msg,
-			int timo);
+			int64_t timo);
 static int	_mqueue_recv(struct mqueue *mq, struct mqueue_msg **msg,
-			int timo);
+			int64_t timo);
 static void	mqueue_send_notification(struct mqueue *mq);
 static void	mqueue_fdclose(struct thread *td, int fd, struct file *fp);
 static void	mq_proc_exit(void *arg, struct proc *p);
@@ -1678,7 +1678,7 @@ mqueue_send(struct mqueue *mq, const char *msg_ptr,
 			break;
 		}
 		TIMESPEC_TO_TIMEVAL(&tv, &ts2);
-		error = _mqueue_send(mq, msg, tvtohz(&tv));
+		error = _mqueue_send(mq, msg, tvtohz64(&tv));
 		if (error != ETIMEDOUT)
 			break;
 	}
@@ -1693,7 +1693,7 @@ bad:
  * Common routine to send a message
  */
 static int
-_mqueue_send(struct mqueue *mq, struct mqueue_msg *msg, int timo)
+_mqueue_send(struct mqueue *mq, struct mqueue_msg *msg, int64_t timo)
 {	
 	struct mqueue_msg *msg2;
 	int error = 0;
@@ -1830,7 +1830,7 @@ mqueue_receive(struct mqueue *mq, char *msg_ptr,
 			return (error);
 		}
 		TIMESPEC_TO_TIMEVAL(&tv, &ts2);
-		error = _mqueue_recv(mq, &msg, tvtohz(&tv));
+		error = _mqueue_recv(mq, &msg, tvtohz64(&tv));
 		if (error == 0)
 			break;
 		if (error != ETIMEDOUT)
@@ -1851,7 +1851,7 @@ received:
  * Common routine to receive a message
  */
 static int
-_mqueue_recv(struct mqueue *mq, struct mqueue_msg **msg, int timo)
+_mqueue_recv(struct mqueue *mq, struct mqueue_msg **msg, int64_t timo)
 {	
 	int error = 0;
 	

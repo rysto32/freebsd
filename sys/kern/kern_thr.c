@@ -467,7 +467,7 @@ kern_thr_suspend(struct thread *td, struct timespec *tsp)
 	struct proc *p = td->td_proc;
 	struct timeval tv;
 	int error = 0;
-	int timo = 0;
+	int64_t timo = 0;
 
 	if (td->td_pflags & TDP_WAKEUP) {
 		td->td_pflags &= ~TDP_WAKEUP;
@@ -479,7 +479,7 @@ kern_thr_suspend(struct thread *td, struct timespec *tsp)
 			error = EWOULDBLOCK;
 		else {
 			TIMESPEC_TO_TIMEVAL(&tv, tsp);
-			timo = tvtohz(&tv);
+			timo = tvtohz64(&tv);
 		}
 	}
 

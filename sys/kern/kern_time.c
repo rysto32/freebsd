@@ -1467,7 +1467,7 @@ realtimer_settime(struct itimer *it, int flags,
 			 */
 		}
 		TIMESPEC_TO_TIMEVAL(&tv, &ts);
-		callout_reset(&it->it_callout, tvtohz(&tv),
+		callout_reset(&it->it_callout, tvtohz64(&tv),
 			realtimer_expire, it);
 	} else {
 		callout_stop(&it->it_callout);
@@ -1545,7 +1545,7 @@ realtimer_expire(void *arg)
 			ts = it->it_time.it_value;
 			timespecsub(&ts, &cts);
 			TIMESPEC_TO_TIMEVAL(&tv, &ts);
-			callout_reset(&it->it_callout, tvtohz(&tv),
+			callout_reset(&it->it_callout, tvtohz64(&tv),
 				 realtimer_expire, it);
 		}
 		itimer_enter(it);
@@ -1557,7 +1557,7 @@ realtimer_expire(void *arg)
 		ts = it->it_time.it_value;
 		timespecsub(&ts, &cts);
 		TIMESPEC_TO_TIMEVAL(&tv, &ts);
-		callout_reset(&it->it_callout, tvtohz(&tv), realtimer_expire,
+		callout_reset(&it->it_callout, tvtohz64(&tv), realtimer_expire,
  			it);
 	}
 }

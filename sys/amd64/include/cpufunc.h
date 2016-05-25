@@ -368,6 +368,16 @@ rdtsc(void)
 	return (low | ((uint64_t)high << 32));
 }
 
+static __inline uint64_t
+rdtscp(void)
+{
+	uint64_t low, high;
+	uint32_t aux;
+
+	__asm __volatile("rdtscp" : "=a" (low), "=d" (high), "=c" (aux) : : );
+	return (low | (high << 32));
+}
+
 static __inline uint32_t
 rdtsc32(void)
 {

@@ -1262,7 +1262,7 @@ kern_sigtimedwait(struct thread *td, sigset_t waitset, ksiginfo_t *ksi,
 			ts = ets;
 			timespecsub(&ts, &rts);
 			TIMESPEC_TO_TIMEVAL(&tv, &ts);
-			timo = tvtohz(&tv);
+			timo = tvtohz64(&tv);
 		} else {
 			timo = 0;
 		}

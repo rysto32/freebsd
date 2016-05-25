@@ -557,7 +557,7 @@ callout_cc_add(struct callout *c, struct callout_cpu *cc,
 	if (flags & C_DIRECT_EXEC)
 		c->c_iflags |= CALLOUT_DIRECT;
 	c->c_func = func;
-	c->c_time = sbt;
+	c->c_time = roundup(sbt, precision);
 	c->c_precision = precision;
 	bucket = callout_get_bucket(c->c_time);
 	CTR3(KTR_CALLOUT, "precision set for %p: %d.%08x",
@@ -915,13 +915,15 @@ callout_handle_init(struct callout_handle *handle)
  * callout_deactivate() - marks the callout as having been serviced
  */
 int
-callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t precision,
+callout_reset_sbt_on_(struct callout *c, sbintime_t sbt, sbintime_t precision,
     void (*ftn)(void *), void *arg, int cpu, int flags)
 {
 	sbintime_t to_sbt, pr;
 	struct callout_cpu *cc;
 	int cancelled, direct;
 	int ignore_cpu=0;
+
+	MPASS(precision >= SBT_1US);
 
 	cancelled = 0;
 	if (cpu == -1) {
@@ -960,7 +962,7 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t precision,
 #endif
 #endif
 			if ((flags & C_HARDCLOCK) == 0)
-				to_sbt += tick_sbt;
+				to_sbt += max(tick_sbt, precision);
 		} else
 			to_sbt = sbinuptime();
 		if (INT64_MAX - to_sbt < sbt)
@@ -1102,13 +1104,13 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t precision,
  * Common idioms that can be optimized in the future.
  */
 int
-callout_schedule_on(struct callout *c, int to_ticks, int cpu)
+callout_schedule_on(struct callout *c, int64_t to_ticks, int cpu)
 {
 	return callout_reset_on(c, to_ticks, c->c_func, c->c_arg, cpu);
 }
 
 int
-callout_schedule(struct callout *c, int to_ticks)
+callout_schedule(struct callout *c, int64_t to_ticks)
 {
 	return callout_reset_on(c, to_ticks, c->c_func, c->c_arg, c->c_cpu);
 }
