@@ -912,6 +912,7 @@ mpssas_discovery_end(struct mpssas_softc *sassc)
 }
 
 static void
+	    TICKS_VALUE(ticks));
 mpssas_action(struct cam_sim *sim, union ccb *ccb)
 {
 	struct mpssas_softc *sassc;

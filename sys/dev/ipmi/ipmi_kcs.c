@@ -54,18 +54,21 @@ static int	kcs_wait_for_obf(struct ipmi_softc *, int);
 static int
 kcs_wait_for_ibf(struct ipmi_softc *sc, int state)
 {
-	int status, start = ticks;
+	int status;
+	ticks_t start;
 
+	start = ticks;
 	status = INB(sc, KCS_CTL_STS);
 	if (state == 0) {
 		/* WAIT FOR IBF = 0 */
-		while (ticks - start < MAX_TIMEOUT && status & KCS_STATUS_IBF) {
+		while (TICKS_DIFF(ticks, start) < MAX_TIMEOUT &&
+		    status & KCS_STATUS_IBF) {
 			DELAY(100);
 			status = INB(sc, KCS_CTL_STS);
 		}
 	} else {
 		/* WAIT FOR IBF = 1 */
-		while (ticks - start < MAX_TIMEOUT &&
+		while (TICKS_DIFF(ticks, start) < MAX_TIMEOUT &&
 		    !(status & KCS_STATUS_IBF)) {
 			DELAY(100);
 			status = INB(sc, KCS_CTL_STS);
@@ -77,18 +80,21 @@ kcs_wait_for_ibf(struct ipmi_softc *sc, int state)
 static int
 kcs_wait_for_obf(struct ipmi_softc *sc, int state)
 {
-	int status, start = ticks;
+	int status;
+	ticks_t start;
 
+	start = ticks;
 	status = INB(sc, KCS_CTL_STS);
 	if (state == 0) {
 		/* WAIT FOR OBF = 0 */
-		while (ticks - start < MAX_TIMEOUT && status & KCS_STATUS_OBF) {
+		while (TICKS_DIFF(ticks, start) < MAX_TIMEOUT &&
+		    status & KCS_STATUS_OBF) {
 			DELAY(100);
 			status = INB(sc, KCS_CTL_STS);
 		}
 	} else {
 		/* WAIT FOR OBF = 1 */
-		while (ticks - start < MAX_TIMEOUT &&
+		while (TICKS_DIFF(ticks, start) < MAX_TIMEOUT &&
 		    !(status & KCS_STATUS_OBF)) {
 			DELAY(100);
 			status = INB(sc, KCS_CTL_STS);

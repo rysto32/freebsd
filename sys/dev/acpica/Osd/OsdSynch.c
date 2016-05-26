@@ -152,7 +152,8 @@ ACPI_STATUS
 AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle, UINT32 Units, UINT16 Timeout)
 {
 	struct acpi_sema	*as = (struct acpi_sema *)Handle;
-	int			error, prevtick, slptick, tmo;
+	int			error, slptick, tmo;
+	ticks_t prevtick;
 	ACPI_STATUS		status = AE_OK;
 
 	ACPI_FUNCTION_TRACE((char *)(uintptr_t)__func__);
@@ -217,7 +218,7 @@ AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle, UINT32 Units, UINT16 Timeout)
 			}
 			if (ACPISEM_AVAIL(as, Units))
 				break;
-			slptick = ticks - prevtick;
+			slptick = TICKS_DIFF(ticks, prevtick);
 			if (slptick >= tmo || slptick < 0) {
 				status = AE_TIME;
 				break;
@@ -360,7 +361,8 @@ ACPI_STATUS
 AcpiOsAcquireMutex(ACPI_MUTEX Handle, UINT16 Timeout)
 {
 	struct acpi_mutex	*am = (struct acpi_mutex *)Handle;
-	int			error, prevtick, slptick, tmo;
+	int			error, slptick, tmo;
+	ticks_t prevtick;
 	ACPI_STATUS		status = AE_OK;
 
 	ACPI_FUNCTION_TRACE((char *)(uintptr_t)__func__);
@@ -428,7 +430,7 @@ AcpiOsAcquireMutex(ACPI_MUTEX Handle, UINT16 Timeout)
 			}
 			if (ACPIMTX_AVAIL(am))
 				break;
-			slptick = ticks - prevtick;
+			slptick = TICKS_DIFF(ticks, prevtick);
 			if (slptick >= tmo || slptick < 0) {
 				status = AE_TIME;
 				break;
