@@ -356,7 +356,7 @@ struct tx_ring {
         struct adapter		*adapter;
 	struct mtx		tx_mtx;
 	u32			me;
-	int			watchdog_time;
+	ticks_t			watchdog_time;
 	union e1000_adv_tx_desc	*tx_base;
 	struct igb_tx_buf	*tx_buffers;
 	struct igb_dma_alloc	txdma;

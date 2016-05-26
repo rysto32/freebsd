@@ -4135,7 +4135,8 @@ igb_txeof(struct tx_ring *txr)
 	** would have been taken, so none processed
 	** for too long indicates a hang.
 	*/
-	if ((!processed) && ((ticks - txr->watchdog_time) > IGB_WATCHDOG))
+	if ((!processed) &&
+	    (TICKS_DIFF(ticks, txr->watchdog_time) > IGB_WATCHDOG))
 		txr->queue_status |= IGB_QUEUE_HUNG;
 
 	if (txr->tx_avail >= IGB_QUEUE_THRESHOLD)

@@ -317,7 +317,7 @@ struct adapter {
 	struct callout	timer;
 	struct callout	tx_fifo_timer;
 	bool		watchdog_check;
-	int		watchdog_time;
+	ticks_t		watchdog_time;
 	int		msi;
 	int		if_flags;
 	int		max_frame_size;

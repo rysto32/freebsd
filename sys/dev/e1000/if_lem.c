@@ -2105,7 +2105,7 @@ lem_local_timer(void *arg)
 	 * This implies a functional TX engine.
 	 */
 	if ((adapter->watchdog_check == TRUE) &&
-	    (ticks - adapter->watchdog_time > EM_WATCHDOG))
+	    (TICKS_DIFF(ticks, adapter->watchdog_time) > EM_WATCHDOG))
 		goto hung;
 
 	callout_reset(&adapter->timer, hz, lem_local_timer, adapter);
