@@ -120,7 +120,7 @@ struct	namecache_ts {
 	u_char	nc_nlen;		/* length of name */
 	struct	timespec nc_time;	/* timespec provided by fs */
 	struct	timespec nc_dotdottime;	/* dotdot timespec provided by fs */
-	int	nc_ticks;		/* ticks value when entry was added */
+	ticks_t	nc_ticks;		/* ticks value when entry was added */
 	char	nc_name[0];		/* segment name + nul */
 };
 
@@ -247,7 +247,7 @@ nc_get_name(struct namecache *ncp)
 }
 
 static void
-cache_out_ts(struct namecache *ncp, struct timespec *tsp, int *ticksp)
+cache_out_ts(struct namecache *ncp, struct timespec *tsp, ticks_t *ticksp)
 {
 
 	KASSERT((ncp->nc_flag & NCF_TS) != 0 ||
@@ -497,7 +497,7 @@ cache_zap(struct namecache *ncp)
 
 int
 cache_lookup(struct vnode *dvp, struct vnode **vpp, struct componentname *cnp,
-    struct timespec *tsp, int *ticksp)
+    struct timespec *tsp, ticks_t *ticksp)
 {
 	struct namecache *ncp;
 	uint32_t hash;

@@ -1041,7 +1041,8 @@ nfs_lookup(struct vop_lookup_args *ap)
 	struct vnode *newvp;
 	struct nfsmount *nmp;
 	struct nfsnode *np, *newnp;
-	int error = 0, attrflag, dattrflag, ltype, ncticks;
+	int error = 0, attrflag, dattrflag, ltype;
+	ticks_t ncticks;
 	struct thread *td = cnp->cn_thread;
 	struct nfsfh *nfhp;
 	struct nfsvattr dnfsva, nfsva;
@@ -1111,7 +1112,8 @@ nfs_lookup(struct vop_lookup_args *ap)
 			mtx_unlock(&newnp->n_mtx);
 		}
 		if (nfscl_nodeleg(newvp, 0) == 0 ||
-		    ((u_int)(ticks - ncticks) < (nmp->nm_nametimeo * hz) &&
+		    ((uintmax_t)TICKS_DIFF(ticks, ncticks) <
+		        (nmp->nm_nametimeo * hz) &&
 		    VOP_GETATTR(newvp, &vattr, cnp->cn_cred) == 0 &&
 		    timespeccmp(&vattr.va_ctime, &nctime, ==))) {
 			NFSINCRGLOBAL(newnfsstats.lookupcache_hits);
@@ -1138,7 +1140,8 @@ nfs_lookup(struct vop_lookup_args *ap)
 		 * negative cache entries for up to nm_negnametimeo
 		 * seconds.
 		 */
-		if ((u_int)(ticks - ncticks) < (nmp->nm_negnametimeo * hz) &&
+		if ((uintmax_t)TICKS_DIFF(ticks, ncticks) < 
+		        (nmp->nm_negnametimeo * hz) &&
 		    VOP_GETATTR(dvp, &vattr, cnp->cn_cred) == 0 &&
 		    timespeccmp(&vattr.va_mtime, &nctime, ==)) {
 			NFSINCRGLOBAL(newnfsstats.lookupcache_hits);
@@ -2418,7 +2421,7 @@ nfs_sillyrename(struct vnode *dvp, struct vnode *vp, struct componentname *cnp)
 	 * CPU ticks since boot.
 	 */
 	pid = cnp->cn_thread->td_proc->p_pid;
-	lticks = (unsigned int)ticks;
+	lticks = (unsigned int)TICKS_VALUE(ticks);
 	for ( ; ; ) {
 		sp->s_namlen = sprintf(sp->s_name, 
 				       ".nfs.%08x.%04x4.4", lticks, 

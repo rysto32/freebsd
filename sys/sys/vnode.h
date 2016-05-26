@@ -617,7 +617,7 @@ void	cache_enter_time(struct vnode *dvp, struct vnode *vp,
 	    struct componentname *cnp, struct timespec *tsp,
 	    struct timespec *dtsp);
 int	cache_lookup(struct vnode *dvp, struct vnode **vpp,
-	    struct componentname *cnp, struct timespec *tsp, int *ticksp);
+	    struct componentname *cnp, struct timespec *tsp, ticks_t *ticksp);
 void	cache_purge(struct vnode *vp);
 void	cache_purge_negative(struct vnode *vp);
 void	cache_purgevfs(struct mount *mp);
