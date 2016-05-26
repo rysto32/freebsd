@@ -1786,7 +1786,7 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 #if USB_HAVE_POWERD
 		/* let USB-powerd handle suspend */
 		USB_BUS_LOCK(udev->bus);
-		udev->pwr_save.last_xfer_time = ticks - (256 * hz);
+		udev->pwr_save.last_xfer_time = TICKS_ADD(ticks, - (256 * hz));
 		USB_BUS_UNLOCK(udev->bus);
 #endif
 		mode = USB_POWER_MODE_SAVE;
@@ -2184,7 +2184,7 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		break;
 
 	case USB_GET_PLUGTIME:
-		*u.ptime = f->udev->plugtime;
+		*u.ptime = TICKS_VALUE(f->udev->plugtime);
 		break;
 
 	case USB_CLAIM_INTERFACE:

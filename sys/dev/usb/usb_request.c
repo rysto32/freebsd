@@ -413,8 +413,8 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 	const void *desc;
 	int err = 0;
 	usb_ticks_t start_ticks;
-	usb_ticks_t delta_ticks;
-	usb_ticks_t max_ticks;
+	usb_ticksdiff_t delta_ticks;
+	usb_ticksdiff_t max_ticks;
 	uint16_t length;
 	uint16_t temp;
 	uint16_t acttemp;
@@ -692,7 +692,7 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 		}
 		/* check for timeout */
 
-		delta_ticks = ticks - start_ticks;
+		delta_ticks = TICKS_DIFF(ticks, start_ticks);
 		if (delta_ticks > max_ticks) {
 			if (!err) {
 				err = USB_ERR_TIMEOUT;

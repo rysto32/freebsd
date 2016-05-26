@@ -2452,9 +2452,9 @@ void
 usb_bus_powerd(struct usb_bus *bus)
 {
 	struct usb_device *udev;
-	usb_ticks_t temp;
-	usb_ticks_t limit;
-	usb_ticks_t mintime;
+	usb_ticksdiff_t temp;
+	usb_ticksdiff_t limit;
+	usb_ticksdiff_t mintime;
 	usb_size_t type_refs[5];
 	uint8_t x;
 
@@ -2481,7 +2481,7 @@ usb_bus_powerd(struct usb_bus *bus)
 		if (udev == NULL)
 			continue;
 
-		temp = ticks - udev->pwr_save.last_xfer_time;
+		temp = TICKS_DIFF(ticks, udev->pwr_save.last_xfer_time);
 
 		if (usb_peer_should_wakeup(udev)) {
 			/* check if we are suspended */
@@ -2503,7 +2503,7 @@ usb_bus_powerd(struct usb_bus *bus)
 
 	/* reset counters */
 
-	mintime = (usb_ticks_t)-1;
+	mintime = (usb_ticksdiff_t)-1;
 	type_refs[0] = 0;
 	type_refs[1] = 0;
 	type_refs[2] = 0;
@@ -2523,7 +2523,7 @@ usb_bus_powerd(struct usb_bus *bus)
 		type_refs[4] += 1;
 
 		/* "last_xfer_time" can be updated by a resume */
-		temp = ticks - udev->pwr_save.last_xfer_time;
+		temp = TICKS_DIFF(ticks, udev->pwr_save.last_xfer_time);
 
 		/*
 		 * Compute minimum time since last transfer for the complete
@@ -2540,7 +2540,7 @@ usb_bus_powerd(struct usb_bus *bus)
 		}
 	}
 
-	if (mintime >= (usb_ticks_t)(1 * hz)) {
+	if (mintime >= (usb_ticksdiff_t)(1 * hz)) {
 		/* recompute power masks */
 		DPRINTF("Recomputing power masks\n");
 		bus->hw_power_state = 0;

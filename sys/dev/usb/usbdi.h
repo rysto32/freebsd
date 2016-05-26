@@ -117,7 +117,7 @@ EVENTHANDLER_DECLARE(usb_dev_configured, usb_dev_configured_t);
 #define	USB_MS_HZ 1024
 
 #define	USB_MS_TO_TICKS(ms) \
-  (((uint32_t)((((uint32_t)(ms)) * ((uint32_t)(hz))) + USB_MS_HZ - 1)) / USB_MS_HZ)
+  (((usb_ticksdiff_t)((((uint32_t)(ms)) * ((uint32_t)(hz))) + USB_MS_HZ - 1)) / USB_MS_HZ)
 
 /*
  * Common queue structure for USB transfers.

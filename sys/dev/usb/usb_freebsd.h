@@ -94,7 +94,8 @@ typedef uint32_t usb_timeout_t;		/* milliseconds */
 typedef uint32_t usb_frlength_t;	/* bytes */
 typedef uint32_t usb_frcount_t;		/* units */
 typedef uint32_t usb_size_t;		/* bytes */
-typedef uint32_t usb_ticks_t;		/* system defined */
+typedef ticks_t usb_ticks_t;		/* system defined */
+typedef int usb_ticksdiff_t;
 typedef uint16_t usb_power_mask_t;	/* see "USB_HW_POWER_XXX" */
 typedef uint16_t usb_stream_t;		/* stream ID */
 
