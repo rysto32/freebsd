@@ -1688,7 +1688,7 @@ static void
 create_random_local_eui48(u_char *eaddr)
 {
 	static uint8_t counter = 0;
-	uint32_t seed = ticks;
+	uint32_t seed = TICKS_VALUE(ticks);
 
 	eaddr[0] = EUI48_LOCALLY_ADMINISTERED;
 	memcpy(&eaddr[1], &seed, sizeof(uint32_t));

@@ -259,7 +259,7 @@ struct ntb_softc {
 	uint64_t			db_link_mask;
 	uint64_t			db_mask;
 
-	int				last_ts;	/* ticks @ last irq */
+	ticks_t				last_ts;	/* ticks @ last irq */
 
 	const struct ntb_reg		*reg;
 	const struct ntb_alt_reg	*self_reg;
@@ -1952,17 +1952,18 @@ static void
 atom_link_hb(void *arg)
 {
 	struct ntb_softc *ntb = arg;
-	sbintime_t timo, poll_ts;
+	sbintime_t timo;
+	ticks_t poll_ts;
 
 	timo = NTB_HB_TIMEOUT * hz;
-	poll_ts = ntb->last_ts + timo;
+	poll_ts = TICKS_ADD(ntb->last_ts, timo);
 
 	/*
 	 * Delay polling the link status if an interrupt was received, unless
 	 * the cached link status says the link is down.
 	 */
-	if ((sbintime_t)ticks - poll_ts < 0 && link_is_up(ntb)) {
-		timo = poll_ts - ticks;
+	if (TICKS_DIFF(ticks, poll_ts) < 0 && link_is_up(ntb)) {
+		timo = TICKS_DIFF(poll_ts, ticks);
 		goto out;
 	}
 
