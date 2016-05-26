@@ -46,7 +46,7 @@ struct ieee80211_tx_ampdu {
 #define	IEEE80211_AGGR_BARPEND		0x0020	/* BAR response pending */
 	uint8_t		txa_tid;
 	uint8_t		txa_token;	/* dialog token */
-	int		txa_lastsample;	/* ticks @ last traffic sample */
+	ticks_t		txa_lastsample;	/* ticks @ last traffic sample */
 	int		txa_pkts;	/* packets over last sample interval */
 	int		txa_avgpps;	/* filtered traffic over window */
 	int		txa_qbytes;	/* data queued (bytes) */
@@ -114,7 +114,7 @@ ieee80211_txampdu_count_packet(struct ieee80211_tx_ampdu *tap)
 {
 
 	/* XXX bound loop/do more crude estimate? */
-	while (ticks - tap->txa_lastsample >= hz) {
+	while (TICKS_DIFF(ticks, tap->txa_lastsample) >= hz) {
 		ieee80211_txampdu_update_pps(tap);
 		/* reset to start new sample interval */
 		tap->txa_pkts = 0;
@@ -122,7 +122,7 @@ ieee80211_txampdu_count_packet(struct ieee80211_tx_ampdu *tap)
 			tap->txa_lastsample = ticks;
 			break;
 		}
-		tap->txa_lastsample += hz;
+		tap->txa_lastsample = TICKS_ADD(tap->txa_lastsample, hz);
 	}
 	tap->txa_pkts++;
 }
@@ -136,14 +136,14 @@ static __inline int
 ieee80211_txampdu_getpps(struct ieee80211_tx_ampdu *tap)
 {
 	/* XXX bound loop/do more crude estimate? */
-	while (ticks - tap->txa_lastsample >= hz) {
+	while (TICKS_DIFF(ticks, tap->txa_lastsample) >= hz) {
 		ieee80211_txampdu_update_pps(tap);
 		tap->txa_pkts = 0;
 		if (tap->txa_avgpps == 0) {
 			tap->txa_lastsample = ticks;
 			break;
 		}
-		tap->txa_lastsample += hz;
+		tap->txa_lastsample = TICKS_ADD(tap->txa_lastsample, hz);
 	}
 	return tap->txa_avgpps;
 }
