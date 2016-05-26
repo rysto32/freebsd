@@ -54,7 +54,7 @@ __FBSDID("$FreeBSD$");
 #include "ioat_test.h"
 
 #ifndef time_after
-#define	time_after(a,b)		((long)(b) - (long)(a) < 0)
+#define	time_after(a,b)		(TICKS_DIFF((b), (a)) < 0)
 #endif
 
 MALLOC_DEFINE(M_IOAT_TEST, "ioat_test", "ioat test allocations");
@@ -341,7 +341,8 @@ ioat_dma_test(void *arg)
 	struct ioat_test *test;
 	bus_dmaengine_t dmaengine;
 	uint32_t loops;
-	int index, rc, start, end, error;
+	int index, rc, error;
+	ticks_t start, end;
 
 	test = arg;
 	memset(__DEVOLATILE(void *, test->status), 0, sizeof(test->status));
@@ -453,7 +454,7 @@ ioat_dma_test(void *arg)
 
 	test->too_late = false;
 	start = ticks;
-	end = start + (((sbintime_t)test->duration * hz) / 1000);
+	end = TICKS_ADD(start, (((sbintime_t)test->duration * hz) / 1000));
 
 	for (loops = 0;; loops++) {
 		if (test->duration == 0 && loops >= test->transactions)
@@ -466,16 +467,18 @@ ioat_dma_test(void *arg)
 		ioat_test_submit_1_tx(test, dmaengine);
 	}
 
-	ioat_test_log(1, "Test Elapsed: %d ticks (overrun %d), %d sec.\n",
-	    ticks - start, ticks - end, (ticks - start) / hz);
+	ioat_test_log(1, "Test Elapsed: %jd ticks (overrun %jd), %jd sec.\n",
+	    TICKS_DIFF(ticks, start), TICKS_DIFF(ticks, end),
+	    TICKS_DIFF(ticks, start) / hz);
 
 	IT_LOCK();
 	while (!TAILQ_EMPTY(&test->pend_q))
 		msleep(&test->free_q, &ioat_test_lk, 0, "ioattestcompl", hz);
 	IT_UNLOCK();
 
-	ioat_test_log(1, "Test Elapsed2: %d ticks (overrun %d), %d sec.\n",
-	    ticks - start, ticks - end, (ticks - start) / hz);
+	ioat_test_log(1, "Test Elapsed2: %jd ticks (overrun %jd), %jd sec.\n",
+	    TICKS_DIFF(ticks, start), TICKS_DIFF(ticks, end),
+	    TICKS_DIFF(ticks, start) / hz);
 
 	ioat_test_release_memory(test);
 out:
