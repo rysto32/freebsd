@@ -65,11 +65,11 @@ extern int profhz;			/* profiling clock's frequency */
 extern int profprocs;			/* number of process's profiling */
 extern volatile ticks_t ticks;
 
-#define TICKS_VALUE(a) ((intmax_t)a)
-#define TICKS_ADD(t, v) ((ticks_t)((t) + (v)))
+#define TICKS_VALUE(a) ((intmax_t)((a).value))
+#define TICKS_ADD(t, v) ((ticks_t){ .value = (t).value + (v) })
 #define TICKS_DIFF(a, b) (TICKS_VALUE(a) - TICKS_VALUE(b))
-#define TICKS_CLEAR(t) do { (t) = 0; } while (0)
-#define TICKS_INVALIDATE(t) do { (t) = -ticks; } while (0)
+#define TICKS_CLEAR(t) do { (t).value = 0; } while (0)
+#define TICKS_INVALIDATE(t) do { (t).value = -ticks.value; } while (0)
 #define TICKS_EQUAL(a, b) (TICKS_VALUE(a) == TICKS_VALUE(b))
 
 #endif /* _KERNEL */

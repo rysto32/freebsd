@@ -291,7 +291,11 @@ typedef	_Bool	bool;
 
 #define offsetof(type, field) __offsetof(type, field)
 
-typedef int ticks_t;
+struct ticks_container
+{
+	int value;
+};
+typedef struct ticks_container ticks_t;
 
 #endif /* !_KERNEL */
 

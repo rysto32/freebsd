@@ -418,7 +418,7 @@ initclocks(dummy)
 	 * Arrange for ticks to wrap 10 minutes after boot to help catch
 	 * sign problems sooner.
 	 */
-	ticks = INT_MAX - (hz * 10 * 60);
+	ticks.value = INT_MAX - (hz * 10 * 60);
 
 #ifdef EARLY_AP_STARTUP
 	/*
@@ -501,7 +501,7 @@ void
 hardclock(int usermode, uintfptr_t pc)
 {
 
-	atomic_add_int(&ticks, 1);
+	atomic_add_int(&ticks.value, 1);
 	hardclock_cpu(usermode);
 	tc_ticktock(1);
 	cpu_tick_calibration();
@@ -549,7 +549,7 @@ hardclock_cnt(int cnt, int usermode)
 			newticks = 0;
 			break;
 		}
-	} while (!atomic_cmpset_int(&ticks, global, *t));
+	} while (!atomic_cmpset_int(&ticks.value, global.value, t->value));
 
 	/*
 	 * Run current process's virtual and profile time, as needed.
