@@ -431,7 +431,7 @@ tapcreate(struct cdev *dev)
 
 	/* generate fake MAC address: 00 bd xx xx xx unit_no */
 	macaddr_hi = htons(0x00bd);
-	macaddr_mid = (uint32_t) ticks;
+	macaddr_mid = (uint32_t) TICKS_VALUE(ticks);
 	bcopy(&macaddr_hi, eaddr, sizeof(short));
 	bcopy(&macaddr_mid, &eaddr[2], sizeof(uint32_t));
 	eaddr[5] = (u_char)unit;
