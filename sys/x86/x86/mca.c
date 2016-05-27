@@ -73,7 +73,7 @@ enum scan_mode {
  */
 struct cmc_state {
 	int	max_threshold;
-	int	last_intr;
+	ticks_t	last_intr;
 };
 #endif
 
@@ -533,7 +533,7 @@ cmci_update(enum scan_mode mode, int bank, int valid, struct mca_record *rec)
 	cc = &cmc_state[PCPU_GET(cpuid)][bank];
 	ctl = rdmsr(MSR_MC_CTL2(bank));
 	count = (rec->mr_status & MC_STATUS_COR_COUNT) >> 38;
-	delta = (u_int)(ticks - cc->last_intr);
+	delta = TICKS_DIFF(ticks, cc->last_intr);
 
 	/*
 	 * If an interrupt was received less than cmc_throttle seconds
@@ -854,7 +854,7 @@ cmci_resume(int i)
 		return;
 
 	cc = &cmc_state[PCPU_GET(cpuid)][i];
-	cc->last_intr = -ticks;
+	TICKS_INVALIDATE(cc->last_intr);
 	ctl = rdmsr(MSR_MC_CTL2(i));
 	ctl &= ~MC_CTL2_THRESHOLD;
 	ctl |= MC_CTL2_CMCI_EN | 1;
