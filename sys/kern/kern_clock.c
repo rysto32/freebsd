@@ -377,10 +377,10 @@ static void watchdog_config(void *, u_int, int *);
 int	stathz;
 int	profhz;
 int	profprocs;
-volatile int	ticks;
+volatile ticks_t ticks;
 int	psratio;
 
-static DPCPU_DEFINE(int, pcputicks);	/* Per-CPU version of ticks. */
+static DPCPU_DEFINE(ticks_t, pcputicks); /* Per-CPU version of ticks. */
 static int global_hardclock_run = 0;
 
 /*
@@ -529,8 +529,9 @@ hardclock_cnt(int cnt, int usermode)
 	struct pstats *pstats;
 	struct thread *td = curthread;
 	struct proc *p = td->td_proc;
-	int *t = DPCPU_PTR(pcputicks);
-	int flags, global, newticks;
+	ticks_t *t = DPCPU_PTR(pcputicks);
+	int flags, newticks;
+	ticks_t global;
 #ifdef SW_WATCHDOG
 	int i;
 #endif /* SW_WATCHDOG */
@@ -538,13 +539,13 @@ hardclock_cnt(int cnt, int usermode)
 	/*
 	 * Update per-CPU and possibly global ticks values.
 	 */
-	*t += cnt;
+	*t = TICKS_ADD(*t, cnt);
 	do {
 		global = ticks;
-		newticks = *t - global;
+		newticks = TICKS_DIFF(*t, global);
 		if (newticks <= 0) {
 			if (newticks < -1)
-				*t = global - 1;
+				*t = TICKS_ADD(global, -1);
 			newticks = 0;
 			break;
 		}
@@ -608,7 +609,7 @@ hardclock_cnt(int cnt, int usermode)
 void
 hardclock_sync(int cpu)
 {
-	int	*t = DPCPU_ID_PTR(cpu, pcputicks);
+	ticks_t *t = DPCPU_ID_PTR(cpu, pcputicks);
 
 	*t = ticks;
 }
