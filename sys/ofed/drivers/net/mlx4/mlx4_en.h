@@ -283,7 +283,7 @@ struct mlx4_en_tx_ring {
 	int hwtstamp_tx_type;
 	spinlock_t comp_lock;
 	int inline_thold;
-	u64 watchdog_time;
+	ticks_t watchdog_time;
 };
 
 struct mlx4_en_rx_desc {

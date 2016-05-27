@@ -1532,7 +1532,7 @@ static void mlx4_en_restart(struct work_struct *work)
 	for (i = 0; i < priv->tx_ring_num; i++) {
 		ring = priv->tx_ring[i];
 		if (ring->blocked &&
-				ring->watchdog_time + MLX4_EN_WATCHDOG_TIMEOUT < ticks)
+				TICKS_DIFF(ticks, ring->watchdog_time) > MLX4_EN_WATCHDOG_TIMEOUT)
 			goto reset;
 	}
 	return;
