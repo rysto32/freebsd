@@ -51,7 +51,7 @@ int	 syncache_pcblist(struct sysctl_req *req, int max_pcbs, int *pcbs_exported);
 struct syncache {
 	TAILQ_ENTRY(syncache)	sc_hash;
 	struct		in_conninfo sc_inc;	/* addresses */
-	int		sc_rxttime;		/* retransmit time */
+	ticks_t		sc_rxttime;		/* retransmit time */
 	u_int16_t	sc_rxmits;		/* retransmit counter */
 	u_int32_t	sc_tsreflect;		/* timestamp to reflect */
 	u_int32_t	sc_ts;			/* our timestamp to send */
@@ -96,7 +96,7 @@ struct syncache_head {
 	struct mtx	sch_mtx;
 	TAILQ_HEAD(sch_head, syncache)	sch_bucket;
 	struct callout	sch_timer;
-	int		sch_nextc;
+	ticks_t		sch_nextc;
 	u_int		sch_length;
 	struct tcp_syncache *sch_sc;
 };

@@ -351,7 +351,7 @@ syncache_insert(struct syncache *sc, struct syncache_head *sch)
 
 	/* Reinitialize the bucket row's timer. */
 	if (sch->sch_length == 1)
-		sch->sch_nextc = ticks + INT_MAX;
+		sch->sch_nextc = TICKS_ADD(ticks, INT_MAX);
 	syncache_timeout(sc, sch, 1);
 
 	SCH_UNLOCK(sch);
@@ -391,13 +391,14 @@ syncache_drop(struct syncache *sc, struct syncache_head *sch)
 static void
 syncache_timeout(struct syncache *sc, struct syncache_head *sch, int docallout)
 {
-	sc->sc_rxttime = ticks +
-		TCPTV_RTOBASE * (tcp_syn_backoff[sc->sc_rxmits]);
+	sc->sc_rxttime = TICKS_ADD(ticks, 
+		TCPTV_RTOBASE * (tcp_syn_backoff[sc->sc_rxmits]));
 	sc->sc_rxmits++;
-	if (TSTMP_LT(sc->sc_rxttime, sch->sch_nextc)) {
+	if (TICKS_DIFF(sc->sc_rxttime, sch->sch_nextc) < 0) {
 		sch->sch_nextc = sc->sc_rxttime;
 		if (docallout)
-			callout_reset(&sch->sch_timer, sch->sch_nextc - ticks,
+			callout_reset(&sch->sch_timer,
+			    TICKS_DIFF(sch->sch_nextc, ticks),
 			    syncache_timer, (void *)sch);
 	}
 }
@@ -412,7 +413,7 @@ syncache_timer(void *xsch)
 {
 	struct syncache_head *sch = (struct syncache_head *)xsch;
 	struct syncache *sc, *nsc;
-	int tick = ticks;
+	ticks_t tick = ticks;
 	char *s;
 
 	CURVNET_SET(sch->sch_sc->vnet);
@@ -424,7 +425,7 @@ syncache_timer(void *xsch)
 	 * In the following cycle we may remove some entries and/or
 	 * advance some timeouts, so re-initialize the bucket timer.
 	 */
-	sch->sch_nextc = tick + INT_MAX;
+	sch->sch_nextc = TICKS_ADD(tick, INT_MAX);
 
 	TAILQ_FOREACH_SAFE(sc, &sch->sch_bucket, sc_hash, nsc) {
 		/*
@@ -435,8 +436,8 @@ syncache_timer(void *xsch)
 		 * then the RST will be sent by the time the remote
 		 * host does the SYN/ACK->ACK.
 		 */
-		if (TSTMP_GT(sc->sc_rxttime, tick)) {
-			if (TSTMP_LT(sc->sc_rxttime, sch->sch_nextc))
+		if (TICKS_DIFF(sc->sc_rxttime, tick) > 0) {
+			if (TICKS_DIFF(sc->sc_rxttime, sch->sch_nextc) < 0)
 				sch->sch_nextc = sc->sc_rxttime;
 			continue;
 		}
@@ -463,8 +464,9 @@ syncache_timer(void *xsch)
 		syncache_timeout(sc, sch, 0);
 	}
 	if (!TAILQ_EMPTY(&(sch)->sch_bucket))
-		callout_reset(&(sch)->sch_timer, (sch)->sch_nextc - tick,
-			syncache_timer, (void *)(sch));
+		callout_reset(&(sch)->sch_timer,
+		    TICKS_DIFF((sch)->sch_nextc, tick), syncache_timer,
+		    (void *)(sch));
 	CURVNET_RESTORE();
 }
 

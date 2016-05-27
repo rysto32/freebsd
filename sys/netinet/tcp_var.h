@@ -192,9 +192,9 @@ struct tcpcb {
 	u_long	snd_spare2;		/* unused */
 	tcp_seq	snd_recover;		/* for use in NewReno Fast Recovery */
 
-	u_int	t_rcvtime;		/* inactivity time */
-	u_int	t_starttime;		/* time connection was established */
-	u_int	t_rtttime;		/* RTT measurement start time */
+	ticks_t	t_rcvtime;		/* inactivity time */
+	ticks_t	t_starttime;		/* time connection was established */
+	ticks_t	t_rtttime;		/* RTT measurement start time */
 	tcp_seq	t_rtseq;		/* sequence number being timed */
 
 	u_int	t_bw_spare1;		/* unused */
@@ -230,7 +230,7 @@ struct tcpcb {
 	u_long	snd_ssthresh_prev;	/* ssthresh prior to retransmit */
 	tcp_seq	snd_recover_prev;	/* snd_recover prior to retransmit */
 	int	t_sndzerowin;		/* zero-window updates sent */
-	u_int	t_badrxtwin;		/* window for retransmit recovery */
+	ticks_t	t_badrxtwin;		/* window for retransmit recovery */
 	u_char	snd_limited;		/* segments limited transmitted */
 /* SACK related state */
 	int	snd_numholes;		/* number of holes seen by sender */
@@ -437,8 +437,8 @@ struct tcptw {
 	struct ucred	*tw_cred;	/* user credentials */
 	u_int32_t	t_recent;
 	u_int32_t	ts_offset;	/* our timestamp offset */
-	u_int		t_starttime;
-	int		tw_time;
+	ticks_t		t_starttime;
+	ticks_t		tw_time;
 	TAILQ_ENTRY(tcptw) tw_2msl;
 	void		*tw_pspare;	/* TCP_SIGNATURE */
 	u_int		*tw_spare;	/* TCP_SIGNATURE */
@@ -662,7 +662,7 @@ struct xtcp_timer {
 	int tt_keep;	/* keepalive */
 	int tt_2msl;	/* 2*msl TIME_WAIT timer */
 	int tt_delack;	/* delayed ACK timer */
-	int t_rcvtime;	/* Time since last packet received */
+	int t_rcvtime; /* Time since last packet received */
 };
 struct	xtcpcb {
 	size_t	xt_len;

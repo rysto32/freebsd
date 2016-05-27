@@ -365,8 +365,7 @@ tcp_timer_2msl(void *xtp)
 		TCPSTAT_INC(tcps_finwait2_drops);
 		tp = tcp_close(tp);             
 	} else {
-		if (ticks - tp->t_rcvtime <= TP_MAXIDLE(tp)) {
-			if (!callout_reset(&tp->t_timers->tt_2msl,
+		if (TICKS_DIFF(ticks, tp->t_rcvtime) <= TP_MAXIDLE(tp)) {
 			   TP_KEEPINTVL(tp), tcp_timer_2msl, tp)) {
 				tp->t_timers->tt_flags &= ~TT_2MSL_RST;
 			}
@@ -430,7 +429,8 @@ tcp_timer_keep(void *xtp)
 		goto dropit;
 	if ((always_keepalive || inp->inp_socket->so_options & SO_KEEPALIVE) &&
 	    tp->t_state <= TCPS_CLOSING) {
-		if (ticks - tp->t_rcvtime >= TP_KEEPIDLE(tp) + TP_MAXIDLE(tp))
+		if (TICKS_DIFF(ticks, tp->t_rcvtime) >=
+		    TP_KEEPIDLE(tp) + TP_MAXIDLE(tp))
 			goto dropit;
 		/*
 		 * Send a packet designed to force a response
@@ -534,8 +534,9 @@ tcp_timer_persist(void *xtp)
 	 * backoff that we would use if retransmitting.
 	 */
 	if (tp->t_rxtshift == TCP_MAXRXTSHIFT &&
-	    (ticks - tp->t_rcvtime >= tcp_maxpersistidle ||
-	     ticks - tp->t_rcvtime >= TCP_REXMTVAL(tp) * tcp_totbackoff)) {
+	    (TICKS_DIFF(ticks, tp->t_rcvtime) >= tcp_maxpersistidle ||
+	     TICKS_DIFF(ticks, tp->t_rcvtime) >=
+	     TCP_REXMTVAL(tp) * tcp_totbackoff)) {
 		TCPSTAT_INC(tcps_persistdrop);
 		tp = tcp_drop(tp, ETIMEDOUT);
 		goto out;
@@ -545,7 +546,7 @@ tcp_timer_persist(void *xtp)
 	 * connection after a much reduced timeout.
 	 */
 	if (tp->t_state > TCPS_CLOSE_WAIT &&
-	    (ticks - tp->t_rcvtime) >= TCPTV_PERSMAX) {
+	    (TICKS_DIFF(ticks, tp->t_rcvtime)) >= TCPTV_PERSMAX) {
 		TCPSTAT_INC(tcps_persistdrop);
 		tp = tcp_drop(tp, ETIMEDOUT);
 		goto out;
@@ -651,7 +652,8 @@ tcp_timer_rexmt(void * xtp)
 			tp->t_flags |= TF_WASCRECOVERY;
 		else
 			tp->t_flags &= ~TF_WASCRECOVERY;
-		tp->t_badrxtwin = ticks + (tp->t_srtt >> (TCP_RTT_SHIFT + 1));
+		tp->t_badrxtwin =
+		    TICKS_ADD(ticks, tp->t_srtt >> (TCP_RTT_SHIFT + 1));
 		tp->t_flags |= TF_PREVVALID;
 	} else
 		tp->t_flags &= ~TF_PREVVALID;
@@ -805,7 +807,7 @@ tcp_timer_rexmt(void * xtp)
 	/*
 	 * If timing a segment in this window, stop the timer.
 	 */
-	tp->t_rtttime = 0;
+	TICKS_CLEAR(tp->t_rtttime);
 
 	cc_cong_signal(tp, NULL, CC_RTO);
 
@@ -1002,5 +1004,5 @@ tcp_timer_to_xtimer(struct tcpcb *tp, struct tcp_timer *timer,
 		xtimer->tt_keep = (timer->tt_keep.c_time - now) / SBT_1MS;
 	if (callout_active(&timer->tt_2msl))
 		xtimer->tt_2msl = (timer->tt_2msl.c_time - now) / SBT_1MS;
-	xtimer->t_rcvtime = ticks_to_msecs(ticks - tp->t_rcvtime);
+	xtimer->t_rcvtime = ticks_to_msecs(TICKS_DIFF(ticks, tp->t_rcvtime));
 }

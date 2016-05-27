@@ -1331,7 +1331,8 @@ tcp_fill_info(struct tcpcb *tp, struct tcp_info *ti)
 	}
 
 	ti->tcpi_rto = tp->t_rxtcur * tick;
-	ti->tcpi_last_data_recv = (long)(ticks - (int)tp->t_rcvtime) * tick;
+	ti->tcpi_last_data_recv = 
+	    (long)(TICKS_DIFF(ticks, tp->t_rcvtime)) * tick;
 	ti->tcpi_rtt = ((u_int64_t)tp->t_srtt * tick) >> TCP_RTT_SHIFT;
 	ti->tcpi_rttvar = ((u_int64_t)tp->t_rttvar * tick) >> TCP_RTTVAR_SHIFT;
 
@@ -2233,12 +2234,12 @@ db_print_tcpcb(struct tcpcb *tp, const char *name, int indent)
 	    "0x%08x\n", tp->snd_ssthresh, tp->snd_recover);
 
 	db_print_indent(indent);
-	db_printf("t_rcvtime: %u   t_startime: %u\n",
-	    tp->t_rcvtime, tp->t_starttime);
+	db_printf(t_rcvtime: %ju   t_startime: %ju\n",
+	    TICKS_VALUE(tp->t_rcvtime), TICKS_VALUE(tp->t_starttime));
 
 	db_print_indent(indent);
-	db_printf("t_rttime: %u   t_rtsq: 0x%08x\n",
-	    tp->t_rtttime, tp->t_rtseq);
+	db_printf("t_rttime: %ju   t_rtsq: 0x%08x\n",
+	    TICKS_VALUE(tp->t_rtttime), tp->t_rtseq);
 
 	db_print_indent(indent);
 	db_printf("t_rxtcur: %d   t_maxseg: %u   t_srtt: %d\n",
@@ -2272,8 +2273,8 @@ db_print_tcpcb(struct tcpcb *tp, const char *name, int indent)
 
 	db_print_indent(indent);
 	db_printf("snd_ssthresh_prev: %lu   snd_recover_prev: 0x%08x   "
-	    "t_badrxtwin: %u\n", tp->snd_ssthresh_prev,
-	    tp->snd_recover_prev, tp->t_badrxtwin);
+	    "t_badrxtwin: %ju\n", tp->snd_ssthresh_prev,
+	    tp->snd_recover_prev, TICKS_VALUE(tp->t_badrxtwin));
 
 	db_print_indent(indent);
 	db_printf("snd_numholes: %d  snd_holes first: %p\n",

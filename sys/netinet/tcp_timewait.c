@@ -308,7 +308,7 @@ tcp_twstart(struct tcpcb *tp)
 	tw->iss     = tp->iss;
 	tw->irs     = tp->irs;
 	tw->t_starttime = tp->t_starttime;
-	tw->tw_time = 0;
+	TICKS_CLEAR(tw->tw_time);
 
 /* XXX
  * If this code will
@@ -629,7 +629,7 @@ tcp_tw_2msl_reset(struct tcptw *tw, int rearm)
 	TW_WLOCK(V_tw_lock);
 	if (rearm)
 		TAILQ_REMOVE(&V_twq_2msl, tw, tw_2msl);
-	tw->tw_time = ticks + 2 * tcp_msl;
+	tw->tw_time = TICKS_ADD(ticks, 2 * tcp_msl);
 	TAILQ_INSERT_TAIL(&V_twq_2msl, tw, tw_2msl);
 	TW_WUNLOCK(V_tw_lock);
 }
@@ -690,7 +690,8 @@ tcp_tw_2msl_scan(int reuse)
 	for (;;) {
 		TW_RLOCK(V_tw_lock);
 		tw = TAILQ_FIRST(&V_twq_2msl);
-		if (tw == NULL || (!reuse && (tw->tw_time - ticks) > 0)) {
+		if (tw == NULL || (!reuse &&
+		    TICKS_DIFF(tw->tw_time, ticks) > 0)) {
 			TW_RUNLOCK(V_tw_lock);
 			break;
 		}

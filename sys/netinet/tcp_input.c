@@ -449,7 +449,7 @@ cc_cong_signal(struct tcpcb *tp, struct tcphdr *th, uint32_t type)
 			ENTER_CONGRECOVERY(tp->t_flags);
 		tp->snd_nxt = tp->snd_max;
 		tp->t_flags &= ~TF_PREVVALID;
-		tp->t_badrxtwin = 0;
+		TICKS_CLEAR(tp->t_badrxtwin);
 		break;
 	}
 
@@ -1726,7 +1726,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				 */
 				if (tp->t_rxtshift == 1 &&
 				    tp->t_flags & TF_PREVVALID &&
-				    (int)(ticks - tp->t_badrxtwin) < 0) {
+				    TICKS_DIFF(ticks, tp->t_badrxtwin) < 0) {
 					cc_cong_signal(tp, th, CC_RTO_ERR);
 				}
 
@@ -1747,13 +1747,14 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 						tp->t_rttlow = t;
 					tcp_xmit_timer(tp,
 					    TCP_TS_TO_TICKS(t) + 1);
-				} else if (tp->t_rtttime &&
+				} else if (TICKS_VALUE(tp->t_rtttime) &&
 				    SEQ_GT(th->th_ack, tp->t_rtseq)) {
 					if (!tp->t_rttlow ||
-					    tp->t_rttlow > ticks - tp->t_rtttime)
-						tp->t_rttlow = ticks - tp->t_rtttime;
+					    tp->t_rttlow >
+					    TICKS_DIFF(ticks, tp->t_rtttime))
+						tp->t_rttlow = TICKS_DIFF(ticks, tp->t_rtttime);
 					tcp_xmit_timer(tp,
-							ticks - tp->t_rtttime);
+					     TICKS_DIFF(ticks, tp->t_rtttime));
 				}
 				acked = BYTES_THIS_ACK(tp, th);
 
@@ -2623,7 +2624,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 					cc_cong_signal(tp, th, CC_NDUPACK);
 					cc_ack_received(tp, th, CC_DUPACK);
 					tcp_timer_activate(tp, TT_REXMT, 0);
-					tp->t_rtttime = 0;
+					TICKS_CLEAR(tp->t_rtttime);
 					if (tp->t_flags & TF_SACK_PERMIT) {
 						TCPSTAT_INC(
 						    tcps_sack_recovery_episode);
@@ -2768,7 +2769,7 @@ process_ACK:
 		 * we left off.
 		 */
 		if (tp->t_rxtshift == 1 && tp->t_flags & TF_PREVVALID &&
-		    (int)(ticks - tp->t_badrxtwin) < 0)
+		    TICKS_DIFF(ticks, tp->t_badrxtwin) < 0)
 			cc_cong_signal(tp, th, CC_RTO_ERR);
 
 		/*
@@ -2792,10 +2793,12 @@ process_ACK:
 			if (!tp->t_rttlow || tp->t_rttlow > t)
 				tp->t_rttlow = t;
 			tcp_xmit_timer(tp, TCP_TS_TO_TICKS(t) + 1);
-		} else if (tp->t_rtttime && SEQ_GT(th->th_ack, tp->t_rtseq)) {
-			if (!tp->t_rttlow || tp->t_rttlow > ticks - tp->t_rtttime)
-				tp->t_rttlow = ticks - tp->t_rtttime;
-			tcp_xmit_timer(tp, ticks - tp->t_rtttime);
+		} else if (TICKS_VALUE(tp->t_rtttime) && 
+		    SEQ_GT(th->th_ack, tp->t_rtseq)) {
+			if (!tp->t_rttlow || tp->t_rttlow >
+			    TICKS_DIFF(ticks, tp->t_rtttime))
+				tp->t_rttlow = TICKS_DIFF(ticks, tp->t_rtttime);
+			tcp_xmit_timer(tp, TICKS_DIFF(ticks, tp->t_rtttime));
 		}
 
 		/*
@@ -3508,7 +3511,7 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
 		tp->t_rttvar = rtt << (TCP_RTTVAR_SHIFT - 1);
 		tp->t_rttbest = tp->t_srtt + tp->t_rttvar;
 	}
-	tp->t_rtttime = 0;
+	TICKS_CLEAR(tp->t_rtttime);
 	tp->t_rxtshift = 0;
 
 	/*
@@ -3828,7 +3831,7 @@ tcp_newreno_partial_ack(struct tcpcb *tp, struct tcphdr *th)
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	tcp_timer_activate(tp, TT_REXMT, 0);
-	tp->t_rtttime = 0;
+	TICKS_CLEAR(tp->t_rtttime);
 	tp->snd_nxt = th->th_ack;
 	/*
 	 * Set snd_cwnd to one segment beyond acknowledged offset.

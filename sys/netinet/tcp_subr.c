@@ -2147,8 +2147,8 @@ tcp6_ctlinput(int cmd, struct sockaddr *sa, void *d)
 #define ISN_RANDOM_INCREMENT (4096 - 1)
 
 static VNET_DEFINE(u_char, isn_secret[32]);
-static VNET_DEFINE(int, isn_last);
-static VNET_DEFINE(int, isn_last_reseed);
+static VNET_DEFINE(ticks_t, isn_last);
+static VNET_DEFINE(ticks_t, isn_last_reseed);
 static VNET_DEFINE(u_int32_t, isn_offset);
 static VNET_DEFINE(u_int32_t, isn_offset_old);
 
@@ -2165,14 +2165,16 @@ tcp_new_isn(struct tcpcb *tp)
 	u_int32_t md5_buffer[4];
 	tcp_seq new_isn;
 	u_int32_t projected_offset;
+	ticks_t now;
 
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 	ISN_LOCK();
 	/* Seed if this is the first use, reseed if requested. */
-	if ((V_isn_last_reseed == 0) || ((V_tcp_isn_reseed_interval > 0) &&
-	     (((u_int)V_isn_last_reseed + (u_int)V_tcp_isn_reseed_interval*hz)
-		< (u_int)ticks))) {
+	now = ticks;
+	if ((TICKS_VALUE(V_isn_last_reseed) == 0) || ((V_tcp_isn_reseed_interval > 0) &&
+	     ((TICKS_DIFF(now, V_isn_last_reseed) >
+	         V_tcp_isn_reseed_interval*hz)))) {
 		read_random(&V_isn_secret, sizeof(V_isn_secret));
 		V_isn_last_reseed = ticks;
 	}
@@ -2200,9 +2202,9 @@ tcp_new_isn(struct tcpcb *tp)
 	new_isn = (tcp_seq) md5_buffer[0];
 	V_isn_offset += ISN_STATIC_INCREMENT +
 		(arc4random() & ISN_RANDOM_INCREMENT);
-	if (ticks != V_isn_last) {
+	if (!TICKS_EQUAL(ticks, V_isn_last)) {
 		projected_offset = V_isn_offset_old +
-		    ISN_BYTES_PER_SECOND / hz * (ticks - V_isn_last);
+		    ISN_BYTES_PER_SECOND / hz * TICKS_DIFF(ticks, V_isn_last);
 		if (SEQ_GT(projected_offset, V_isn_offset))
 			V_isn_offset = projected_offset;
 		V_isn_offset_old = V_isn_offset;
@@ -2279,7 +2281,7 @@ tcp_mtudisc(struct inpcb *inp, int mtuoffer)
 	SOCKBUF_UNLOCK(&so->so_snd);
 
 	TCPSTAT_INC(tcps_mturesent);
-	tp->t_rtttime = 0;
+	TICKS_CLEAR(tp->t_rtttime);
 	tp->snd_nxt = tp->snd_una;
 	tcp_free_sackholes(tp);
 	tp->snd_recover = tp->snd_max;
