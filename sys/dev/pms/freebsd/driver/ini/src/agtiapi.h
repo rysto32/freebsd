@@ -89,7 +89,7 @@ typedef struct _CCB {
   struct _CCB      *pccbChainNext;    // forward link pointers
   struct scsi_cmnd *cmd;              // call back owner pointer
   struct _CCB      *pccbIO;           // for TM TARGET_RESET
-  U32_64            startTime;
+  ticks_t            startTime;
   tiIORequest_t     tiIORequest;
   tdIORequestBody_t tdIOReqBody;
   tiSuperScsiInitiatorRequest_t tiSuperScsiRequest;

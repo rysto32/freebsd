@@ -2009,7 +2009,7 @@ STATIC pccb_t agtiapi_GetCCB( struct agtiapi_softc *pmcsc )
     pmcsc->ccbFreeList = (caddr_t *)pccb->pccbNext;
     pccb->pccbNext = NULL;
     pccb->flags = ACTIVE;
-    pccb->startTime = 0;
+    TICKS_CLEAR(pccb->startTime);
     pmcsc->activeCCB++;
     AGTIAPI_IO( "agtiapi_GetCCB: re-allocated ccb %p\n", pccb );
   }
@@ -2250,11 +2250,11 @@ STATIC void agtiapi_CheckIOTimeout(void *data)
     /* start from 1st ccb in the chain */
     pccb_next = pccb_curr->pccbChainNext;
     if( (pccb_curr->flags == 0) || (pccb_curr->tiIORequest.tdData == NULL) ||
-        (pccb_curr->startTime == 0) /* && (pccb->startTime == 0) */)
+        (TICKS_VALUE(pccb_curr->startTime) == 0) /* && (pccb->startTime == 0) */)
     {
       //AGTIAPI_PRINTK("agtiapi_CheckIOTimeout: move to next element\n");
     }
-    else if ( ( (ticks-pccb_curr->startTime) >= ag_timeout_secs ) &&
+    else if ( ( TICKS_DIFF(ticks, pccb_curr->startTime) >= ag_timeout_secs ) &&
               !(pccb_curr->flags & TIMEDOUT) )
     {
       AGTIAPI_PRINTK( "agtiapi_CheckIOTimeout: pccb %p timed out, call TM "
@@ -4599,7 +4599,7 @@ STATIC void agtiapi_FreeCCB(struct agtiapi_softc *pmcsc, pccb_t pccb)
   pccb->retryCount = 0;
   pccb->ccbStatus  = 0;
   pccb->scsiStatus = 0;
-  pccb->startTime  = 0;
+  TICKS_CLEAR(pccb->startTime);
   pccb->dmaHandle  = 0;
   pccb->numSgElements = 0;
   pccb->tiIORequest.tdData = 0;
@@ -4731,7 +4731,7 @@ STATIC void agtiapi_FreeSMPCCB(struct agtiapi_softc *pmcsc, pccb_t pccb)
   pccb->dataLen    = 0;
   pccb->retryCount = 0;
   pccb->ccbStatus  = 0;
-  pccb->startTime  = 0;
+  TICKS_CLEAR(pccb->startTime);
   pccb->dmaHandle  = 0;
   pccb->numSgElements = 0;
   pccb->tiIORequest.tdData = 0;
@@ -4769,7 +4769,7 @@ STATIC void agtiapi_FreeTMCCB(struct agtiapi_softc *pmcsc, pccb_t pccb)
   pccb->retryCount = 0;
   pccb->ccbStatus  = 0;
   pccb->scsiStatus = 0;
-  pccb->startTime  = 0;
+  TICKS_CLEAR(pccb->startTime);
   pccb->dmaHandle  = 0;
   pccb->numSgElements = 0;
   pccb->tiIORequest.tdData = 0;
@@ -5133,7 +5133,7 @@ STATIC void agtiapi_PrepCCBs( struct agtiapi_softc *pCard,
     pccb->tisgl_busaddr = pCard->tisgl_busaddr + ((i + offset) * sgl_sz);
     pccb->ccb = NULL;      
     pccb->pccbIO = NULL;      
-    pccb->startTime = 0;
+    TICKS_CLEAR(pccb->startTime);
   }
 
 #ifdef AGTIAPI_ALIGN_CHECK

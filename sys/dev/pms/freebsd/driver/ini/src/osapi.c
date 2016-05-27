@@ -158,7 +158,7 @@ void ostiInitiatorEvent( tiRoot_t *ptiRoot,
                ccbIO = pccb->pccbIO;
                AGTIAPI_PRINTK("tiIntrEventTypeTaskManagement: IO to be aborted locally %p flag %x \n",
                           ccbIO, ccbIO->flags);
-               if (ccbIO->startTime == 0) /* IO has been completed. No local abort */
+               if (TICKS_VALUE(ccbIO->startTime) == 0) /* IO has been completed. No local abort */
                {
                }			  
                else if (tiINIIOAbort(&pCard->tiRoot, &ccbIO->tiIORequest) != tiSuccess)
@@ -170,7 +170,7 @@ void ostiInitiatorEvent( tiRoot_t *ptiRoot,
           else if (eventStatus == tiTMFailed) 
           {
                ccbIO = pccb->pccbIO;               
-               if (ccbIO->startTime == 0) /* IO has been completed. */
+               if (TICKS_VALUE(ccbIO->startTime) == 0) /* IO has been completed. */
                {
                    AGTIAPI_PRINTK("tiIntrEventTypeTaskManagement: TM failed because IO has been completed! pTMccb %p flag %x \n",
                                    pccb, pccb->flags);
@@ -327,7 +327,7 @@ ostiInitiatorIOCompleted(tiRoot_t      *ptiRoot,
     AGTIAPI_PRINTK("ostiInitiatorIOCompleted - aborted ccb %p, flag %x\n",
                    pccb, pccb->flags);
     /* indicate aborted IO completion */
-    pccb->startTime = 0;     
+    TICKS_CLEAR(pccb->startTime);     
     agtiapi_Done(pCard, pccb);
   }
   else
