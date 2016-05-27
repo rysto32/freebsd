@@ -1002,7 +1002,7 @@ struct jblocks {
 	int		jb_free;	/* Total disk blocks free. */
 	int		jb_min;		/* Minimum free space. */
 	int		jb_low;		/* Low on space. */
-	int		jb_age;		/* Insertion time of oldest rec. */
+	ticks_t		jb_age;		/* Insertion time of oldest rec. */
 };
 
 struct jextent {
