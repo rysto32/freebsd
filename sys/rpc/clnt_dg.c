@@ -344,7 +344,8 @@ clnt_dg_call(
 	struct timeval *tvp;
 	int timeout;
 	int retransmit_time;
-	int next_sendtime, starttime, rtt, time_waited, tv = 0;
+	int next_sendtime, rtt, time_waited, tv = 0;
+	ticks_t starttime;
 	struct sockaddr *sa;
 	socklen_t salen;
 	uint32_t xid = 0;
@@ -597,7 +598,7 @@ get_reply:
 				 * time taken was somewhere between N
 				 * and N+1.
 				 */
-				rtt = ticks - starttime + 1;
+				rtt = TICKS_DIFF(ticks, starttime) + 1;
 
 				/*
 				 * Update our estimate of the round
@@ -643,7 +644,7 @@ get_reply:
 			goto out;
 		}
 
-		time_waited = ticks - starttime;
+		time_waited = TICKS_DIFF(ticks, starttime);
 
 		/* Check for timeout. */
 		if (time_waited > timeout) {
