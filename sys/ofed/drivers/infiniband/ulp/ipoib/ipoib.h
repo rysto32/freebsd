@@ -262,7 +262,11 @@ struct ipoib_cm_rx {
 	struct ipoib_cm_rx_buf *rx_ring;
 	struct list_head	list;
 	struct ipoib_dev_priv	*priv;
+	/* Begin Isilon */
+#if 0
 	unsigned long		jiffies;
+#endif
+	/* End Isilon */
 	enum ipoib_cm_state	state;
 	int			recv_count;
 };
