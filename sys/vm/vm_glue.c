@@ -759,7 +759,7 @@ loop:
 			PROC_UNLOCK(p);
 			continue;
 		}
-		swtime = (ticks - p->p_swtick) / hz;
+		swtime = TICKS_DIFF(ticks, p->p_swtick) / hz;
 		FOREACH_THREAD_IN_PROC(p, td) {
 			/*
 			 * An otherwise runnable thread of a process
@@ -768,7 +768,7 @@ loop:
 			 */
 			thread_lock(td);
 			if (td->td_inhibitors == TDI_SWAPPED) {
-				slptime = (ticks - td->td_slptick) / hz;
+				slptime = TICKS_DIFF(ticks, td->td_slptick) / hz;
 				pri = swtime + slptime;
 				if ((td->td_flags & TDF_SWAPINREQ) == 0)
 					pri -= p->p_nice * 8;

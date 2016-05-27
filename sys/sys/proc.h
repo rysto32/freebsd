@@ -250,9 +250,9 @@ struct thread {
 	int		td_pinned;	/* (k) Temporary cpu pin count. */
 	struct ucred	*td_ucred;	/* (k) Reference to credentials. */
 	struct plimit	*td_limit;	/* (k) Resource limits. */
-	int		td_slptick;	/* (t) Time at sleep. */
-	int		td_blktick;	/* (t) Time spent blocked. */
-	int		td_swvoltick;	/* (t) Time at last SW_VOL switch. */
+	ticks_t		td_slptick;	/* (t) Time at sleep. */
+	ticks_t		td_blktick;	/* (t) Time spent blocked. */
+	ticks_t		td_swvoltick;	/* (t) Time at last SW_VOL switch. */
 	int		td_swinvoltick;	/* (t) Time at last SW_INVOL switch. */
 	u_int		td_cow;		/* (*) Number of copy-on-write faults */
 	struct rusage	td_ru;		/* (t) rusage information. */
@@ -552,7 +552,7 @@ struct proc {
 #define	p_startzero	p_oppid
 	pid_t		p_oppid;	/* (c + e) Save ppid in ptrace. XXX */
 	struct vmspace	*p_vmspace;	/* (b) Address space. */
-	u_int		p_swtick;	/* (c) Tick when swapped in or out. */
+	ticks_t		p_swtick;	/* (c) Tick when swapped in or out. */
 	u_int		p_cowgen;	/* (c) Generation of COW pointers. */
 	struct itimerval p_realtimer;	/* (c) Alarm timer. */
 	struct rusage	p_ru;		/* (a) Exit information. */

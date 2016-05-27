@@ -91,12 +91,12 @@ struct td_sched {
 	struct runq	*ts_runq;	/* Run-queue we're queued on. */
 	short		ts_flags;	/* TSF_* flags. */
 	int		ts_cpu;		/* CPU that we have affinity for. */
-	int		ts_rltick;	/* Real last tick, for affinity. */
+	ticks_t		ts_rltick;	/* Real last tick, for affinity. */
 	int		ts_slice;	/* Ticks of slice remaining. */
 	u_int		ts_slptime;	/* Number of ticks we vol. slept */
 	u_int		ts_runtime;	/* Number of ticks we were running */
-	int		ts_ltick;	/* Last tick that we were running on */
-	int		ts_ftick;	/* First tick that we were running on */
+	ticks_t		ts_ltick;	/* Last tick that we were running on */
+	ticks_t		ts_ftick;	/* First tick that we were running on */
 	int		ts_ticks;	/* Tick count */
 #ifdef KTR
 	char		ts_name[TS_NAME_LEN];
@@ -143,7 +143,8 @@ static struct td_sched td_sched0;
 #define	SCHED_TICK_MAX		(SCHED_TICK_TARG + hz)
 #define	SCHED_TICK_SHIFT	10
 #define	SCHED_TICK_HZ(ts)	((ts)->ts_ticks >> SCHED_TICK_SHIFT)
-#define	SCHED_TICK_TOTAL(ts)	(max((ts)->ts_ltick - (ts)->ts_ftick, hz))
+#define	SCHED_TICK_TOTAL(ts)	\
+    (max(TICKS_DIFF((ts)->ts_ltick, (ts)->ts_ftick), hz))
 
 /*
  * These macros determine priorities for non-interactive threads.  They are
@@ -260,7 +261,7 @@ struct tdq {
 struct cpu_group *cpu_top;		/* CPU topology */
 
 #define	SCHED_AFFINITY_DEFAULT	(max(1, hz / 1000))
-#define	SCHED_AFFINITY(ts, t)	((ts)->ts_rltick > ticks - ((t) * affinity))
+#define	SCHED_AFFINITY(ts, t)	(TICKS_DIFF(ticks, (ts)->ts_rltick) <= ((t) * affinity))
 
 /*
  * Run-time tunables.
@@ -1543,9 +1544,10 @@ sched_priority(struct thread *td)
 		pri += SCHED_PRI_NICE(td->td_proc->p_nice);
 		KASSERT(pri >= PRI_MIN_BATCH && pri <= PRI_MAX_BATCH,
 		    ("sched_priority: invalid priority %d: nice %d, " 
-		    "ticks %d ftick %d ltick %d tick pri %d",
+		    "ticks %d ftick %jd ltick %jd tick pri %d",
 		    pri, td->td_proc->p_nice, td->td_sched->ts_ticks,
-		    td->td_sched->ts_ftick, td->td_sched->ts_ltick,
+		    TICKS_VALUE(td->td_sched->ts_ftick),
+		    TICKS_VALUE(td->td_sched->ts_ltick),
 		    SCHED_PRI_TICKS(td->td_sched)));
 	}
 	sched_user_prio(td, pri);
@@ -1656,18 +1658,19 @@ sched_rr_interval(void)
 static void
 sched_pctcpu_update(struct td_sched *ts, int run)
 {
-	int t = ticks;
+	ticks_t t = ticks;
 
-	if (t - ts->ts_ltick >= SCHED_TICK_TARG) {
+	if (TICKS_DIFF(t, ts->ts_ltick) >= SCHED_TICK_TARG) {
 		ts->ts_ticks = 0;
-		ts->ts_ftick = t - SCHED_TICK_TARG;
-	} else if (t - ts->ts_ftick >= SCHED_TICK_MAX) {
-		ts->ts_ticks = (ts->ts_ticks / (ts->ts_ltick - ts->ts_ftick)) *
-		    (ts->ts_ltick - (t - SCHED_TICK_TARG));
-		ts->ts_ftick = t - SCHED_TICK_TARG;
+		ts->ts_ftick = TICKS_ADD(t, -SCHED_TICK_TARG);
+	} else if (TICKS_DIFF(t, ts->ts_ftick) >= SCHED_TICK_MAX) {
+		ts->ts_ticks =
+		    (ts->ts_ticks / TICKS_DIFF(ts->ts_ltick, ts->ts_ftick)) *
+		    (TICKS_DIFF(ts->ts_ltick, TICKS_ADD(t, -SCHED_TICK_TARG)));
+		ts->ts_ftick = TICKS_ADD(t, -SCHED_TICK_TARG);
 	}
 	if (run)
-		ts->ts_ticks += (t - ts->ts_ltick) << SCHED_TICK_SHIFT;
+		ts->ts_ticks += TICKS_DIFF(t, ts->ts_ltick) << SCHED_TICK_SHIFT;
 	ts->ts_ltick = t;
 }
 
@@ -2035,7 +2038,7 @@ void
 sched_wakeup(struct thread *td)
 {
 	struct td_sched *ts;
-	int slptick;
+	ticks_t slptick;
 
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
 	ts = td->td_sched;
@@ -2045,9 +2048,9 @@ sched_wakeup(struct thread *td)
 	 * priority.
 	 */
 	slptick = td->td_slptick;
-	td->td_slptick = 0;
-	if (slptick && slptick != ticks) {
-		ts->ts_slptime += (ticks - slptick) << SCHED_TICK_SHIFT;
+	TICKS_CLEAR(td->td_slptick);
+	if (TICKS_VALUE(slptick) && !TICKS_EQUAL(slptick, ticks)) {
+		ts->ts_slptime += TICKS_DIFF(ticks, slptick) << SCHED_TICK_SHIFT;
 		sched_interact_update(td);
 		sched_pctcpu_update(ts, 0);
 	}

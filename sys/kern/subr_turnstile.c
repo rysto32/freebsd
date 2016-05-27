@@ -932,7 +932,7 @@ turnstile_unpend(struct turnstile *ts, int owner_type)
 		MPASS(TD_CAN_RUN(td));
 		td->td_blocked = NULL;
 		td->td_lockname = NULL;
-		td->td_blktick = 0;
+		TICKS_CLEAR(td->td_blktick);
 #ifdef INVARIANTS
 		td->td_tsqueue = 0xff;
 #endif

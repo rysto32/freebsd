@@ -154,7 +154,7 @@ struct pcpu {
 	struct thread	*pc_deadthread;		/* Zombie thread or NULL */
 	struct pcb	*pc_curpcb;		/* Current pcb */
 	uint64_t	pc_switchtime;		/* cpu_ticks() at last csw */
-	int		pc_switchticks;		/* `ticks' at last csw */
+	ticks_t		pc_switchticks;		/* `ticks' at last csw */
 	u_int		pc_cpuid;		/* This cpu number */
 	STAILQ_ENTRY(pcpu) pc_allcpu;
 	struct lock_list_entry *pc_spinlocks;
