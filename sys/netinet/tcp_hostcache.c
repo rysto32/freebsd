@@ -638,13 +638,13 @@ sysctl_tcp_hc_list(SYSCTL_HANDLER_ARGS)
 	        "\nIP address        MTU  SSTRESH      RTT   RTTVAR "
 		"    CWND SENDPIPE RECVPIPE HITS  UPD  EXP\n");
 
-#define msec(u) (((u) + 500) / 1000)
+#define msec(u) (howmany((u), 1000))
 	for (i = 0; i < V_tcp_hostcache.hashsize; i++) {
 		THC_LOCK(&V_tcp_hostcache.hashbase[i].hch_mtx);
 		TAILQ_FOREACH(hc_entry, &V_tcp_hostcache.hashbase[i].hch_bucket,
 			      rmx_q) {
 			sbuf_printf(&sb,
-			    "%-15s %5u %8u %6lums %6lums %8u %8u %8u %4lu "
+			    "%-15s %5u %8u %6jums %6jums %8u %8u %8u %4lu "
 			    "%4lu %4i\n",
 			    hc_entry->ip4.s_addr ?
 			        inet_ntoa_r(hc_entry->ip4, ip4buf) :
@@ -655,10 +655,8 @@ sysctl_tcp_hc_list(SYSCTL_HANDLER_ARGS)
 #endif
 			    hc_entry->rmx_mtu,
 			    hc_entry->rmx_ssthresh,
-			    msec((u_long)hc_entry->rmx_rtt *
-				(RTM_RTTUNIT / (hz * TCP_RTT_SCALE))),
-			    msec((u_long)hc_entry->rmx_rttvar *
-				(RTM_RTTUNIT / (hz * TCP_RTTVAR_SCALE))),
+			    (uintmax_t)msec(hc_entry->rmx_rtt),
+			    (uintmax_t)msec(hc_entry->rmx_rttvar),
 			    hc_entry->rmx_cwnd,
 			    hc_entry->rmx_sendpipe,
 			    hc_entry->rmx_recvpipe,

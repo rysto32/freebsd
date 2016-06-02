@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
 #include <netinet/ip.h>
+#include <netinet/tcp_seq.h>
 #include <netinet/tcp_var.h>
 #define TCPSTATES
 #include <netinet/tcp_fsm.h>
@@ -535,7 +536,7 @@ handle_ddp_data(struct toepcb *toep, __be32 ddp_report, __be32 rcv_nxt, int len)
 	 */
 	len += be32toh(rcv_nxt) - tp->rcv_nxt;
 	tp->rcv_nxt += len;
-	tp->t_rcvtime = ticks;
+	tp->t_rcvtime = tcp_ts_getsbintime();
 #ifndef USE_DDP_RX_FLOW_CONTROL
 	KASSERT(tp->rcv_wnd >= len, ("%s: negative window size", __func__));
 	tp->rcv_wnd -= len;

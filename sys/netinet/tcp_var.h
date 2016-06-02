@@ -75,6 +75,7 @@ struct sackhint {
 					 */
 	uint32_t	_pad1[1];	/* TBD */
 	uint64_t	_pad[1];	/* TBD */
+	u_char opt[TCP_MAXOLEN];
 };
 
 /*
@@ -119,20 +120,23 @@ struct tcpcb {
 					 */
 	tcp_seq	snd_recover;		/* for use in NewReno Fast Recovery */
 
-	u_int	t_rcvtime;		/* inactivity time */
-	u_int	t_starttime;		/* time connection was established */
-	u_int	t_rtttime;		/* RTT measurement start time */
+	sbintime_t	t_rcvtime;		/* inactivity time */
+	sbintime_t	t_starttime;		/* time connection was established */
+	sbintime_t	t_rtttime;		/* RTT measurement start time */
+	uint32_t	t_lasttsecr;
+	uint32_t	t_lasttsval;
+
 	tcp_seq	t_rtseq;		/* sequence number being timed */
 
-	int	t_rxtcur;		/* current retransmit value (ticks) */
+	sbintime_t t_rxtcur;		/* current retransmit value */
 	u_int	t_maxseg;		/* maximum segment size */
 	u_int	t_pmtud_saved_maxseg;	/* pre-blackhole MSS */
-	int	t_srtt;			/* smoothed round-trip time */
-	int	t_rttvar;		/* variance in round-trip time */
+	sbintime_t	t_srtt;		/* smoothed round-trip time */
+	sbintime_t	t_rttvar;	/* variance in round-trip time */
 
 	int	t_rxtshift;		/* log(2) of rexmt exp. backoff */
-	u_int	t_rttmin;		/* minimum rtt allowed */
-	u_int	t_rttbest;		/* best rtt we've seen */
+	sbintime_t	t_rttmin;		/* minimum rtt allowed */
+	sbintime_t	t_rttbest;		/* best rtt we've seen */
 	u_long	t_rttupdated;		/* number of times rtt sampled */
 	uint32_t  max_sndwnd;		/* largest window peer has offered */
 
@@ -145,8 +149,8 @@ struct tcpcb {
 	u_char	rcv_scale;		/* window scaling for recv window */
 	u_char	request_r_scale;	/* pending window scaling */
 	u_int32_t  ts_recent;		/* timestamp echo data */
-	u_int	ts_recent_age;		/* when last updated */
-	u_int32_t  ts_offset;		/* our timestamp offset */
+	sbintime_t	ts_recent_age;		/* when last updated */
+	u_int32_t	ts_offset;	/* our timestamp offset */
 
 	tcp_seq	last_ack_sent;
 /* experimental */
@@ -154,7 +158,7 @@ struct tcpcb {
 	uint32_t  snd_ssthresh_prev;	/* ssthresh prior to retransmit */
 	tcp_seq	snd_recover_prev;	/* snd_recover prior to retransmit */
 	int	t_sndzerowin;		/* zero-window updates sent */
-	u_int	t_badrxtwin;		/* window for retransmit recovery */
+	sbintime_t	t_badrxtwin;		/* window for retransmit recovery */
 	u_char	snd_limited;		/* segments limited transmitted */
 /* SACK related state */
 	int	snd_numholes;		/* number of holes seen by sender */
@@ -184,6 +188,7 @@ struct tcpcb {
 	u_int	t_keepcnt;		/* number of keepalives before close */
 
 	u_int	t_tsomax;		/* TSO total burst length limit in bytes */
+	sbintime_t	t_delack;	/* delayed ack timer */
 	u_int	t_tsomaxsegcount;	/* TSO maximum segment count */
 	u_int	t_tsomaxsegsize;	/* TSO maximum segment size in bytes */
 	u_int	t_flags2;		/* More tcpcb flags storage */
@@ -417,7 +422,7 @@ struct tcptw {
 	struct ucred	*tw_cred;	/* user credentials */
 	u_int32_t	t_recent;
 	u_int32_t	ts_offset;	/* our timestamp offset */
-	u_int		t_starttime;
+	sbintime_t	t_starttime;
 	int		tw_time;
 	TAILQ_ENTRY(tcptw) tw_2msl;
 	void		*tw_pspare;	/* TCP_SIGNATURE */
@@ -443,25 +448,7 @@ struct tcptw {
 #define	TCP_RTTVAR_SHIFT	4	/* shift for rttvar; 2 bits */
 #define	TCP_DELTA_SHIFT		2	/* see tcp_input.c */
 
-/*
- * The initial retransmission should happen at rtt + 4 * rttvar.
- * Because of the way we do the smoothing, srtt and rttvar
- * will each average +1/2 tick of bias.  When we compute
- * the retransmit timer, we want 1/2 tick of rounding and
- * 1 extra tick because of +-1/2 tick uncertainty in the
- * firing of the timer.  The bias will give us exactly the
- * 1.5 tick we need.  But, because the bias is
- * statistical, we have to test that we don't drop below
- * the minimum feasible timer (which is 2 ticks).
- * This version of the macro adapted from a paper by Lawrence
- * Brakmo and Larry Peterson which outlines a problem caused
- * by insufficient precision in the original implementation,
- * which results in inappropriately large RTO values for very
- * fast networks.
- */
-#define	TCP_REXMTVAL(tp) \
-	max((tp)->t_rttmin, (((tp)->t_srtt >> (TCP_RTT_SHIFT - TCP_DELTA_SHIFT))  \
-	  + (tp)->t_rttvar) >> TCP_DELTA_SHIFT)
+#define	TCP_REXMTVAL(tp) max((tp)->t_rttmin, (tp)->t_srtt + ((tp)->t_rttvar << 2))
 
 /*
  * TCP statistics.
@@ -765,7 +752,7 @@ void	tcp_dropwithreset(struct mbuf *, struct tcphdr *,
 		     struct tcpcb *, int, int);
 void	tcp_pulloutofband(struct socket *,
 		     struct tcphdr *, struct mbuf *, int);
-void	tcp_xmit_timer(struct tcpcb *, int);
+void	tcp_xmit_timer(struct tcpcb *, sbintime_t);
 void	tcp_newreno_partial_ack(struct tcpcb *, struct tcphdr *);
 void	cc_ack_received(struct tcpcb *tp, struct tcphdr *th,
 			    uint16_t nsegs, uint16_t type);
@@ -817,7 +804,7 @@ void	 tcp_slowtimo(void);
 struct tcptemp *
 	 tcpip_maketemplate(struct inpcb *);
 void	 tcpip_fillheaders(struct inpcb *, void *, void *);
-void	 tcp_timer_activate(struct tcpcb *, uint32_t, u_int);
+void	 tcp_timer_activate(struct tcpcb *, uint32_t, sbintime_t);
 int	 tcp_timer_active(struct tcpcb *, uint32_t);
 void	 tcp_timer_stop(struct tcpcb *, uint32_t);
 void	 tcp_trace(short, short, struct tcpcb *, void *, struct tcphdr *, int);
@@ -845,6 +832,7 @@ void	 tcp_sack_partialack(struct tcpcb *, struct tcphdr *);
 void	 tcp_free_sackholes(struct tcpcb *tp);
 int	 tcp_newreno(struct tcpcb *, struct tcphdr *);
 int	 tcp_compute_pipe(struct tcpcb *);
+int	 tcp_compute_pipe(struct tcpcb *tp);
 
 static inline void
 tcp_fields_to_host(struct tcphdr *th)

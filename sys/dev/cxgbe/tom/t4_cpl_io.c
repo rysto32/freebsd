@@ -268,7 +268,7 @@ assign_rxopt(struct tcpcb *tp, unsigned int opt)
 	if (G_TCPOPT_TSTAMP(opt)) {
 		tp->t_flags |= TF_RCVD_TSTMP;	/* timestamps ok */
 		tp->ts_recent = 0;		/* hmmm */
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = tcp_ts_getsbintime();
 	}
 
 	if (G_TCPOPT_SACK(opt))
@@ -315,7 +315,7 @@ make_established(struct toepcb *toep, uint32_t snd_isn, uint32_t rcv_isn,
 	    __func__, toep->tid, toep, inp);
 
 	tp->t_state = TCPS_ESTABLISHED;
-	tp->t_starttime = ticks;
+	tp->t_starttime = tcp_ts_getsbintime();
 	TCPSTAT_INC(tcps_connects);
 
 	tp->irs = irs;
@@ -1175,7 +1175,7 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 
 	switch (tp->t_state) {
 	case TCPS_SYN_RECEIVED:
-		tp->t_starttime = ticks;
+		tp->t_starttime = tcp_ts_getsbintime();
 		/* FALLTHROUGH */ 
 
 	case TCPS_ESTABLISHED:
@@ -1490,7 +1490,7 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	}
 
 	tp->rcv_wnd -= len;
-	tp->t_rcvtime = ticks;
+	tp->t_rcvtime = tcp_ts_getsbintime();
 
 	if (toep->ulp_mode == ULP_MODE_TCPDDP)
 		DDP_LOCK(toep);
@@ -1684,7 +1684,7 @@ do_fw4_ack(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 
 		if (tp->snd_una != snd_una) {
 			tp->snd_una = snd_una;
-			tp->ts_recent_age = tcp_ts_getticks();
+			tp->ts_recent_age = tcp_ts_getsbintime();
 		}
 	}
 

@@ -151,12 +151,12 @@ marked_packet_rtt(struct txseginfo *txsi, struct ertt *e_t, struct tcpcb *tp,
 		*prtt_bytes_adjust += *pmeasurenext_len;
 	} else {
 		if (mflag & FORCED_MEASUREMENT) {
-			e_t->markedpkt_rtt = tcp_ts_getticks() -
+			e_t->markedpkt_rtt = tcp_ts_getsbintime() -
 			    *pmeasurenext + 1;
 			e_t->bytes_tx_in_marked_rtt = e_t->bytes_tx_in_rtt +
 			    *pmeasurenext_len - *prtt_bytes_adjust;
 		} else {
-			e_t->markedpkt_rtt = tcp_ts_getticks() -
+			e_t->markedpkt_rtt = tcp_ts_getsbintime() -
 			    txsi->tx_ts + 1;
 			e_t->bytes_tx_in_marked_rtt = e_t->bytes_tx_in_rtt -
 			    *prtt_bytes_adjust;
@@ -351,7 +351,7 @@ ertt_packet_measurement_hook(int hhook_type, int hhook_id, void *udata,
 			 */
 			if (!e_t->dlyack_rx || multiack || new_sacked_bytes) {
 				/* Make an accurate new measurement. */
-				e_t->rtt = tcp_ts_getticks() - txsi->tx_ts + 1;
+				e_t->rtt = tcp_ts_getsbintime() - txsi->tx_ts + 1;
 
 				if (e_t->rtt < e_t->minrtt || e_t->minrtt == 0)
 					e_t->minrtt = e_t->rtt;
@@ -480,7 +480,7 @@ ertt_add_tx_segment_info_hook(int hhook_type, int hhook_id, void *udata,
 				    tp->ts_offset;
 				txsi->rx_ts = ntohl(to->to_tsecr);
 			} else {
-				txsi->tx_ts = tcp_ts_getticks();
+				txsi->tx_ts = tcp_ts_getsbintime();
 				txsi->rx_ts = 0; /* No received time stamp. */
 			}
 			TAILQ_INSERT_TAIL(&e_t->txsegi_q, txsi, txsegi_lnk);

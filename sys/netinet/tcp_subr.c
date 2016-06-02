@@ -238,6 +238,8 @@ static void tcp_mtudisc(struct inpcb *, int);
 static char *	tcp_log_addr(struct in_conninfo *inc, struct tcphdr *th,
 		    void *ip4hdr, const void *ip6hdr);
 
+sbintime_t (*cpu_ts_getsbintime)(void);
+
 
 static struct tcp_function_block tcp_def_funcblk = {
 	"default",
@@ -722,6 +724,8 @@ tcp_init(void)
 #ifdef TCPPCAP
 	tcp_pcap_init();
 #endif
+
+	cpu_ts_getsbintime = getsbinuptime;
 }
 
 #ifdef VIMAGE
@@ -1046,7 +1050,7 @@ tcp_respond(struct tcpcb *tp, void *ipgen, struct tcphdr *th, struct mbuf *m,
 	if (incl_opts) {
 		/* Timestamps. */
 		if (tp->t_flags & TF_RCVD_TSTMP) {
-			to.to_tsval = tcp_ts_getticks() + tp->ts_offset;
+			to.to_tsval = tcp_ts_getsbintime() + tp->ts_offset;
 			to.to_tsecr = tp->ts_recent;
 			to.to_flags |= TOF_TS;
 		}
@@ -1254,11 +1258,12 @@ tcp_newtcpcb(struct inpcb *inp)
 	 */
 	tp->t_srtt = TCPTV_SRTTBASE;
 	tp->t_rttvar = ((TCPTV_RTOBASE - TCPTV_SRTTBASE) << TCP_RTTVAR_SHIFT) / 4;
-	tp->t_rttmin = tcp_rexmit_min;
-	tp->t_rxtcur = TCPTV_RTOBASE;
+	tp->t_rttmin = tcp_rexmit_min*tick_sbt;
+	tp->t_rxtcur = TCPTV_RTOBASE*tick_sbt;
+	tp->t_delack = tcp_delacktime*tick_sbt;
 	tp->snd_cwnd = TCP_MAXWIN << TCP_MAX_WINSHIFT;
 	tp->snd_ssthresh = TCP_MAXWIN << TCP_MAX_WINSHIFT;
-	tp->t_rcvtime = ticks;
+	tp->t_rcvtime = tcp_ts_getsbintime();
 	/*
 	 * IPv4 TTL initialization is necessary for an IPv6 socket as well,
 	 * because the socket may be bound to an IPv6 wildcard address,
@@ -1451,8 +1456,8 @@ tcp_discardcb(struct tcpcb *tp)
 			ssthresh = 0;
 		metrics.rmx_ssthresh = ssthresh;
 
-		metrics.rmx_rtt = tp->t_srtt;
-		metrics.rmx_rttvar = tp->t_rttvar;
+		metrics.rmx_rtt = tp->t_srtt / SBT_1US;
+		metrics.rmx_rttvar = tp->t_rttvar / SBT_1US;
 		metrics.rmx_cwnd = tp->snd_cwnd;
 		metrics.rmx_sendpipe = 0;
 		metrics.rmx_recvpipe = 0;

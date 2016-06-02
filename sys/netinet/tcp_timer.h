@@ -174,9 +174,9 @@ struct tcp_timer {
 
 #define TT_STOPPED	0x00010000
 
-#define	TP_KEEPINIT(tp)	((tp)->t_keepinit ? (tp)->t_keepinit : tcp_keepinit)
-#define	TP_KEEPIDLE(tp)	((tp)->t_keepidle ? (tp)->t_keepidle : tcp_keepidle)
-#define	TP_KEEPINTVL(tp) ((tp)->t_keepintvl ? (tp)->t_keepintvl : tcp_keepintvl)
+#define	TP_KEEPINIT(tp)	(((tp)->t_keepinit ? (tp)->t_keepinit : tcp_keepinit)*tick_sbt)
+#define	TP_KEEPIDLE(tp)	(((tp)->t_keepidle ? (tp)->t_keepidle : tcp_keepidle) * tick_sbt)
+#define	TP_KEEPINTVL(tp) (((tp)->t_keepintvl ? (tp)->t_keepintvl : tcp_keepintvl)*tick_sbt)
 #define	TP_KEEPCNT(tp)	((tp)->t_keepcnt ? (tp)->t_keepcnt : tcp_keepcnt)
 #define	TP_MAXIDLE(tp)	(TP_KEEPCNT(tp) * TP_KEEPINTVL(tp))
 

@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #ifdef TCP_HHOOK
 #include <sys/hhook.h>
 #endif
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/proc.h>		/* for proc0 declaration */
@@ -347,21 +348,20 @@ cc_conn_init(struct tcpcb *tp)
 	tcp_hc_get(&inp->inp_inc, &metrics);
 	maxseg = tcp_maxseg(tp);
 
-	if (tp->t_srtt == 0 && (rtt = metrics.rmx_rtt)) {
+	if (tp->t_srtt == 0 && (rtt = metrics.rmx_rtt * SBT_1US)) {
 		tp->t_srtt = rtt;
-		tp->t_rttbest = tp->t_srtt + TCP_RTT_SCALE;
+		tp->t_rttbest = tp->t_srtt;
 		TCPSTAT_INC(tcps_usedrtt);
 		if (metrics.rmx_rttvar) {
-			tp->t_rttvar = metrics.rmx_rttvar;
+			tp->t_rttvar = metrics.rmx_rttvar * SBT_1US;
 			TCPSTAT_INC(tcps_usedrttvar);
 		} else {
 			/* default variation is +- 1 rtt */
-			tp->t_rttvar =
-			    tp->t_srtt * TCP_RTTVAR_SCALE / TCP_RTT_SCALE;
+			tp->t_rttvar = (tp->t_srtt >> 1);
 		}
 		TCPT_RANGESET(tp->t_rxtcur,
-		    ((tp->t_srtt >> 2) + tp->t_rttvar) >> 1,
-		    tp->t_rttmin, TCPTV_REXMTMAX);
+		    tp->t_srtt + 4*tp->t_rttvar,
+		    tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
 	}
 	if (metrics.rmx_ssthresh) {
 		/*
@@ -492,12 +492,14 @@ cc_post_recovery(struct tcpcb *tp, struct tcphdr *th)
  *	  the ack that opens up a 0-sized window.
  *	- LRO wasn't used for this segment. We make sure by checking that the
  *	  segment size is not larger than the MSS.
+ *	- the calculated delay is greater than 2ms
  */
 #define DELAY_ACK(tp, tlen)						\
-	((!tcp_timer_active(tp, TT_DELACK) &&				\
+	(((!tcp_timer_active(tp, TT_DELACK) &&				\
 	    (tp->t_flags & TF_RXWIN0SENT) == 0) &&			\
 	    (tlen <= tp->t_maxseg) &&					\
-	    (V_tcp_delack_enabled || (tp->t_flags & TF_NEEDSYN)))
+	  (V_tcp_delack_enabled || (tp->t_flags & TF_NEEDSYN))) &&      \
+	 tp->t_delack > 2*SBT_1MS)
 
 static void inline
 cc_ecnpkt_handler(struct tcpcb *tp, struct tcphdr *th, uint8_t iptos)
@@ -1529,8 +1531,8 @@ tcp_autorcvbuf(struct mbuf *m, struct tcphdr *th, struct socket *so,
 
 	if (V_tcp_do_autorcvbuf && (so->so_rcv.sb_flags & SB_AUTOSIZE) &&
 	    tp->t_srtt != 0 && tp->rfbuf_ts != 0 &&
-	    TCP_TS_TO_TICKS(tcp_ts_getticks() - tp->rfbuf_ts) >
-	    (tp->t_srtt >> TCP_RTT_SHIFT)) {
+	    TCP_TS_TO_SBT(tcp_ts_getsbintime() - tp->rfbuf_ts) >
+	    tp->t_srtt) {
 		if (tp->rfbuf_cnt > (so->so_rcv.sb_hiwat / 8 * 7) &&
 		    so->so_rcv.sb_hiwat < V_tcp_autorcvbuf_max) {
 			newsize = min(so->so_rcv.sb_hiwat +
@@ -1560,10 +1562,12 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	char *s;
 	struct in_conninfo *inc;
 	struct mbuf *mfree;
-	struct tcpopt to;
+	struct tcpopt to;	
+	sbintime_t t;
 #ifdef TCP_RFC7413
 	int tfo_syn;
 #endif
+
 	
 #ifdef TCPDEBUG
 	/*
@@ -1574,6 +1578,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	struct tcphdr tcp_savetcp;
 	short ostate = 0;
 #endif
+	t = tcp_ts_getsbintime();
+
 	thflags = th->th_flags;
 	inc = &tp->t_inpcb->inp_inc;
 	tp->sackhint.last_sack_ack = 0;
@@ -1629,7 +1635,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * XXX: This should be done after segment
 	 * validation to ignore broken/spoofed segs.
 	 */
-	tp->t_rcvtime = ticks;
+	tp->t_rcvtime = t;
+
 
 	/*
 	 * Scale up the window into a 32-bit value.
@@ -1687,8 +1694,13 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 */
 	if ((to.to_flags & TOF_TS) && (to.to_tsecr != 0)) {
 		to.to_tsecr -= tp->ts_offset;
-		if (TSTMP_GT(to.to_tsecr, tcp_ts_getticks()))
+		if (to.to_tsecr == tp->t_lasttsecr + MAX_TS_STEP) {
+			tp->t_lasttsecr = to.to_tsecr;
+			to.to_tsecr = tp->t_lasttsval;
+		} else if (TSTMP_GT(to.to_tsecr, TCP_SBT_TO_TS(t)))
 			to.to_tsecr = 0;
+		else
+			tp->t_lasttsecr = to.to_tsecr;
 	}
 	/*
 	 * If timestamps were negotiated during SYN/ACK they should
@@ -1730,7 +1742,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		if (to.to_flags & TOF_TS) {
 			tp->t_flags |= TF_RCVD_TSTMP;
 			tp->ts_recent = to.to_tsval;
-			tp->ts_recent_age = tcp_ts_getticks();
+			tp->ts_recent_age = t;
 		}
 		if (to.to_flags & TOF_MSS)
 			tcp_mss(tp, to.to_mss);
@@ -1774,7 +1786,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		 */
 		if ((to.to_flags & TOF_TS) != 0 &&
 		    SEQ_LEQ(th->th_seq, tp->last_ack_sent)) {
-			tp->ts_recent_age = tcp_ts_getticks();
+			tp->ts_recent_age = t;
 			tp->ts_recent = to.to_tsval;
 		}
 
@@ -1798,7 +1810,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				 */
 				if (tp->t_rxtshift == 1 &&
 				    tp->t_flags & TF_PREVVALID &&
-				    (int)(ticks - tp->t_badrxtwin) < 0) {
+				    (t - tp->t_badrxtwin) < 0) {
 					cc_cong_signal(tp, th, CC_RTO_ERR);
 				}
 
@@ -1810,22 +1822,22 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				 * timestamps of 0 or we could calculate a
 				 * huge RTT and blow up the retransmit timer.
 				 */
-				if ((to.to_flags & TOF_TS) != 0 &&
-				    to.to_tsecr) {
-					uint32_t t;
+				if ((to.to_flags & TOF_TS) != 0 && to.to_tsecr) {
+					uint32_t curts;
+					sbintime_t rtt;
 
-					t = tcp_ts_getticks() - to.to_tsecr;
-					if (!tp->t_rttlow || tp->t_rttlow > t)
-						tp->t_rttlow = t;
+					curts = (uint32_t)TCP_SBT_TO_TS(t);
+					rtt = TCP_TS_TO_SBT(curts - to.to_tsecr);
+					if (!tp->t_rttlow || tp->t_rttlow > rtt)
+						tp->t_rttlow = rtt;
 					tcp_xmit_timer(tp,
-					    TCP_TS_TO_TICKS(t) + 1);
+					    rtt == 0 ? SBT_MINTS : rtt);
 				} else if (tp->t_rtttime &&
 				    SEQ_GT(th->th_ack, tp->t_rtseq)) {
 					if (!tp->t_rttlow ||
-					    tp->t_rttlow > ticks - tp->t_rtttime)
-						tp->t_rttlow = ticks - tp->t_rtttime;
-					tcp_xmit_timer(tp,
-							ticks - tp->t_rtttime);
+					    tp->t_rttlow > t - tp->t_rtttime)
+						tp->t_rttlow = t - tp->t_rtttime;
+					tcp_xmit_timer(tp, t - tp->t_rtttime);
 				}
 				acked = BYTES_THIS_ACK(tp, th);
 
@@ -2052,7 +2064,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			 */
 			if (DELAY_ACK(tp, tlen) && tlen != 0)
 				tcp_timer_activate(tp, TT_DELACK,
-				    tcp_delacktime);
+				    tp->t_delack);
 			else
 				tp->t_flags |= TF_ACKNOW;
 
@@ -2067,7 +2079,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			 *	SYN_SENT  --> ESTABLISHED
 			 *	SYN_SENT* --> FIN_WAIT_1
 			 */
-			tp->t_starttime = ticks;
+			tp->t_starttime = tcp_ts_getsbintime();
 			if (tp->t_flags & TF_NEEDFIN) {
 				tcp_state_change(tp, TCPS_FIN_WAIT_1);
 				tp->t_flags &= ~TF_NEEDFIN;
@@ -2242,8 +2254,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	if ((to.to_flags & TOF_TS) != 0 && tp->ts_recent &&
 	    TSTMP_LT(to.to_tsval, tp->ts_recent)) {
 
-		/* Check to see if ts_recent is over 24 days old.  */
-		if (tcp_ts_getticks() - tp->ts_recent_age > TCP_PAWS_IDLE) {
+		/* Check to see if ts_recent is over MSL OLD  */
+		if (t - tp->ts_recent_age > TCP_PAWS_IDLE) {
 			/*
 			 * Invalidate ts_recent.  If this segment updates
 			 * ts_recent, the age will be reset later and ts_recent
@@ -2397,7 +2409,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	    SEQ_LEQ(th->th_seq, tp->last_ack_sent) &&
 	    SEQ_LEQ(tp->last_ack_sent, th->th_seq + tlen +
 		((thflags & (TH_SYN|TH_FIN)) != 0))) {
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = t;
 		tp->ts_recent = to.to_tsval;
 	}
 
@@ -2448,7 +2460,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		 *      SYN-RECEIVED  -> ESTABLISHED
 		 *      SYN-RECEIVED* -> FIN-WAIT-1
 		 */
-		tp->t_starttime = ticks;
+		tp->t_starttime = t;
 		if (tp->t_flags & TF_NEEDFIN) {
 			tcp_state_change(tp, TCPS_FIN_WAIT_1);
 			tp->t_flags &= ~TF_NEEDFIN;
@@ -2799,8 +2811,8 @@ process_ACK:
 		 * original cwnd and ssthresh, and proceed to transmit where
 		 * we left off.
 		 */
-		if (tp->t_rxtshift == 1 && tp->t_flags & TF_PREVVALID &&
-		    (int)(ticks - tp->t_badrxtwin) < 0)
+		if (tp->t_rxtshift > 0 && tp->t_flags & TF_PREVVALID &&
+		    (t - tp->t_badrxtwin) < 0)
 			cc_cong_signal(tp, th, CC_RTO_ERR);
 
 		/*
@@ -2818,16 +2830,17 @@ process_ACK:
 		 * huge RTT and blow up the retransmit timer.
 		 */
 		if ((to.to_flags & TOF_TS) != 0 && to.to_tsecr) {
-			uint32_t t;
+			sbintime_t rtt;
 
-			t = tcp_ts_getticks() - to.to_tsecr;
-			if (!tp->t_rttlow || tp->t_rttlow > t)
-				tp->t_rttlow = t;
-			tcp_xmit_timer(tp, TCP_TS_TO_TICKS(t) + 1);
-		} else if (tp->t_rtttime && SEQ_GT(th->th_ack, tp->t_rtseq)) {
-			if (!tp->t_rttlow || tp->t_rttlow > ticks - tp->t_rtttime)
-				tp->t_rttlow = ticks - tp->t_rtttime;
-			tcp_xmit_timer(tp, ticks - tp->t_rtttime);
+			rtt = TCP_TS_TO_SBT(((uint32_t)TCP_SBT_TO_TS(t)) - to.to_tsecr);
+			if (!tp->t_rttlow || tp->t_rttlow > rtt)
+				tp->t_rttlow = rtt;
+			tcp_xmit_timer(tp, rtt == 0 ? SBT_MINTS : rtt);
+		} else if (tp->t_rtttime &&
+		    SEQ_GT(th->th_ack, tp->t_rtseq)) {
+			if (!tp->t_rttlow || tp->t_rttlow > t - tp->t_rtttime)
+				tp->t_rttlow = t - tp->t_rtttime;
+			tcp_xmit_timer(tp, t - tp->t_rtttime);
 		}
 
 		/*
@@ -3150,7 +3163,7 @@ dodata:							/* XXX */
 		 * enter the CLOSE_WAIT state.
 		 */
 		case TCPS_SYN_RECEIVED:
-			tp->t_starttime = ticks;
+			tp->t_starttime = t;
 			/* FALLTHROUGH */
 		case TCPS_ESTABLISHED:
 			tcp_state_change(tp, TCPS_CLOSE_WAIT);
@@ -3205,7 +3218,7 @@ check_delack:
 
 	if (tp->t_flags & TF_DELACK) {
 		tp->t_flags &= ~TF_DELACK;
-		tcp_timer_activate(tp, TT_DELACK, tcp_delacktime);
+		tcp_timer_activate(tp, TT_DELACK, tp->t_delack);
 	}
 	INP_WUNLOCK(tp->t_inpcb);
 	return;
@@ -3499,27 +3512,34 @@ tcp_pulloutofband(struct socket *so, struct tcphdr *th, struct mbuf *m,
  * and update averages and current timeout.
  */
 void
-tcp_xmit_timer(struct tcpcb *tp, int rtt)
+tcp_xmit_timer(struct tcpcb *tp, sbintime_t rtt)
 {
-	int delta;
+	int64_t delta;
+	uint64_t expected_samples, shift, var_shift;
 
 	INP_WLOCK_ASSERT(tp->t_inpcb);
+	/*
+	 * track this
+	 */
+	if (rtt < SBT_1NS*100)
+		return;
 
+	/* RFC 7323 Appendix G RTO Calculation Modification */
+	/* ExpectedSamples = ceiling(FlightSize / (SMSS * 2)) */
+	/* roundup(x, y) == ceiling(x / y) * y */
+	expected_samples = ((tcp_compute_pipe(tp) + ((tp->t_maxseg*2)-1)) / (tp->t_maxseg*2));
+	/*
+	 * alpha' = alpha / ExpectedSamples =>
+	 * alpha = 1 / 1 >> TCP_RTT_SHIFT
+	 * alpha' = 1 / 1 >> (TCP_RTT_SHIFT + shift)
+	 **/
+	shift = max(fls(expected_samples + 1), 0) + TCP_RTT_SHIFT;
 	TCPSTAT_INC(tcps_rttupdated);
 	tp->t_rttupdated++;
 	if ((tp->t_srtt != 0) && (tp->t_rxtshift <= TCP_RTT_INVALIDATE)) {
-		/*
-		 * srtt is stored as fixed point with 5 bits after the
-		 * binary point (i.e., scaled by 8).  The following magic
-		 * is equivalent to the smoothing algorithm in rfc793 with
-		 * an alpha of .875 (srtt = rtt/8 + srtt*7/8 in fixed
-		 * point).  Adjust rtt to origin 0.
-		 */
-		delta = ((rtt - 1) << TCP_DELTA_SHIFT)
-			- (tp->t_srtt >> (TCP_RTT_SHIFT - TCP_DELTA_SHIFT));
 
-		if ((tp->t_srtt += delta) <= 0)
-			tp->t_srtt = 1;
+		delta = ((rtt - 1) >> shift) - (tp->t_srtt >> shift);
+		tp->t_srtt = max(tp->t_srtt + delta, tp->t_rttmin);
 
 		/*
 		 * We accumulate a smoothed rtt variance (actually, a
@@ -3531,11 +3551,14 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
 		 * (rttvar = rttvar*3/4 + |delta| / 4).  This replaces
 		 * rfc793's wired-in beta.
 		 */
-		if (delta < 0)
-			delta = -delta;
-		delta -= tp->t_rttvar >> (TCP_RTTVAR_SHIFT - TCP_DELTA_SHIFT);
-		if ((tp->t_rttvar += delta) <= 0)
-			tp->t_rttvar = 1;
+		/*
+		 * delta has already implicitly been divided by 8
+		 * so we need to multiply by 2 - similarly shift
+		 * needs to be adjusted down by one
+		 */
+		var_shift = TCP_RTT_SHIFT - TCP_RTTVAR_SHIFT;
+		delta = (abs(delta) << var_shift) - (tp->t_rttvar >> (shift-var_shift));
+		tp->t_rttvar = max(tp->t_rttvar + delta, SBT_MINRTT);
 		if (tp->t_rttbest > tp->t_srtt + tp->t_rttvar)
 		    tp->t_rttbest = tp->t_srtt + tp->t_rttvar;
 	} else {
@@ -3544,8 +3567,8 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
 		 * Set the variance to half the rtt (so our first
 		 * retransmit happens at 3*rtt).
 		 */
-		tp->t_srtt = rtt << TCP_RTT_SHIFT;
-		tp->t_rttvar = rtt << (TCP_RTTVAR_SHIFT - 1);
+		tp->t_srtt = rtt;
+		tp->t_rttvar = rtt >> 1;
 		tp->t_rttbest = tp->t_srtt + tp->t_rttvar;
 	}
 	tp->t_rtttime = 0;
@@ -3562,8 +3585,7 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
 	 * statistical, we have to test that we don't drop below
 	 * the minimum feasible timer (which is 2 ticks).
 	 */
-	TCPT_RANGESET(tp->t_rxtcur, TCP_REXMTVAL(tp),
-		      max(tp->t_rttmin, rtt + 2), TCPTV_REXMTMAX);
+	TCPT_RANGESET(tp->t_rxtcur, TCP_REXMTVAL(tp), max(tp->t_rttmin, rtt+2), TCPTV_REXMTMAX*tick_sbt);
 
 	/*
 	 * We received an ack for a packet that wasn't retransmitted;

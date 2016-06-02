@@ -829,6 +829,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	tcp_state_change(tp, TCPS_SYN_RECEIVED);
 	tp->iss = sc->sc_iss;
 	tp->irs = sc->sc_irs;
+	tp->t_lasttsval =  sc->sc_ts;
 	tcp_rcvseqinit(tp);
 	tcp_sendseqinit(tp);
 	blk = sototcpcb(lso)->t_fb;
@@ -871,7 +872,8 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		if (sc->sc_flags & SCF_TIMESTAMP) {
 			tp->t_flags |= TF_REQ_TSTMP|TF_RCVD_TSTMP;
 			tp->ts_recent = sc->sc_tsreflect;
-			tp->ts_recent_age = tcp_ts_getticks();
+			tp->ts_recent_age = tcp_ts_getsbintime();
+			/* Begin End */
 			tp->ts_offset = sc->sc_tsoff;
 		}
 #if defined(IPSEC_SUPPORT) || defined(TCP_SIGNATURE)
@@ -1474,7 +1476,7 @@ skip_alloc:
 		 */
 		if (to->to_flags & TOF_TS) {
 			sc->sc_tsreflect = to->to_tsval;
-			sc->sc_ts = tcp_ts_getticks();
+			sc->sc_ts = TCP_SBT_TO_TS(tcp_ts_getsbintime());
 			sc->sc_flags |= SCF_TIMESTAMP;
 		}
 		if (to->to_flags & TOF_SCALE) {
@@ -2020,7 +2022,7 @@ syncookie_generate(struct syncache_head *sch, struct syncache *sc)
 	/* Randomize the timestamp. */
 	if (sc->sc_flags & SCF_TIMESTAMP) {
 		sc->sc_ts = arc4random();
-		sc->sc_tsoff = sc->sc_ts - tcp_ts_getticks();
+		sc->sc_tsoff = sc->sc_ts - TCP_SBT_TO_TS(tcp_ts_getsbintime());
 	}
 
 	TCPSTAT_INC(tcps_sc_sendcookie);
@@ -2110,7 +2112,7 @@ syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
 		sc->sc_flags |= SCF_TIMESTAMP;
 		sc->sc_tsreflect = to->to_tsval;
 		sc->sc_ts = to->to_tsecr;
-		sc->sc_tsoff = to->to_tsecr - tcp_ts_getticks();
+		sc->sc_tsoff = to->to_tsecr - TCP_SBT_TO_TS(tcp_ts_getsbintime());
 	}
 
 	if (to->to_flags & TOF_SIGNATURE)

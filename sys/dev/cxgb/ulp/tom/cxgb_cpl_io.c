@@ -1160,7 +1160,7 @@ do_rx_data(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	KASSERT(tp->rcv_wnd >= m->m_pkthdr.len,
 	    ("%s: negative window size", __func__));
 	tp->rcv_wnd -= m->m_pkthdr.len;
-	tp->t_rcvtime = ticks;
+	tp->t_rcvtime = tcp_ts_getsbintime();
 
 	so  = inp->inp_socket;
 	so_rcv = &so->so_rcv;
@@ -1239,7 +1239,7 @@ do_peer_close(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 
 	switch (tp->t_state) {
 	case TCPS_SYN_RECEIVED:
-		tp->t_starttime = ticks;
+		tp->t_starttime = tcp_ts_getsbintime();
 		/* FALLTHROUGH */ 
 	case TCPS_ESTABLISHED:
 		tp->t_state = TCPS_CLOSE_WAIT;
@@ -1542,7 +1542,7 @@ assign_rxopt(struct tcpcb *tp, uint16_t tcpopt)
 		tp->t_flags |= TF_RCVD_TSTMP;
 		tp->t_flags |= TF_REQ_TSTMP;	/* forcibly set */
 		tp->ts_recent = 0;		/* XXX */
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = tcp_ts_getsbintime();
 	}
 
 	if (G_TCPOPT_SACK(tcpopt))
@@ -1579,7 +1579,7 @@ make_established(struct socket *so, uint32_t cpl_iss, uint32_t cpl_irs,
 	INP_WLOCK_ASSERT(inp);
 
 	tp->t_state = TCPS_ESTABLISHED;
-	tp->t_starttime = ticks;
+	tp->t_starttime = tcp_ts_getsbintime();
 	TCPSTAT_INC(tcps_connects);
 
 	CTR4(KTR_CXGB, "%s tid %u, toep %p, inp %p", tcpstates[tp->t_state],
@@ -1754,7 +1754,7 @@ wr_ack(struct toepcb *toep, struct mbuf *m)
 
 	if (tp->snd_una != snd_una) {
 		tp->snd_una = snd_una;
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = tcp_ts_getsbintime();
 		if (tp->snd_una == tp->snd_nxt)
 			toep->tp_flags &= ~TP_TX_WAIT_IDLE;
 	}

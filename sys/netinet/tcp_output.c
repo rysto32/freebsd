@@ -188,9 +188,11 @@ cc_after_idle(struct tcpcb *tp)
 int
 tcp_output(struct tcpcb *tp)
 {
-	struct socket *so = tp->t_inpcb->inp_socket;
+	struct inpcb *inp = tp->t_inpcb;
+	struct socket *so = inp->inp_socket;
 	int32_t len;
 	uint32_t recwin, sendwin;
+	sbintime_t t;
 	int off, flags, error = 0;	/* Keep compiler happy */
 	struct mbuf *m;
 	struct ip *ip = NULL;
@@ -215,9 +217,9 @@ tcp_output(struct tcpcb *tp)
 
 	isipv6 = (tp->t_inpcb->inp_vflag & INP_IPV6) != 0;
 #endif
+	t = tcp_ts_getsbintime();
 
-	INP_WLOCK_ASSERT(tp->t_inpcb);
-
+	INP_WLOCK_ASSERT(inp);
 #ifdef TCP_OFFLOAD
 	if (tp->t_flags & TF_TOE)
 		return (tcp_offload_output(tp));
@@ -241,7 +243,7 @@ tcp_output(struct tcpcb *tp)
 	 * to send, then transmit; otherwise, investigate further.
 	 */
 	idle = (tp->t_flags & TF_LASTIDLE) || (tp->snd_max == tp->snd_una);
-	if (idle && ticks - tp->t_rcvtime >= tp->t_rxtcur)
+	if (idle && t - tp->t_rcvtime >= tp->t_rxtcur)
 		cc_after_idle(tp);
 	tp->t_flags &= ~TF_LASTIDLE;
 	if (idle) {
@@ -251,6 +253,7 @@ tcp_output(struct tcpcb *tp)
 		}
 	}
 again:
+	t = tcp_ts_getsbintime();
 	/*
 	 * If we've recently taken a timeout, snd_max will be greater than
 	 * snd_nxt.  There may be SACK information that allows us to avoid
@@ -828,7 +831,8 @@ send:
 		/* Timestamps. */
 		if ((tp->t_flags & TF_RCVD_TSTMP) ||
 		    ((flags & TH_SYN) && (tp->t_flags & TF_REQ_TSTMP))) {
-			to.to_tsval = tcp_ts_getticks() + tp->ts_offset;
+			to.to_tsval = TCP_SBT_TO_TS(t) + tp->ts_offset;
+			tp->t_lasttsval = to.to_tsval;
 			to.to_tsecr = tp->ts_recent;
 			to.to_flags |= TOF_TS;
 		}
@@ -836,7 +840,7 @@ send:
 		/* Set receive buffer autosizing timestamp. */
 		if (tp->rfbuf_ts == 0 &&
 		    (so->so_rcv.sb_flags & SB_AUTOSIZE))
-			tp->rfbuf_ts = tcp_ts_getticks();
+			tp->rfbuf_ts = TCP_SBT_TO_TS(t);
 
 		/* Selective ACK's. */
 		if (tp->t_flags & TF_SACK_PERMIT) {
@@ -1493,7 +1497,7 @@ out:
 			 * not currently timing anything.
 			 */
 			if (tp->t_rtttime == 0) {
-				tp->t_rtttime = ticks;
+				tp->t_rtttime = t;
 				tp->t_rtseq = startseq;
 				TCPSTAT_INC(tcps_segstimed);
 			}
@@ -1658,8 +1662,8 @@ timer:
 void
 tcp_setpersist(struct tcpcb *tp)
 {
-	int t = ((tp->t_srtt >> 2) + tp->t_rttvar) >> 1;
-	int tt;
+	uint64_t t = ((tp->t_srtt >> 2) + tp->t_rttvar) >> 1;
+	uint64_t tt;
 
 	tp->t_flags &= ~TF_PREVVALID;
 	if (tcp_timer_active(tp, TT_REXMT))
