@@ -93,6 +93,8 @@ void clock_register(device_t, long);
 void timespec2fattime(struct timespec *tsp, int utc, u_int16_t *ddp, u_int16_t *dtp, u_int8_t *dhp);
 void fattime2timespec(unsigned dd, unsigned dt, unsigned dh, int utc, struct timespec *tsp);
 
+extern sbintime_t (*cpu_ts_getsbintime)(void);
+
 #endif /* _KERNEL */
 
 #endif /* !_SYS_CLOCK_H_ */

@@ -1542,7 +1542,7 @@ assign_rxopt(struct tcpcb *tp, uint16_t tcpopt)
 		tp->t_flags |= TF_RCVD_TSTMP;
 		tp->t_flags |= TF_REQ_TSTMP;	/* forcibly set */
 		tp->ts_recent = 0;		/* XXX */
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = tcp_ts_getsbintime();
 	}
 
 	if (G_TCPOPT_SACK(tcpopt))
@@ -1755,7 +1755,7 @@ wr_ack(struct toepcb *toep, struct mbuf *m)
 
 	if (tp->snd_una != snd_una) {
 		tp->snd_una = snd_una;
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = tcp_ts_getsbintime();
 		if (tp->snd_una == tp->snd_nxt)
 			toep->tp_flags &= ~TP_TX_WAIT_IDLE;
 	}

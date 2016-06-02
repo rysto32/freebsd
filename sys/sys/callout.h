@@ -51,10 +51,13 @@
 #define	CALLOUT_DIRECT 		0x0100 /* allow exec from hw int context */
 
 #define	C_DIRECT_EXEC		0x0001 /* direct execution of callout */
-#define	C_PRELBITS		7
+
+#define	C_PMS			7
+#define	C_PRELBITS		11
 #define	C_PRELRANGE		((1 << C_PRELBITS) - 1)
 #define	C_PREL(x)		(((x) + 1) << 1)
 #define	C_PRELGET(x)		(int)((((x) >> 1) & C_PRELRANGE) - 1)
+#define C_DEFAULT		C_PREL(C_PMS)
 #define	C_HARDCLOCK		0x0100 /* align to hardclock() calls */
 #define	C_ABSOLUTE		0x0200 /* event time is absolute. */
 

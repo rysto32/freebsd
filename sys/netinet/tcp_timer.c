@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_var.h>
 #include <netinet/tcp.h>
 #include <netinet/tcp_fsm.h>
+#include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/cc/cc.h>
@@ -365,9 +366,9 @@ tcp_timer_2msl(void *xtp)
 		TCPSTAT_INC(tcps_finwait2_drops);
 		tp = tcp_close(tp);             
 	} else {
-		if (ticks - tp->t_rcvtime <= TP_MAXIDLE(tp)) {
-			if (!callout_reset(&tp->t_timers->tt_2msl,
-			   TP_KEEPINTVL(tp), tcp_timer_2msl, tp)) {
+		if (tcp_ts_getsbintime() - tp->t_rcvtime <= TP_MAXIDLE(tp)) {
+			if (!callout_reset_sbt(&tp->t_timers->tt_2msl,
+					       TP_KEEPINTVL(tp), SBT_1S, tcp_timer_2msl, tp, C_DEFAULT)) {
 				tp->t_timers->tt_flags &= ~TT_2MSL_RST;
 			}
 		} else
@@ -430,7 +431,7 @@ tcp_timer_keep(void *xtp)
 		goto dropit;
 	if ((always_keepalive || inp->inp_socket->so_options & SO_KEEPALIVE) &&
 	    tp->t_state <= TCPS_CLOSING) {
-		if (ticks - tp->t_rcvtime >= TP_KEEPIDLE(tp) + TP_MAXIDLE(tp))
+		if (tcp_ts_getsbintime() - tp->t_rcvtime >= TP_KEEPIDLE(tp) + TP_MAXIDLE(tp))
 			goto dropit;
 		/*
 		 * Send a packet designed to force a response
@@ -452,12 +453,12 @@ tcp_timer_keep(void *xtp)
 				    tp->rcv_nxt, tp->snd_una - 1, 0);
 			free(t_template, M_TEMP);
 		}
-		if (!callout_reset(&tp->t_timers->tt_keep, TP_KEEPINTVL(tp),
-		    tcp_timer_keep, tp)) {
+		if (!callout_reset_sbt(&tp->t_timers->tt_keep, TP_KEEPINTVL(tp), SBT_1S,
+				       tcp_timer_keep, tp, C_DEFAULT)) {
 			tp->t_timers->tt_flags &= ~TT_KEEP_RST;
 		}
-	} else if (!callout_reset(&tp->t_timers->tt_keep, TP_KEEPIDLE(tp),
-		    tcp_timer_keep, tp)) {
+	} else if (!callout_reset_sbt(&tp->t_timers->tt_keep, TP_KEEPIDLE(tp), SBT_1S,
+				      tcp_timer_keep, tp, C_DEFAULT)) {
 			tp->t_timers->tt_flags &= ~TT_KEEP_RST;
 		}
 
@@ -493,6 +494,7 @@ tcp_timer_persist(void *xtp)
 {
 	struct tcpcb *tp = xtp;
 	struct inpcb *inp;
+	sbintime_t dt;
 	CURVNET_SET(tp->t_vnet);
 #ifdef TCPDEBUG
 	int ostate;
@@ -533,9 +535,10 @@ tcp_timer_persist(void *xtp)
 	 * (no responses to probes) reaches the maximum
 	 * backoff that we would use if retransmitting.
 	 */
+	dt = tcp_ts_getsbintime() - tp->t_rcvtime;
 	if (tp->t_rxtshift == TCP_MAXRXTSHIFT &&
-	    (ticks - tp->t_rcvtime >= tcp_maxpersistidle ||
-	     ticks - tp->t_rcvtime >= TCP_REXMTVAL(tp) * tcp_totbackoff)) {
+	    (dt >= tcp_maxpersistidle*tick_sbt ||
+	     dt >= TCP_REXMTVAL(tp) * tcp_totbackoff)) {
 		TCPSTAT_INC(tcps_persistdrop);
 		tp = tcp_drop(tp, ETIMEDOUT);
 		goto out;
@@ -651,18 +654,19 @@ tcp_timer_rexmt(void * xtp)
 			tp->t_flags |= TF_WASCRECOVERY;
 		else
 			tp->t_flags &= ~TF_WASCRECOVERY;
-		tp->t_badrxtwin = ticks + (tp->t_srtt >> (TCP_RTT_SHIFT + 1));
+		tp->t_badrxtwin = tcp_ts_getsbintime() + tp->t_rxtcur;
 		tp->t_flags |= TF_PREVVALID;
 	} else
 		tp->t_flags &= ~TF_PREVVALID;
 	TCPSTAT_INC(tcps_rexmttimeo);
 	if ((tp->t_state == TCPS_SYN_SENT) ||
 	    (tp->t_state == TCPS_SYN_RECEIVED))
-		rexmt = TCPTV_RTOBASE * tcp_syn_backoff[tp->t_rxtshift];
+		rexmt = TCPTV_RTOBASE * tcp_syn_backoff[tp->t_rxtshift] * tick_sbt;
 	else
 		rexmt = TCP_REXMTVAL(tp) * tcp_backoff[tp->t_rxtshift];
+	/*  1 < delack < tcp_delacktime - and should scale down with RTO/2 */
 	TCPT_RANGESET(tp->t_rxtcur, rexmt,
-		      tp->t_rttmin, TCPTV_REXMTMAX);
+		      tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
 
 	/*
 	 * We enter the path for PLMTUD if connection is established or, if
@@ -826,13 +830,14 @@ out:
 }
 
 void
-tcp_timer_activate(struct tcpcb *tp, uint32_t timer_type, u_int delta)
+tcp_timer_activate(struct tcpcb *tp, uint32_t timer_type, sbintime_t delta)
 {
 	struct callout *t_callout;
 	timeout_t *f_callout;
 	struct inpcb *inp = tp->t_inpcb;
 	int cpu = inp_to_cpuid(inp);
 	uint32_t f_reset;
+	sbintime_t f_precision;
 
 #ifdef TCP_OFFLOAD
 	if (tp->t_flags & TF_TOE)
@@ -847,26 +852,31 @@ tcp_timer_activate(struct tcpcb *tp, uint32_t timer_type, u_int delta)
 			t_callout = &tp->t_timers->tt_delack;
 			f_callout = tcp_timer_delack;
 			f_reset = TT_DELACK_RST;
+			f_precision = SBT_1MS;
 			break;
 		case TT_REXMT:
 			t_callout = &tp->t_timers->tt_rexmt;
 			f_callout = tcp_timer_rexmt;
 			f_reset = TT_REXMT_RST;
+			f_precision = SBT_1US;
 			break;
 		case TT_PERSIST:
 			t_callout = &tp->t_timers->tt_persist;
 			f_callout = tcp_timer_persist;
 			f_reset = TT_PERSIST_RST;
+			f_precision = SBT_1S;
 			break;
 		case TT_KEEP:
 			t_callout = &tp->t_timers->tt_keep;
 			f_callout = tcp_timer_keep;
 			f_reset = TT_KEEP_RST;
+			f_precision = SBT_1S;
 			break;
 		case TT_2MSL:
 			t_callout = &tp->t_timers->tt_2msl;
 			f_callout = tcp_timer_2msl;
 			f_reset = TT_2MSL_RST;
+			f_precision = SBT_1S;
 			break;
 		default:
 			if (tp->t_fb->tfb_tcp_timer_activate) {
@@ -884,10 +894,10 @@ tcp_timer_activate(struct tcpcb *tp, uint32_t timer_type, u_int delta)
 	} else {
 		if ((tp->t_timers->tt_flags & timer_type) == 0) {
 			tp->t_timers->tt_flags |= (timer_type | f_reset);
-			callout_reset_on(t_callout, delta, f_callout, tp, cpu);
+			callout_reset_sbt_on(t_callout, delta, f_precision, f_callout, tp, cpu, 0);
 		} else {
 			/* Reset already running callout on the same CPU. */
-			if (!callout_reset(t_callout, delta, f_callout, tp)) {
+			if (!callout_reset_sbt(t_callout, delta, f_precision, f_callout, tp, 0)) {
 				/*
 				 * Callout not cancelled, consider it as not
 				 * properly restarted. */
@@ -995,12 +1005,12 @@ tcp_timer_to_xtimer(struct tcpcb *tp, struct tcp_timer *timer,
 	if (callout_active(&timer->tt_delack))
 		xtimer->tt_delack = (timer->tt_delack.c_time - now) / SBT_1MS;
 	if (callout_active(&timer->tt_rexmt))
-		xtimer->tt_rexmt = (timer->tt_rexmt.c_time - now) / SBT_1MS;
+		xtimer->tt_rexmt = (timer->tt_rexmt.c_time - now) / SBT_1US;
 	if (callout_active(&timer->tt_persist))
 		xtimer->tt_persist = (timer->tt_persist.c_time - now) / SBT_1MS;
 	if (callout_active(&timer->tt_keep))
 		xtimer->tt_keep = (timer->tt_keep.c_time - now) / SBT_1MS;
 	if (callout_active(&timer->tt_2msl))
 		xtimer->tt_2msl = (timer->tt_2msl.c_time - now) / SBT_1MS;
-	xtimer->t_rcvtime = ticks_to_msecs(ticks - tp->t_rcvtime);
+	xtimer->t_rcvtime = ticks_to_msecs((tcp_ts_getsbintime() - tp->t_rcvtime)/tick_sbt);
 }

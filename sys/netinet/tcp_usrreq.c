@@ -1331,9 +1331,9 @@ tcp_fill_info(struct tcpcb *tp, struct tcp_info *ti)
 	}
 
 	ti->tcpi_rto = tp->t_rxtcur * tick;
-	ti->tcpi_last_data_recv = (long)(ticks - (int)tp->t_rcvtime) * tick;
-	ti->tcpi_rtt = ((u_int64_t)tp->t_srtt * tick) >> TCP_RTT_SHIFT;
-	ti->tcpi_rttvar = ((u_int64_t)tp->t_rttvar * tick) >> TCP_RTTVAR_SHIFT;
+	ti->tcpi_last_data_recv = (long)((tcp_ts_getsbintime() - tp->t_rcvtime)/tick_sbt) * tick;
+	ti->tcpi_rtt = ((u_int64_t)(tp->t_srtt/tick_sbt) * tick);
+	ti->tcpi_rttvar = ((u_int64_t)(tp->t_rttvar/tick_sbt) * tick);
 
 	ti->tcpi_snd_ssthresh = tp->snd_ssthresh;
 	ti->tcpi_snd_cwnd = tp->snd_cwnd;
@@ -1982,7 +1982,7 @@ tcp_usrclosed(struct tcpcb *tp)
 			int timeout;
 
 			timeout = (tcp_fast_finwait2_recycle) ? 
-			    tcp_finwait2_timeout : TP_MAXIDLE(tp);
+			    tcp_finwait2_timeout*tick_sbt : TP_MAXIDLE(tp);
 			tcp_timer_activate(tp, TT_2MSL, timeout);
 		}
 	}
@@ -2233,20 +2233,20 @@ db_print_tcpcb(struct tcpcb *tp, const char *name, int indent)
 	    "0x%08x\n", tp->snd_ssthresh, tp->snd_recover);
 
 	db_print_indent(indent);
-	db_printf("t_rcvtime: %u   t_startime: %u\n",
+	db_printf("t_rcvtime: %zu   t_startime: %zu\n",
 	    tp->t_rcvtime, tp->t_starttime);
 
 	db_print_indent(indent);
-	db_printf("t_rttime: %u   t_rtsq: 0x%08x\n",
+	db_printf("t_rttime: %zu   t_rtsq: 0x%08x\n",
 	    tp->t_rtttime, tp->t_rtseq);
 
 	db_print_indent(indent);
-	db_printf("t_rxtcur: %d   t_maxseg: %u   t_srtt: %d\n",
+	db_printf("t_rxtcur: %zu   t_maxseg: %u   t_srtt: %zu\n",
 	    tp->t_rxtcur, tp->t_maxseg, tp->t_srtt);
 
 	db_print_indent(indent);
-	db_printf("t_rttvar: %d   t_rxtshift: %d   t_rttmin: %u   "
-	    "t_rttbest: %u\n", tp->t_rttvar, tp->t_rxtshift, tp->t_rttmin,
+	db_printf("t_rttvar: %zu   t_rxtshift: %d   t_rttmin: %zu   "
+	    "t_rttbest: %zu\n", tp->t_rttvar, tp->t_rxtshift, tp->t_rttmin,
 	    tp->t_rttbest);
 
 	db_print_indent(indent);
@@ -2263,16 +2263,16 @@ db_print_tcpcb(struct tcpcb *tp, const char *name, int indent)
 	    tp->snd_scale, tp->rcv_scale, tp->request_r_scale);
 
 	db_print_indent(indent);
-	db_printf("ts_recent: %u   ts_recent_age: %u\n",
+	db_printf("ts_recent: %u   ts_recent_age: %zu\n",
 	    tp->ts_recent, tp->ts_recent_age);
 
 	db_print_indent(indent);
-	db_printf("ts_offset: %u   last_ack_sent: 0x%08x   snd_cwnd_prev: "
-	    "%lu\n", tp->ts_offset, tp->last_ack_sent, tp->snd_cwnd_prev);
+	db_printf("last_ack_sent: 0x%08x   snd_cwnd_prev: "
+	    "%lu\n", tp->last_ack_sent, tp->snd_cwnd_prev);
 
 	db_print_indent(indent);
 	db_printf("snd_ssthresh_prev: %lu   snd_recover_prev: 0x%08x   "
-	    "t_badrxtwin: %u\n", tp->snd_ssthresh_prev,
+	    "t_badrxtwin: %zu\n", tp->snd_ssthresh_prev,
 	    tp->snd_recover_prev, tp->t_badrxtwin);
 
 	db_print_indent(indent);
