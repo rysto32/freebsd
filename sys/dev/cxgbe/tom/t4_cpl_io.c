@@ -255,7 +255,7 @@ assign_rxopt(struct tcpcb *tp, unsigned int opt)
 	if (G_TCPOPT_TSTAMP(opt)) {
 		tp->t_flags |= TF_RCVD_TSTMP;	/* timestamps ok */
 		tp->ts_recent = 0;		/* hmmm */
-		tp->ts_recent_age = tcp_ts_getticks();
+		tp->ts_recent_age = tcp_ts_getsbintime();
 		tp->t_maxseg -= TCPOLEN_TSTAMP_APPA;
 	}
 
@@ -1712,7 +1712,7 @@ do_fw4_ack(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 
 		if (tp->snd_una != snd_una) {
 			tp->snd_una = snd_una;
-			tp->ts_recent_age = tcp_ts_getticks();
+			tp->ts_recent_age = tcp_ts_getsbintime();
 		}
 	}
 

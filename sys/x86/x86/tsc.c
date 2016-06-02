@@ -52,10 +52,23 @@ __FBSDID("$FreeBSD$");
 #include "cpufreq_if.h"
 
 uint64_t	tsc_freq;
+uint64_t	tsc_sbt;
+int64_t		max_tsc_jitter;
 int		tsc_is_invariant;
 int		tsc_perf_stat;
+static int	tsc_ts_recalibrate;
+
 
 static eventhandler_tag tsc_levels_tag, tsc_pre_tag, tsc_post_tag;
+
+sbintime_t cpu_ts_getsbintime_rdtsc(void);
+sbintime_t cpu_ts_getsbintime_rdtscp(void);
+sbintime_t (*cpu_ts_getsbintime)(void);
+static void cpu_ts_calibrate_all(void);
+
+
+SYSCTL_INT(_kern_timecounter, OID_AUTO, tsc_ts_always_calibrate, CTLFLAG_RW,
+    &tsc_ts_recalibrate, 0, "always use sbintime for timestamp clock");
 
 SYSCTL_INT(_kern_timecounter, OID_AUTO, invariant_tsc, CTLFLAG_RDTUN,
     &tsc_is_invariant, 0, "Indicates whether the TSC is P-state invariant");
@@ -582,6 +595,19 @@ init:
 		tsc_timecounter.tc_priv = (void *)(intptr_t)shift;
 		tc_init(&tsc_timecounter);
 	}
+
+	/* XXX yes this needs to be revisited */
+#if defined(__amd64__)
+	cpu_ts_getsbintime = cpu_ts_getsbintime_rdtscp;
+#elif defined(__i386__)
+	cpu_ts_getsbintime = cpu_ts_getsbintime_rdtsc;
+#endif
+	cpu_ts_calibrate_all();
+
+	/* tsc ticks per 10us */
+	max_tsc_jitter = tsc_freq/(1000000/10);
+
+	printf("tsc_freq: %lu max_tsc_jitter: %lu\n", tsc_freq, max_tsc_jitter);
 }
 SYSINIT(tsc_tc, SI_SUB_SMP, SI_ORDER_ANY, init_TSC_tc, NULL);
 
@@ -744,3 +770,64 @@ cpu_fill_vdso_timehands32(struct vdso_timehands32 *vdso_th32)
 	return (timecounter == &tsc_timecounter);
 }
 #endif
+
+static DPCPU_DEFINE(int64_t, pcputsc);	/* Per-CPU version of tsc at time of last calibration */
+static volatile sbintime_t sbt0;
+
+
+static void
+cpu_ts_calibrate_all(void)
+{
+	u_int _i;
+	int64_t *tsc;
+
+	CPU_FOREACH(_i) {
+		tsc = DPCPU_ID_PTR(_i, pcputsc);
+		*tsc = rdtsc();
+	}
+	sbt0 = sbinuptime();
+}
+
+
+#define CPU_TS_CALIBRATE(op)  \
+static void \
+cpu_ts_calibrate_ ## op(void) \
+{\
+	int64_t *tsc, sbt;				\
+\
+	tsc = DPCPU_PTR(pcputsc);\
+	*tsc = op();\
+\
+	sbt = sbinuptime();			\
+	while (sbt > sbt0)					\
+		atomic_cmpset_long(&sbt0, sbt0, sbt);		\
+}
+
+#define CPU_TS_GETSBINTIME(op)		\
+sbintime_t \
+cpu_ts_getsbintime_ ## op(void) \
+{\
+	int64_t tsc, curtsc, tsc_delta;		\
+						\
+	critical_enter();			\
+	tsc = DPCPU_GET(pcputsc);		\
+	curtsc = op();				\
+									\
+	tsc_delta = curtsc - tsc;					\
+	if (tsc_ts_recalibrate ||					\
+	    __predict_false(tsc_delta < 0 || tsc_delta > max_tsc_jitter)) {		\
+		cpu_ts_calibrate_ ## op();\
+		critical_exit();\
+		return (sbt0);\
+	}\
+	critical_exit();\
+\
+	return (sbt0);\
+}
+
+
+CPU_TS_CALIBRATE(rdtsc)
+CPU_TS_CALIBRATE(rdtscp)
+
+CPU_TS_GETSBINTIME(rdtsc)
+CPU_TS_GETSBINTIME(rdtscp)

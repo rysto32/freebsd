@@ -84,6 +84,7 @@ struct sackhint {
 struct tcptemp {
 	u_char	tt_ipgen[40]; /* the size must be of max ip header, now IPv6 */
 	struct	tcphdr tt_t;
+	u_char opt[TCP_MAXOLEN];
 };
 
 #define tcp6cb		tcpcb  /* for KAME src sync over BSD*'s */
@@ -147,22 +148,25 @@ struct tcpcb {
 
 	u_int	t_maxopd;		/* mss plus options */
 
-	u_int	t_rcvtime;		/* inactivity time */
-	u_int	t_starttime;		/* time connection was established */
-	u_int	t_rtttime;		/* RTT measurement start time */
+	sbintime_t	t_rcvtime;		/* inactivity time */
+	sbintime_t	t_starttime;		/* time connection was established */
+	sbintime_t	t_rtttime;		/* RTT measurement start time */
+	uint32_t	t_lasttsecr;
+	uint32_t	t_lasttsval;
+
 	tcp_seq	t_rtseq;		/* sequence number being timed */
 
 	u_int	t_bw_spare1;		/* unused */
 	tcp_seq	t_bw_spare2;		/* unused */
 
-	int	t_rxtcur;		/* current retransmit value (ticks) */
+	sbintime_t t_rxtcur;		/* current retransmit value */
 	u_int	t_maxseg;		/* maximum segment size */
-	int	t_srtt;			/* smoothed round-trip time */
-	int	t_rttvar;		/* variance in round-trip time */
+	sbintime_t	t_srtt;		/* smoothed round-trip time */
+	sbintime_t	t_rttvar;	/* variance in round-trip time */
 
 	int	t_rxtshift;		/* log(2) of rexmt exp. backoff */
-	u_int	t_rttmin;		/* minimum rtt allowed */
-	u_int	t_rttbest;		/* best rtt we've seen */
+	sbintime_t	t_rttmin;		/* minimum rtt allowed */
+	sbintime_t	t_rttbest;		/* best rtt we've seen */
 	u_long	t_rttupdated;		/* number of times rtt sampled */
 	u_long	max_sndwnd;		/* largest window peer has offered */
 
@@ -175,16 +179,15 @@ struct tcpcb {
 	u_char	rcv_scale;		/* window scaling for recv window */
 	u_char	request_r_scale;	/* pending window scaling */
 	u_int32_t  ts_recent;		/* timestamp echo data */
-	u_int	ts_recent_age;		/* when last updated */
-	u_int32_t  ts_offset;		/* our timestamp offset */
+	sbintime_t	ts_recent_age;		/* when last updated */
 
 	tcp_seq	last_ack_sent;
 /* experimental */
 	u_long	snd_cwnd_prev;		/* cwnd prior to retransmit */
 	u_long	snd_ssthresh_prev;	/* ssthresh prior to retransmit */
 	tcp_seq	snd_recover_prev;	/* snd_recover prior to retransmit */
-	int	t_sndzerowin;		/* zero-window updates sent */
-	u_int	t_badrxtwin;		/* window for retransmit recovery */
+	int	t_sndzerowin;		/* zero-window updates sent */	
+	sbintime_t	t_badrxtwin;		/* window for retransmit recovery */
 	u_char	snd_limited;		/* segments limited transmitted */
 /* SACK related state */
 	int	snd_numholes;		/* number of holes seen by sender */
@@ -216,6 +219,7 @@ struct tcpcb {
 	u_int	t_tsomax;		/* TSO total burst length limit in bytes */
 	u_int	t_pmtud_saved_maxopd;	/* pre-blackhole MSS */
 	u_int	t_flags2;		/* More tcpcb flags storage */
+	sbintime_t	t_delack;	/* delayed ack timer */
 
 	uint32_t t_ispare[6];		/* 5 UTO, 1 TBD */
 #if defined(_KERNEL) && defined(TCP_RFC7413)
@@ -309,6 +313,11 @@ struct tcpcb {
 #define	TF2_PLPMTU_BLACKHOLE	0x00000001 /* Possible PLPMTUD Black Hole. */
 #define	TF2_PLPMTU_PMTUD	0x00000002 /* Allowed to attempt PLPMTUD. */
 #define	TF2_PLPMTU_MAXSEGSNT	0x00000004 /* Last seg sent was full seg. */
+#define	TF2_ECN_ATTEMPT		0x00000008 /* Try ECN */
+#define	TF2_ECN_DCTCP		0x00000010 /* Mark ECT for _all_ DCTCP */
+#define	TF2_NO_DELACK_RXT	0x00000020 /* don't account for delack in bad
+					    * retransmit accounting
+					   */
 
 /*
  * Structure to hold TCP options that are only used during segment
@@ -381,8 +390,7 @@ struct tcptw {
 	u_short		tw_so_options;	/* copy of so_options */
 	struct ucred	*tw_cred;	/* user credentials */
 	u_int32_t	t_recent;
-	u_int32_t	ts_offset;	/* our timestamp offset */
-	u_int		t_starttime;
+	sbintime_t	t_starttime;
 	int		tw_time;
 	TAILQ_ENTRY(tcptw) tw_2msl;
 	void		*tw_pspare;	/* TCP_SIGNATURE */
@@ -424,9 +432,7 @@ struct tcptw {
  * which results in inappropriately large RTO values for very
  * fast networks.
  */
-#define	TCP_REXMTVAL(tp) \
-	max((tp)->t_rttmin, (((tp)->t_srtt >> (TCP_RTT_SHIFT - TCP_DELTA_SHIFT))  \
-	  + (tp)->t_rttvar) >> TCP_DELTA_SHIFT)
+#define	TCP_REXMTVAL(tp) max((tp)->t_rttmin, (tp)->t_srtt + ((tp)->t_rttvar << 2))
 
 /*
  * TCP statistics.
@@ -604,6 +610,7 @@ struct	xtcpcb {
 	struct	xsocket	xt_socket;
 	struct	xtcp_timer xt_timer;
 	u_quad_t	xt_alignment_hack;
+	char    xt_cc_name[TCP_CA_NAME_MAX];
 };
 #endif
 
@@ -737,7 +744,7 @@ void	 tcp_slowtimo(void);
 struct tcptemp *
 	 tcpip_maketemplate(struct inpcb *);
 void	 tcpip_fillheaders(struct inpcb *, void *, void *);
-void	 tcp_timer_activate(struct tcpcb *, uint32_t, u_int);
+void	 tcp_timer_activate(struct tcpcb *, uint32_t, sbintime_t);
 int	 tcp_timer_active(struct tcpcb *, uint32_t);
 void	 tcp_timer_stop(struct tcpcb *, uint32_t);
 void	 tcp_trace(short, short, struct tcpcb *, void *, struct tcphdr *, int);

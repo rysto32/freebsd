@@ -310,6 +310,19 @@ maketcp_hashsize(int size)
 	return (hashsize);
 }
 
+#if !defined(__amd64__) && !defined(__i386__)
+
+static sbintime_t
+cpu_ts_getsbintime_(void)
+{
+	struct bintime bt;
+
+	getbinuptime(&bt);
+	sbt = bt.frac >> SBT_MINTS_SHIFT;
+	return (sbt);
+}
+#endif
+
 void
 tcp_init(void)
 {
@@ -432,7 +445,9 @@ tcp_init(void)
 		SHUTDOWN_PRI_DEFAULT);
 	EVENTHANDLER_REGISTER(maxsockets_change, tcp_zone_change, NULL,
 		EVENTHANDLER_PRI_ANY);
-
+#if !defined(__amd64__) && !defined(__i386__)
+	cpu_tcp_ts_getsbintime = cpu_tcp_ts_getsbintime_;
+#endif
 #ifdef TCP_RFC7413
 	tcp_fastopen_init();
 #endif
@@ -817,11 +832,12 @@ tcp_newtcpcb(struct inpcb *inp)
 	 */
 	tp->t_srtt = TCPTV_SRTTBASE;
 	tp->t_rttvar = ((TCPTV_RTOBASE - TCPTV_SRTTBASE) << TCP_RTTVAR_SHIFT) / 4;
-	tp->t_rttmin = tcp_rexmit_min;
-	tp->t_rxtcur = TCPTV_RTOBASE;
+	tp->t_rttmin = tcp_rexmit_min*tick_sbt;
+	tp->t_rxtcur = TCPTV_RTOBASE*tick_sbt;
+	tp->t_delack = tcp_delacktime*tick_sbt;
 	tp->snd_cwnd = TCP_MAXWIN << TCP_MAX_WINSHIFT;
 	tp->snd_ssthresh = TCP_MAXWIN << TCP_MAX_WINSHIFT;
-	tp->t_rcvtime = ticks;
+	tp->t_rcvtime = tcp_ts_getsbintime();
 	/*
 	 * IPv4 TTL initialization is necessary for an IPv6 socket as well,
 	 * because the socket may be bound to an IPv6 wildcard address,
@@ -993,8 +1009,9 @@ tcp_discardcb(struct tcpcb *tp)
 			ssthresh = 0;
 		metrics.rmx_ssthresh = ssthresh;
 
-		metrics.rmx_rtt = tp->t_srtt;
-		metrics.rmx_rttvar = tp->t_rttvar;
+
+		metrics.rmx_rtt = tp->t_srtt / SBT_1US;
+		metrics.rmx_rttvar = tp->t_rttvar / SBT_1US;
 		metrics.rmx_cwnd = tp->snd_cwnd;
 		metrics.rmx_sendpipe = 0;
 		metrics.rmx_recvpipe = 0;
