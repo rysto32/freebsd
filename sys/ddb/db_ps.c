@@ -379,13 +379,13 @@ DB_SHOW_COMMAND(thread, db_show_thread)
 		    td->td_wchan);
 	db_printf(" priority: %d\n", td->td_priority);
 	db_printf(" container lock: %s (%p)\n", lock->lo_name, lock);
-	if (td->td_swvoltick != 0) {
-		delta = (u_int)ticks - (u_int)td->td_swvoltick;
+	if (TICKS_VALUE(td->td_swvoltick) != 0) {
+		delta = TICKS_DIFF(ticks, td->td_swvoltick);
 		db_printf(" last voluntary switch: %d ms ago\n",
 		    1000 * delta / hz);
 	}
-	if (td->td_swinvoltick != 0) {
-		delta = (u_int)ticks - (u_int)td->td_swinvoltick;
+	if (TICKS_VALUE(td->td_swinvoltick) != 0) {
+		delta = TICKS_DIFF(ticks, td->td_swinvoltick);
 		db_printf(" last involuntary switch: %d ms ago\n",
 		    1000 * delta / hz);
 	}
