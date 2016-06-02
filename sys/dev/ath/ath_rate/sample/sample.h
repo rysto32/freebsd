@@ -63,7 +63,7 @@ struct rate_stats {
 	uint64_t packets_acked;	/* pkts acked since assoc */
 	int ewma_pct;	/* EWMA percentage */
 	unsigned perfect_tx_time; /* transmit time for 0 retries */
-	int last_tx;
+	ticks_t last_tx;
 };
 
 struct txschedule {
@@ -104,7 +104,7 @@ struct sample_node {
 
 	int current_rix[NUM_PACKET_SIZE_BINS];
 	int packets_since_switch[NUM_PACKET_SIZE_BINS];
-	unsigned ticks_since_switch[NUM_PACKET_SIZE_BINS];
+	ticks_t ticks_since_switch[NUM_PACKET_SIZE_BINS];
 
 	int packets_since_sample[NUM_PACKET_SIZE_BINS];
 	unsigned sample_tt[NUM_PACKET_SIZE_BINS];

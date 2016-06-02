@@ -306,7 +306,7 @@ pick_sample_rate(struct sample_softc *ssc , struct ath_node *an,
 
 		/* rarely sample bit-rates that fail a lot */
 		if (sn->stats[size_bin][rix].successive_failures > ssc->max_successive_failures &&
-		    ticks - sn->stats[size_bin][rix].last_tx < ssc->stale_failure_timeout) {
+		    TICKS_DIFF(ticks, sn->stats[size_bin][rix].last_tx) < ssc->stale_failure_timeout) {
 			mask &= ~((uint64_t) 1<<rix);
 			goto nextrate;
 		}
@@ -559,7 +559,7 @@ ath_rate_findrate(struct ath_softc *sc, struct ath_node *an,
 			    IEEE80211_MSG_RATECTL, &an->an_node,
 			    "%s: switching quickly..", __func__);
 			change_rates = 1;
-		} else if (ticks - ssc->min_switch > sn->ticks_since_switch[size_bin]) {
+		} else if (TICKS_ADD(ticks, -ssc->min_switch) > sn->ticks_since_switch[size_bin]) {
 			/* min_switch seconds have gone by */
 			IEEE80211_NOTE(an->an_node.ni_vap,
 			    IEEE80211_MSG_RATECTL, &an->an_node,

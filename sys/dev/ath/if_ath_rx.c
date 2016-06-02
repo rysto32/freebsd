@@ -971,7 +971,7 @@ rx_accept:
 			const HAL_RATE_TABLE *rt = sc->sc_currates;
 			ath_led_event(sc,
 			    rt->rateCodeToIndex[rs->rs_rate]);
-		} else if (ticks - sc->sc_ledevent >= sc->sc_ledidle)
+		} else if (TICKS_DIFF(ticks, sc->sc_ledevent) >= sc->sc_ledidle)
 			ath_led_event(sc, 0);
 		}
 rx_next:

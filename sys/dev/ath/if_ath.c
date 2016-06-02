@@ -2502,7 +2502,7 @@ ath_init(struct ath_softc *sc)
 	sc->sc_diversity = ath_hal_getdiversity(ah);
 	sc->sc_lastlongcal = ticks;
 	sc->sc_resetcal = 1;
-	sc->sc_lastcalreset = 0;
+	TICKS_CLEAR(sc->sc_lastcalreset);
 	sc->sc_lastani = ticks;
 	sc->sc_lastshortcal = ticks;
 	sc->sc_doresetcal = AH_FALSE;
@@ -5237,10 +5237,10 @@ ath_calibrate(void *arg)
 
 	if (ic->ic_flags & IEEE80211_F_SCAN)	/* defer, off channel */
 		goto restart;
-	longCal = (ticks - sc->sc_lastlongcal >= ath_longcalinterval*hz);
-	aniCal = (ticks - sc->sc_lastani >= ath_anicalinterval*hz/1000);
+	longCal = TICKS_DIFF(ticks, sc->sc_lastlongcal) >= ath_longcalinterval*hz;
+	aniCal = TICKS_DIFF(ticks, sc->sc_lastani) >= ath_anicalinterval*hz/1000;
 	if (sc->sc_doresetcal)
-		shortCal = (ticks - sc->sc_lastshortcal >= ath_shortcalinterval*hz/1000);
+		shortCal = TICKS_DIFF(ticks, sc->sc_lastshortcal) >= ath_shortcalinterval*hz/1000;
 
 	DPRINTF(sc, ATH_DEBUG_CALIBRATE, "%s: shortCal=%d; longCal=%d; aniCal=%d\n", __func__, shortCal, longCal, aniCal);
 	if (aniCal) {
@@ -5317,9 +5317,9 @@ restart:
 	} else {
 		/* nextcal should be the shortest time for next event */
 		nextcal = ath_longcalinterval*hz;
-		if (sc->sc_lastcalreset == 0)
+		if (TICKS_VALUE(sc->sc_lastcalreset) == 0)
 			sc->sc_lastcalreset = sc->sc_lastlongcal;
-		else if (ticks - sc->sc_lastcalreset >= ath_resetcalinterval*hz)
+		else if (TICKS_DIFF(ticks, sc->sc_lastcalreset) >= ath_resetcalinterval*hz)
 			sc->sc_resetcal = 1;	/* setup reset next trip */
 		sc->sc_doresetcal = AH_FALSE;
 	}

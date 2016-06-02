@@ -73,7 +73,7 @@ struct if_ath_ant_comb_state {
 	int second_bias;
 	HAL_BOOL first_ratio;
 	HAL_BOOL second_ratio;
-	unsigned long scan_start_time;
+	ticks_t scan_start_time;
 	int lna1_lna2_delta;
 };
 
@@ -84,6 +84,6 @@ extern	int ath_lna_div_enable(struct ath_softc *sc,
 	    const struct ieee80211_channel *ch);
 
 extern	void ath_lna_rx_comb_scan(struct ath_softc *sc,
-	    struct ath_rx_status *rs, unsigned long ticks, int hz);
+	    struct ath_rx_status *rs, ticks_t ticks, int hz);
 
 #endif	/* __IF_ATH_LNA_DIV_H__ */

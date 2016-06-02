@@ -719,7 +719,7 @@ struct ath_softc {
 	u_int			sc_ledpin;	/* GPIO pin for driving LED */
 	u_int			sc_ledon;	/* pin setting for LED on */
 	u_int			sc_ledidle;	/* idle polling interval */
-	int			sc_ledevent;	/* time of last LED event */
+	ticks_t			sc_ledevent;	/* time of last LED event */
 	u_int8_t		sc_txrix;	/* current tx rate for LED */
 	u_int16_t		sc_ledoff;	/* off time for current blink */
 	struct callout		sc_ledtimer;	/* led off timer */
@@ -790,10 +790,10 @@ struct ath_softc {
 	int			sc_nbcnvaps;	/* # vaps with beacons */
 
 	struct callout		sc_cal_ch;	/* callout handle for cals */
-	int			sc_lastlongcal;	/* last long cal completed */
-	int			sc_lastcalreset;/* last cal reset done */
-	int			sc_lastani;	/* last ANI poll */
-	int			sc_lastshortcal;	/* last short calibration */
+	ticks_t			sc_lastlongcal;	/* last long cal completed */
+	ticks_t			sc_lastcalreset;/* last cal reset done */
+	ticks_t			sc_lastani;	/* last ANI poll */
+	ticks_t			sc_lastshortcal;	/* last short calibration */
 	HAL_BOOL		sc_doresetcal;	/* Yes, we're doing a reset cal atm */
 	HAL_NODE_STATS		sc_halstats;	/* station-mode rssi stats */
 	u_int			sc_tdmadbaprep;	/* TDMA DBA prep time */

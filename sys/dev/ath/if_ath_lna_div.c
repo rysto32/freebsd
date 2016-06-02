@@ -709,7 +709,7 @@ ath_ant_adjust_fast_divbias(struct if_ath_ant_comb_state *antcomb,
 /* Antenna diversity and combining */
 void
 ath_lna_rx_comb_scan(struct ath_softc *sc, struct ath_rx_status *rs,
-    unsigned long ticks, int hz)
+    ticks_t ticks, int hz)
 {
 	HAL_ANT_COMB_CONFIG div_ant_conf;
 	struct if_ath_ant_comb_state *antcomb = sc->sc_lna_div;
@@ -766,8 +766,8 @@ ath_lna_rx_comb_scan(struct ath_softc *sc, struct ath_rx_status *rs,
 
 	/* Short scan check */
 	if (antcomb->scan && antcomb->alt_good) {
-		if (ieee80211_time_after(ticks, antcomb->scan_start_time +
-		    msecs_to_jiffies(ATH_ANT_DIV_COMB_SHORT_SCAN_INTR)))
+		if (ieee80211_time_after(ticks, TICKS_ADD(antcomb->scan_start_time,
+		    msecs_to_jiffies(ATH_ANT_DIV_COMB_SHORT_SCAN_INTR))))
 			short_scan = AH_TRUE;
 		else
 			if (antcomb->total_pkt_count ==
