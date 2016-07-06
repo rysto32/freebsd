@@ -471,7 +471,7 @@ tcpip_fillheaders(struct inpcb *inp, void *ip_ptr, void *tcp_ptr)
 {
 	struct tcphdr *th = (struct tcphdr *)tcp_ptr;
 
-	INP_WLOCK_ASSERT(inp);
+	MPASS(inp->inp_refcount > 0);
 
 #ifdef INET6
 	if ((inp->inp_vflag & INP_IPV6) != 0) {
@@ -910,7 +910,8 @@ tcp_drop(struct tcpcb *tp, int errno)
 
 	if (TCPS_HAVERCVDSYN(tp->t_state)) {
 		tcp_state_change(tp, TCPS_CLOSED);
-		(void) tcp_output(tp);
+		if (__predict_false(tcp_output(tp) == EOWNERDEAD))
+			return (NULL);
 		TCPSTAT_INC(tcps_drops);
 	} else
 		TCPSTAT_INC(tcps_conndrops);
@@ -1575,7 +1576,8 @@ tcp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 					     */
 					    if (mtu <= tcp_maxmtu(&inc, NULL))
 						tcp_hc_updatemtu(&inc, mtu);
-					    tcp_mtudisc(inp, mtu);
+					    if (__predict_false(tcp_mtudisc(inp, mtu) == EOWNERDEAD))
+						inp = NULL;
 					} else
 						inp = (*notify)(inp,
 						    inetctlerrmap[cmd]);
@@ -1827,10 +1829,12 @@ static struct inpcb *
 tcp_mtudisc_notify(struct inpcb *inp, int error)
 {
 
-	return (tcp_mtudisc(inp, -1));
+	if (__predict_false(tcp_mtudisc(inp, -1) == EOWNERDEAD))
+		return (NULL);
+	return (inp);
 }
 
-struct inpcb *
+int
 tcp_mtudisc(struct inpcb *inp, int mtuoffer)
 {
 	struct tcpcb *tp;
@@ -1839,7 +1843,7 @@ tcp_mtudisc(struct inpcb *inp, int mtuoffer)
 	INP_WLOCK_ASSERT(inp);
 	if ((inp->inp_flags & INP_TIMEWAIT) ||
 	    (inp->inp_flags & INP_DROPPED))
-		return (inp);
+		return (0);
 
 	tp = intotcpcb(inp);
 	KASSERT(tp != NULL, ("tcp_mtudisc: tp == NULL"));
@@ -1860,8 +1864,7 @@ tcp_mtudisc(struct inpcb *inp, int mtuoffer)
 	tp->snd_recover = tp->snd_max;
 	if (tp->t_flags & TF_SACK_PERMIT)
 		EXIT_FASTRECOVERY(tp->t_flags);
-	tcp_output(tp);
-	return (inp);
+	return (tcp_output(tp));
 }
 
 #ifdef INET

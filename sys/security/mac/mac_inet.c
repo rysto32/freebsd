@@ -235,8 +235,6 @@ mac_inpcb_create_mbuf(struct inpcb *inp, struct mbuf *m)
 {
 	struct label *mlabel;
 
-	INP_LOCK_ASSERT(inp);
-
 	if (mac_policy_count == 0)
 		return;
 

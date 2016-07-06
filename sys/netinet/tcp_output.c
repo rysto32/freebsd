@@ -127,6 +127,32 @@ SYSCTL_VNET_INT(_net_inet_tcp, OID_AUTO, sendbuf_max, CTLFLAG_RW,
 	&VNET_NAME(tcp_autosndbuf_max), 0,
 	"Max size of automatic send buffer");
 
+struct mini_tcpcb {
+	tcp_seq	mt_snd_una;
+	tcp_seq	mt_snd_max;
+	tcp_seq	mt_snd_nxt;
+	tcp_seq	mt_snd_up;
+	tcp_seq	mt_rcv_nxt;
+	tcp_seq	mt_rcv_adv;
+	u_int	mt_flags;
+	u_int	mt_flags2;
+	u_int	mt_maxseg;
+};
+
+static inline void
+tcpcb_snapshot(struct mini_tcpcb *mt, struct tcpcb *tp)
+{
+	mt->mt_snd_una = tp->snd_una;
+	mt->mt_snd_max = tp->snd_max;
+	mt->mt_snd_nxt = tp->snd_nxt;
+	mt->mt_snd_up = tp->snd_up;
+	mt->mt_rcv_nxt = tp->rcv_nxt;
+	mt->mt_rcv_adv = tp->rcv_adv;
+	mt->mt_flags = tp->t_flags;
+	mt->mt_flags2 = tp->t_flags2;
+	mt->mt_maxseg = tp->t_maxseg;
+}
+
 /*
  * Make sure that either retransmit or persist timer is set for SYN, FIN and
  * non-ACK.
@@ -181,7 +207,8 @@ cc_after_idle(struct tcpcb *tp)
 int
 tcp_output(struct tcpcb *tp)
 {
-	struct socket *so = tp->t_inpcb->inp_socket;
+	struct inpcb *inp = tp->t_inpcb;
+	struct socket *so = inp->inp_socket;
 	long len, recwin, sendwin;
 	int off, flags, error = 0;	/* Keep compiler happy */
 	struct mbuf *m;
@@ -198,6 +225,7 @@ tcp_output(struct tcpcb *tp)
 	struct sackhole *p;
 	int tso, mtu;
 	struct tcpopt to;
+	struct mini_tcpcb mtp_stack, *mtp;
 #if 0
 	int maxburst = TCP_MAXBURST;
 #endif
@@ -205,11 +233,15 @@ tcp_output(struct tcpcb *tp)
 	struct ip6_hdr *ip6 = NULL;
 	int isipv6;
 
-	isipv6 = (tp->t_inpcb->inp_vflag & INP_IPV6) != 0;
+	isipv6 = (inp->inp_vflag & INP_IPV6) != 0;
 #endif
 
-	INP_WLOCK_ASSERT(tp->t_inpcb);
-
+	if (tp->t_flags2 & TF2_TRANSMITTING) {
+		tp->t_flags2 |= TF2_SENDALOT;
+		return (0);
+	}
+	INP_WLOCK_ASSERT(inp);
+	mtp = &mtp_stack;
 #ifdef TCP_OFFLOAD
 	if (tp->t_flags & TF_TOE)
 		return (tcp_offload_output(tp));
@@ -546,8 +578,8 @@ after_sack_rexmit:
 #ifdef IPSEC
 	    ipsec_optlen == 0 &&
 #endif
-	    tp->t_inpcb->inp_options == NULL &&
-	    tp->t_inpcb->in6p_options == NULL)
+	    inp->inp_options == NULL &&
+	    inp->in6p_options == NULL)
 		tso = 1;
 
 	if (sack_rxmit) {
@@ -760,7 +792,7 @@ send:
 		/* Maximum segment size. */
 		if (flags & TH_SYN) {
 			tp->snd_nxt = tp->iss;
-			to.to_mss = tcp_mssopt(&tp->t_inpcb->inp_inc);
+			to.to_mss = tcp_mssopt(&inp->inp_inc);
 			to.to_flags |= TOF_MSS;
 #ifdef TCP_RFC7413
 			/*
@@ -988,6 +1020,21 @@ send:
 		panic("tcphdr too big");
 /*#endif*/
 
+
+	/*
+	 * ISLN - prepare to drop the lock:
+	 * - snapshot volatile fields
+	 * - set transmitting flag
+	 * - reference inpcb
+	 * - drop inpcb lock
+	 */
+
+	tcpcb_snapshot(mtp, tp);
+	tp->t_flags &= ~TF_FORCEDATA;
+	tp->t_flags2 |= TF2_TRANSMITTING;
+	in_pcbref(inp);
+	INP_WUNLOCK(inp);
+
 	/*
 	 * This KASSERT is here to catch edge cases at a well defined place.
 	 * Before, those had triggered (random) panic conditions further down.
@@ -1003,9 +1050,9 @@ send:
 		struct mbuf *mb;
 		u_int moff;
 
-		if ((tp->t_flags & TF_FORCEDATA) && len == 1)
+		if ((mtp->mt_flags & TF_FORCEDATA) && len == 1)
 			TCPSTAT_INC(tcps_sndprobe);
-		else if (SEQ_LT(tp->snd_nxt, tp->snd_max) || sack_rxmit) {
+		else if (SEQ_LT(mtp->mt_snd_nxt, mtp->mt_snd_max) || sack_rxmit) {
 			tp->t_sndrexmitpack++;
 			TCPSTAT_INC(tcps_sndrexmitpack);
 			TCPSTAT_ADD(tcps_sndrexmitbyte, len);
@@ -1062,11 +1109,11 @@ send:
 		SOCKBUF_UNLOCK(&so->so_snd);
 	} else {
 		SOCKBUF_UNLOCK(&so->so_snd);
-		if (tp->t_flags & TF_ACKNOW)
+		if (mtp->mt_flags & TF_ACKNOW)
 			TCPSTAT_INC(tcps_sndacks);
 		else if (flags & (TH_SYN|TH_FIN|TH_RST))
 			TCPSTAT_INC(tcps_sndctrl);
-		else if (SEQ_GT(tp->snd_up, tp->snd_una))
+		else if (SEQ_GT(mtp->mt_snd_up, mtp->mt_snd_una))
 			TCPSTAT_INC(tcps_sndurg);
 		else
 			TCPSTAT_INC(tcps_sndwinup);
@@ -1091,6 +1138,10 @@ send:
 #ifdef MAC
 	mac_inpcb_create_mbuf(tp->t_inpcb, m);
 #endif
+	/*
+	 * fillheaders references fields that are immutable
+	 * for an established connection
+	 */
 #ifdef INET6
 	if (isipv6) {
 		ip6 = mtod(m, struct ip6_hdr *);
@@ -1110,9 +1161,9 @@ send:
 	 * window for use in delaying messages about window sizes.
 	 * If resending a FIN, be sure not to use a new sequence number.
 	 */
-	if (flags & TH_FIN && tp->t_flags & TF_SENTFIN &&
-	    tp->snd_nxt == tp->snd_max)
-		tp->snd_nxt--;
+	if (flags & TH_FIN && mtp->mt_flags & TF_SENTFIN &&
+	    mtp->mt_snd_nxt == mtp->mt_snd_max)
+		mtp->mt_snd_nxt--;
 	/*
 	 * If we are starting a connection, send ECN setup
 	 * SYN packet. If we are on a retransmit, we may
@@ -1128,14 +1179,14 @@ send:
 	}
 	
 	if (tp->t_state == TCPS_ESTABLISHED &&
-	    (tp->t_flags & TF_ECN_PERMIT)) {
+	    (mtp->mt_flags & TF_ECN_PERMIT)) {
 		/*
 		 * If the peer has ECN, mark data packets with
 		 * ECN capable transmission (ECT).
 		 * Ignore pure ack packets, retransmissions and window probes.
 		 */
-		if (len > 0 && SEQ_GEQ(tp->snd_nxt, tp->snd_max) &&
-		    !((tp->t_flags & TF_FORCEDATA) && len == 1)) {
+		if (len > 0 && SEQ_GEQ(mtp->mt_snd_nxt, mtp->mt_snd_max) &&
+		    !((mtp->mt_flags & TF_FORCEDATA) && len == 1)) {
 #ifdef INET6
 			if (isipv6)
 				ip6->ip6_flow |= htonl(IPTOS_ECN_ECT0 << 20);
@@ -1148,11 +1199,11 @@ send:
 		/*
 		 * Reply with proper ECN notifications.
 		 */
-		if (tp->t_flags & TF_ECN_SND_CWR) {
+		if (mtp->mt_flags & TF_ECN_SND_CWR) {
 			flags |= TH_CWR;
-			tp->t_flags &= ~TF_ECN_SND_CWR;
+			mtp->mt_flags &= ~TF_ECN_SND_CWR;
 		} 
-		if (tp->t_flags & TF_ECN_SND_ECE)
+		if (mtp->mt_flags & TF_ECN_SND_ECE)
 			flags |= TH_ECE;
 	}
 	
@@ -1172,15 +1223,15 @@ send:
 	if (sack_rxmit == 0) {
 		if (len || (flags & (TH_SYN|TH_FIN)) ||
 		    tcp_timer_active(tp, TT_PERSIST))
-			th->th_seq = htonl(tp->snd_nxt);
+			th->th_seq = htonl(mtp->mt_snd_nxt);
 		else
-			th->th_seq = htonl(tp->snd_max);
+			th->th_seq = htonl(mtp->mt_snd_max);
 	} else {
 		th->th_seq = htonl(p->rxmit);
 		p->rxmit += len;
 		tp->sackhint.sack_bytes_rexmit += len;
 	}
-	th->th_ack = htonl(tp->rcv_nxt);
+	th->th_ack = htonl(mtp->mt_rcv_nxt);
 	if (optlen) {
 		bcopy(opt, th + 1, optlen);
 		th->th_off = (sizeof (struct tcphdr) + optlen) >> 2;
@@ -1191,11 +1242,11 @@ send:
 	 * but avoid silly window syndrome.
 	 */
 	if (recwin < (long)(so->so_rcv.sb_hiwat / 4) &&
-	    recwin < (long)tp->t_maxseg)
+	    recwin < (long)mtp->mt_maxseg)
 		recwin = 0;
-	if (SEQ_GT(tp->rcv_adv, tp->rcv_nxt) &&
-	    recwin < (long)(tp->rcv_adv - tp->rcv_nxt))
-		recwin = (long)(tp->rcv_adv - tp->rcv_nxt);
+	if (SEQ_GT(tp->rcv_adv, mtp->mt_rcv_nxt) &&
+	    recwin < (long)(mtp->mt_rcv_adv - mtp->mt_rcv_nxt))
+		recwin = (long)(mtp->mt_rcv_adv - mtp->mt_rcv_nxt);
 	if (recwin > (long)TCP_MAXWIN << tp->rcv_scale)
 		recwin = (long)TCP_MAXWIN << tp->rcv_scale;
 
@@ -1219,12 +1270,13 @@ send:
 	 * the connection.
 	 */
 	if (th->th_win == 0) {
+		/* can only be reached by thread that set transmitting */
 		tp->t_sndzerowin++;
-		tp->t_flags |= TF_RXWIN0SENT;
+		mtp->mt_flags |= TF_RXWIN0SENT;
 	} else
-		tp->t_flags &= ~TF_RXWIN0SENT;
+		mtp->mt_flags &= ~TF_RXWIN0SENT;
 	if (SEQ_GT(tp->snd_up, tp->snd_nxt)) {
-		th->th_urp = htons((u_short)(tp->snd_up - tp->snd_nxt));
+		th->th_urp = htons((u_short)(mtp->mt_snd_up - mtp->mt_snd_nxt));
 		th->th_flags |= TH_URG;
 	} else
 		/*
@@ -1233,7 +1285,7 @@ send:
 		 * so that it doesn't drift into the send window on sequence
 		 * number wraparound.
 		 */
-		tp->snd_up = tp->snd_una;		/* drag it along */
+		mtp->mt_snd_up = mtp->mt_snd_una;		/* drag it along */
 
 #ifdef TCP_SIGNATURE
 	if (to.to_flags & TOF_SIGNATURE) {
@@ -1352,9 +1404,9 @@ send:
 		ip6->ip6_plen = htons(m->m_pkthdr.len - sizeof(*ip6));
 
 		if (V_path_mtu_discovery && tp->t_maxopd > V_tcp_minmss)
-			tp->t_flags2 |= TF2_PLPMTU_PMTUD;
+			mtp->mt_flags2 |= TF2_PLPMTU_PMTUD;
 		else
-			tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
+			mtp->mt_flags2 &= ~TF2_PLPMTU_PMTUD;
 
 		if (tp->t_state == TCPS_SYN_SENT)
 			TCP_PROBE5(connect__request, NULL, tp, ip6, tp, th);
@@ -1394,9 +1446,9 @@ send:
 	 */
 	if (V_path_mtu_discovery && tp->t_maxopd > V_tcp_minmss) {
 		ip->ip_off |= htons(IP_DF);
-		tp->t_flags2 |= TF2_PLPMTU_PMTUD;
+		mtp->mt_flags2 |= TF2_PLPMTU_PMTUD;
 	} else {
-		tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
+		mtp->mt_flags2 &= ~TF2_PLPMTU_PMTUD;
 	}
 
 	if (tp->t_state == TCPS_SYN_SENT)
@@ -1415,6 +1467,23 @@ send:
 #endif /* INET */
 
 out:
+	/* ISLN: re-acquire lock, re-validate state */
+	INP_WLOCK(inp);
+	if (in_pcbrele_wlocked(inp))
+		return (EOWNERDEAD);
+	tp->t_flags2 &= ~TF2_TRANSMITTING;
+
+	if (mtp->mt_flags & TF_RXWIN0SENT)
+		tp->t_flags |= TF_RXWIN0SENT;
+	else
+		tp->t_flags &= ~TF_RXWIN0SENT;
+	if (mtp->mt_flags2 & TF2_PLPMTU_PMTUD)
+		tp->t_flags2 |= TF2_PLPMTU_PMTUD;
+	else
+		tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
+	if (tp->t_flags2 & TF2_SENDALOT)
+		sendalot = 1;
+
 	/*
 	 * In transmit state, time the transmission and arrange for
 	 * the retransmit.  In persist state, just set snd_max.

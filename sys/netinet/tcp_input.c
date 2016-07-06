@@ -236,7 +236,7 @@ static void	 tcp_dropwithreset(struct mbuf *, struct tcphdr *,
 static void	 tcp_pulloutofband(struct socket *,
 		     struct tcphdr *, struct mbuf *, int);
 static void	 tcp_xmit_timer(struct tcpcb *, int);
-static void	 tcp_newreno_partial_ack(struct tcpcb *, struct tcphdr *);
+static int	 tcp_newreno_partial_ack(struct tcpcb *, struct tcphdr *);
 static void inline	cc_ack_received(struct tcpcb *tp, struct tcphdr *th,
 			    uint16_t type);
 static void inline	cc_conn_init(struct tcpcb *tp);
@@ -1449,7 +1449,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
     int ti_locked)
 {
 	int thflags, acked, ourfinisacked, needoutput = 0, sack_changed;
-	int rstreason, todrop, win;
+	int rstreason, todrop, win, rc;
 	u_long tiwin;
 	char *s;
 	struct in_conninfo *inc;
@@ -1745,8 +1745,12 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 					tcp_timer_activate(tp, TT_REXMT,
 						      tp->t_rxtcur);
 				sowwakeup(so);
-				if (so->so_snd.sb_cc)
-					(void) tcp_output(tp);
+				if (so->so_snd.sb_cc) {
+					if (__predict_false(tcp_output(tp) == EOWNERDEAD)) {
+						tp = NULL;
+						goto drop;
+					}
+				}
 				goto check_delack;
 			}
 		} else if (th->th_ack == tp->snd_una &&
@@ -1862,7 +1866,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				tp->t_flags |= TF_DELACK;
 			} else {
 				tp->t_flags |= TF_ACKNOW;
-				tcp_output(tp);
+				if (__predict_false(tcp_output(tp) == EOWNERDEAD)) {
+					tp = NULL;
+					goto drop;
+				}
 			}
 			goto check_delack;
 		}
@@ -2554,7 +2561,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 						 */
 						break;
 					}
-					(void) tcp_output(tp);
+					if (__predict_false(tcp_output(tp) == EOWNERDEAD))
+						tp = NULL;
 					goto drop;
 				} else if (tp->t_dupacks == tcprexmtthresh) {
 					tcp_seq onxt = tp->snd_nxt;
@@ -2588,7 +2596,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 						    tcps_sack_recovery_episode);
 						tp->sack_newdata = tp->snd_nxt;
 						tp->snd_cwnd = tp->t_maxseg;
-						(void) tcp_output(tp);
+						if (__predict_false(tcp_output(tp) == EOWNERDEAD))
+							tp = NULL;
 						goto drop;
 					}
 					tp->snd_nxt = th->th_ack;
@@ -2603,7 +2612,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 						 */
 						break;
 					}
-					(void) tcp_output(tp);
+					if (__predict_false(tcp_output(tp) == EOWNERDEAD)) {
+						tp = NULL;
+						goto drop;
+					}
 					KASSERT(tp->snd_limited <= 2,
 					    ("%s: tp->snd_limited too big",
 					    __func__));
@@ -2660,7 +2672,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 					    (tp->snd_nxt - tp->snd_una);
 					SOCKBUF_UNLOCK(&so->so_snd);
 					if (avail > 0)
-						(void) tcp_output(tp);
+						if (__predict_false(tcp_output(tp) == EOWNERDEAD)) {
+							tp = NULL;
+							goto drop;
+						}
 					sent = tp->snd_max - oldsndmax;
 					if (sent > tp->t_maxseg) {
 						KASSERT((tp->t_dupacks == 2 &&
@@ -2701,9 +2716,13 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		if (IN_FASTRECOVERY(tp->t_flags)) {
 			if (SEQ_LT(th->th_ack, tp->snd_recover)) {
 				if (tp->t_flags & TF_SACK_PERMIT)
-					tcp_sack_partialack(tp, th);
+					rc = tcp_sack_partialack(tp, th);
 				else
-					tcp_newreno_partial_ack(tp, th);
+					rc = tcp_newreno_partial_ack(tp, th);
+				if (__predict_false(rc == EOWNERDEAD)) {
+					tp = NULL;
+					goto drop;
+				}
 			} else
 				cc_post_recovery(tp, th);
 		}
@@ -3139,7 +3158,10 @@ dodata:							/* XXX */
 	 * Return any desired output.
 	 */
 	if (needoutput || (tp->t_flags & TF_ACKNOW))
-		(void) tcp_output(tp);
+		if (__predict_false(tcp_output(tp) == EOWNERDEAD)) {
+			tp = NULL;
+			goto drop;
+		}
 
 check_delack:
 	KASSERT(ti_locked == TI_UNLOCKED, ("%s: check_delack ti_locked %d",
@@ -3186,8 +3208,8 @@ dropafterack:
 	ti_locked = TI_UNLOCKED;
 
 	tp->t_flags |= TF_ACKNOW;
-	(void) tcp_output(tp);
-	INP_WUNLOCK(tp->t_inpcb);
+	if (__predict_true(tcp_output(tp) != EOWNERDEAD))
+		INP_WUNLOCK(tp->t_inpcb);
 	m_freem(m);
 	return;
 
@@ -3816,7 +3838,7 @@ tcp_mssopt(struct in_conninfo *inc)
  * By setting snd_nxt to ti_ack, this forces retransmission timer to
  * be started again.
  */
-static void
+static int
 tcp_newreno_partial_ack(struct tcpcb *tp, struct tcphdr *th)
 {
 	tcp_seq onxt = tp->snd_nxt;
@@ -3833,7 +3855,9 @@ tcp_newreno_partial_ack(struct tcpcb *tp, struct tcphdr *th)
 	 */
 	tp->snd_cwnd = tp->t_maxseg + BYTES_THIS_ACK(tp, th);
 	tp->t_flags |= TF_ACKNOW;
-	(void) tcp_output(tp);
+	if (__predict_false(tcp_output(tp) == EOWNERDEAD)) {
+		return (EOWNERDEAD);
+	}
 	tp->snd_cwnd = ocwnd;
 	if (SEQ_GT(onxt, tp->snd_nxt))
 		tp->snd_nxt = onxt;
@@ -3846,6 +3870,7 @@ tcp_newreno_partial_ack(struct tcpcb *tp, struct tcphdr *th)
 	else
 		tp->snd_cwnd = 0;
 	tp->snd_cwnd += tp->t_maxseg;
+	return (0);
 }
 
 int
