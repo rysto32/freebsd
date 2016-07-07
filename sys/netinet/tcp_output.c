@@ -1228,8 +1228,13 @@ send:
 			th->th_seq = htonl(mtp->mt_snd_max);
 	} else {
 		th->th_seq = htonl(p->rxmit);
+		/*
+		 * XXX can we just defer this?
+		 */
+		INP_WLOCK(inp);
 		p->rxmit += len;
 		tp->sackhint.sack_bytes_rexmit += len;
+		INP_WUNLOCK(inp);
 	}
 	th->th_ack = htonl(mtp->mt_rcv_nxt);
 	if (optlen) {
@@ -1481,14 +1486,21 @@ out:
 		tp->t_flags2 |= TF2_PLPMTU_PMTUD;
 	else
 		tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
-	if (tp->t_flags2 & TF2_SENDALOT)
+	if (tp->t_flags2 & TF2_SENDALOT) {
+		tp->t_flags2 &= ~TF2_SENDALOT;
+		/*
+		 * XXX  we really want to check for TDP_ITHREAD 
+		 * here to avoid starving other senders and delaying
+		 * acks
+		 */
 		sendalot = 1;
+	}
 
 	/*
 	 * In transmit state, time the transmission and arrange for
 	 * the retransmit.  In persist state, just set snd_max.
 	 */
-	if ((tp->t_flags & TF_FORCEDATA) == 0 || 
+	if ((mtp->mt_flags & TF_FORCEDATA) == 0 || 
 	    !tcp_timer_active(tp, TT_PERSIST)) {
 		tcp_seq startseq = tp->snd_nxt;
 
@@ -1592,7 +1604,7 @@ timer:
 		 * XXX: It is a POLA question whether calling tcp_drop right
 		 * away would be the really correct behavior instead.
 		 */
-		if (((tp->t_flags & TF_FORCEDATA) == 0 ||
+		if (((mtp->mt_flags & TF_FORCEDATA) == 0 ||
 		    !tcp_timer_active(tp, TT_PERSIST)) &&
 		    ((flags & TH_SYN) == 0) &&
 		    (error != EPERM)) {
