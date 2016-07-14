@@ -153,6 +153,47 @@ tcpcb_snapshot(struct mini_tcpcb *mt, struct tcpcb *tp)
 	mt->mt_maxseg = tp->t_maxseg;
 }
 
+static inline int
+tcpcb_lock_drop(struct mini_tcpcb *mtp, struct tcpcb *tp)
+{
+	struct inpcb *inp = tp->t_inpcb;
+
+	tcpcb_snapshot(mtp, tp);
+
+	tp->t_flags &= ~TF_FORCEDATA;
+	tp->t_flags2 &= ~TF2_SENDALOT;
+	if (tp->t_state != TCPS_ESTABLISHED)
+		return (0);
+
+	tp->t_flags2 |= TF2_TRANSMITTING;
+	in_pcbref(inp);
+	INP_WUNLOCK(inp);
+	return (1);
+}
+
+static inline int
+tcpcb_lock_acquire(struct mini_tcpcb *mtp, struct tcpcb *tp, int dropped)
+{
+
+	if (dropped) {
+		INP_WLOCK(tp->t_inpcb);
+		if (in_pcbrele_wlocked(tp->t_inpcb))
+			return (EOWNERDEAD);
+	}
+	tp->t_flags2 &= ~TF2_TRANSMITTING;
+
+	if (mtp->mt_flags & TF_RXWIN0SENT)
+		tp->t_flags |= TF_RXWIN0SENT;
+	else
+		tp->t_flags &= ~TF_RXWIN0SENT;
+	if (mtp->mt_flags2 & TF2_PLPMTU_PMTUD)
+		tp->t_flags2 |= TF2_PLPMTU_PMTUD;
+	else
+		tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
+	return (0);
+}
+
+
 /*
  * Make sure that either retransmit or persist timer is set for SYN, FIN and
  * non-ACK.
@@ -201,6 +242,7 @@ cc_after_idle(struct tcpcb *tp)
 		CC_ALGO(tp)->after_idle(tp->ccv);
 }
 
+
 /*
  * Tcp output routine: figure out what should be sent and send it.
  */
@@ -223,7 +265,7 @@ tcp_output(struct tcpcb *tp)
 	int idle, sendalot;
 	int sack_rxmit, sack_bytes_rxmt;
 	struct sackhole *p;
-	int tso, mtu;
+	int tso, mtu, rc;
 	struct tcpopt to;
 	struct mini_tcpcb mtp_stack, *mtp;
 #if 0
@@ -1028,12 +1070,7 @@ send:
 	 * - reference inpcb
 	 * - drop inpcb lock
 	 */
-
-	tcpcb_snapshot(mtp, tp);
-	tp->t_flags &= ~TF_FORCEDATA;
-	tp->t_flags2 |= TF2_TRANSMITTING;
-	in_pcbref(inp);
-	INP_WUNLOCK(inp);
+	rc = tcpcb_lock_drop(mtp, tp);
 
 	/*
 	 * This KASSERT is here to catch edge cases at a well defined place.
@@ -1473,19 +1510,8 @@ send:
 
 out:
 	/* ISLN: re-acquire lock, re-validate state */
-	INP_WLOCK(inp);
-	if (in_pcbrele_wlocked(inp))
-		return (EOWNERDEAD);
-	tp->t_flags2 &= ~TF2_TRANSMITTING;
-
-	if (mtp->mt_flags & TF_RXWIN0SENT)
-		tp->t_flags |= TF_RXWIN0SENT;
-	else
-		tp->t_flags &= ~TF_RXWIN0SENT;
-	if (mtp->mt_flags2 & TF2_PLPMTU_PMTUD)
-		tp->t_flags2 |= TF2_PLPMTU_PMTUD;
-	else
-		tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
+	if ((rc = tcpcb_lock_acquire(mtp, tp, rc)))
+		return (rc);
 	if (tp->t_flags2 & TF2_SENDALOT) {
 		tp->t_flags2 &= ~TF2_SENDALOT;
 		/*
