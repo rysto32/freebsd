@@ -242,6 +242,8 @@ cc_after_idle(struct tcpcb *tp)
 		CC_ALGO(tp)->after_idle(tp->ccv);
 }
 
+	if (tp->t_state != TCPS_ESTABLISHED)
+		tp->t_flags2 |= TF2_BLOCKING;
 
 /*
  * Tcp output routine: figure out what should be sent and send it.
@@ -279,8 +281,12 @@ tcp_output(struct tcpcb *tp)
 #endif
 
 	if (tp->t_flags2 & TF2_TRANSMITTING) {
-		tp->t_flags2 |= TF2_SENDALOT;
-		return (0);
+		if (tp->t_flags2 & TF2_BLOCKING) {
+			msleep(tp, &inp->inp_lock, PSOCK, "tcpblk", 0);
+		} else {
+			tp->t_flags2 |= TF2_SENDALOT;
+			return (0);
+		}
 	}
 	INP_WLOCK_ASSERT(inp);
 	mtp = &mtp_stack;
@@ -1520,6 +1526,11 @@ out:
 		 * acks
 		 */
 		sendalot = 1;
+	}
+	if (tp->t_flags2 & TF2_BLOCKING) {
+		sendalot = 0;
+		tp->t_flags2 &= ~TF2_BLOCKING;
+		wakeup(tp);
 	}
 
 	/*
