@@ -177,6 +177,9 @@ struct tcphdr {
 /* Start of reserved space for third-party user-settable options. */
 #define	TCP_VENDOR	SO_VENDOR
 
+#define	TCP_RTTMIN	0x80000001
+#define	TCP_MIN_DELACK	0x80000002
+
 #define	TCP_CA_NAME_MAX	16	/* max congestion control name length */
 
 #define	TCPI_OPT_TIMESTAMPS	0x01

@@ -1524,6 +1524,7 @@ tcp_default_ctloutput(struct socket *so, struct sockopt *sopt, struct inpcb *inp
 	struct cc_algo *algo;
 	char	*pbuf, buf[TCP_CA_NAME_MAX];
 	size_t	len;
+	sbintime_t sbin;
 
 	/*
 	 * For TCP_CCALGOOPT forward the control to CC module, for both
@@ -1737,6 +1738,32 @@ unlock_and_done:
 				tcp_timer_activate(tp, TT_2MSL,
 				    TP_MAXIDLE(tp));
 			goto unlock_and_done;
+		case TCP_MIN_DELACK:
+			INP_WUNLOCK(inp);
+			error = sooptcopyin(sopt, &sbin, sizeof(sbin),
+			    sizeof(sbin));
+			if (error)
+				return (error);
+
+			if (sbin > tcp_delacktime*tick_sbt)
+				return (ERANGE);
+
+			INP_WLOCK_RECHECK(inp);
+			tp->t_delackmin = sbin;
+			goto unlock_and_done;
+		case TCP_RTTMIN:
+			INP_WUNLOCK(inp);
+			error = sooptcopyin(sopt, &sbin, sizeof(sbin),
+			    sizeof(sbin));
+			if (error)
+				return (error);
+
+			if (sbin > TCPTV_REXMTMAX*tick_sbt)
+				return (ERANGE);
+
+			INP_WLOCK_RECHECK(inp);
+			tp->t_rttmin = sbin;
+			goto unlock_and_done;
 
 #ifdef TCPPCAP
 		case TCP_PCAP_OUT:
@@ -1858,6 +1885,16 @@ unlock_and_done:
 					&(tp->t_outpkts) : &(tp->t_inpkts));
 			INP_WUNLOCK(inp);
 			error = sooptcopyout(sopt, &optval, sizeof optval);
+			break;
+		case TCP_MIN_DELACK:
+			sbin = tp->t_delackmin;
+			INP_WUNLOCK(inp);
+			error = sooptcopyout(sopt, &sbin, sizeof sbin);
+			break;
+		case TCP_RTTMIN:
+			sbin = tp->t_rttmin;
+			INP_WUNLOCK(inp);
+			error = sooptcopyout(sopt, &sbin, sizeof sbin);
 			break;
 #endif
 

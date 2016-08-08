@@ -647,6 +647,7 @@ tcp_timer_rexmt(void * xtp)
 	CURVNET_SET(tp->t_vnet);
 	int rexmt;
 	struct inpcb *inp;
+	sbintime_t rto;
 #ifdef TCPDEBUG
 	int ostate;
 
@@ -724,11 +725,15 @@ tcp_timer_rexmt(void * xtp)
 		tp->t_flags &= ~TF_PREVVALID;
 	TCPSTAT_INC(tcps_rexmttimeo);
 	if ((tp->t_state == TCPS_SYN_SENT) ||
-	    (tp->t_state == TCPS_SYN_RECEIVED))
-		rexmt = TCPTV_RTOBASE * tcp_syn_backoff[tp->t_rxtshift] * tick_sbt;
-	else
-		rexmt = TCP_REXMTVAL(tp) * tcp_backoff[tp->t_rxtshift];
-	/*  1 < delack < tcp_delacktime - and should scale down with RTO/2 */
+	    (tp->t_state == TCPS_SYN_RECEIVED)) {
+		rto = TCPTV_RTOBASE * tick_sbt;
+		rexmt = rto * tcp_syn_backoff[tp->t_rxtshift];
+	} else {
+		rto = TCP_REXMTVAL(tp);
+		rexmt = rto * tcp_backoff[tp->t_rxtshift];
+	}
+
+	TCPT_UPDATE_DELACK_TIMO(tp, rto);
 	TCPT_RANGESET(tp->t_rxtcur, rexmt,
 		      tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
 

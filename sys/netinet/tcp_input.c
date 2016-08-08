@@ -340,6 +340,7 @@ cc_conn_init(struct tcpcb *tp)
 {
 	struct hc_metrics_lite metrics;
 	struct inpcb *inp = tp->t_inpcb;
+	sbintime_t rto;
 	u_int maxseg;
 	int rtt;
 
@@ -359,9 +360,10 @@ cc_conn_init(struct tcpcb *tp)
 			/* default variation is +- 1 rtt */
 			tp->t_rttvar = (tp->t_srtt >> 1);
 		}
+		rto = tp->t_srtt + 4*tp->t_rttvar;
+		TCPT_UPDATE_DELACK_TIMO(tp, rto);
 		TCPT_RANGESET(tp->t_rxtcur,
-		    tp->t_srtt + 4*tp->t_rttvar,
-		    tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
+		    rto, tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
 	}
 	if (metrics.rmx_ssthresh) {
 		/*
@@ -3585,6 +3587,7 @@ tcp_xmit_timer(struct tcpcb *tp, sbintime_t rtt)
 	 * statistical, we have to test that we don't drop below
 	 * the minimum feasible timer (which is 2 ticks).
 	 */
+	TCPT_UPDATE_DELACK_TIMO(tp, TCP_REXMTVAL(tp));
 	TCPT_RANGESET(tp->t_rxtcur, TCP_REXMTVAL(tp), max(tp->t_rttmin, rtt+2), TCPTV_REXMTMAX*tick_sbt);
 
 	/*

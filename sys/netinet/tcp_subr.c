@@ -1261,6 +1261,7 @@ tcp_newtcpcb(struct inpcb *inp)
 	tp->t_rttmin = tcp_rexmit_min*tick_sbt;
 	tp->t_rxtcur = TCPTV_RTOBASE*tick_sbt;
 	tp->t_delack = tcp_delacktime*tick_sbt;
+	tp->t_delackmin = tcp_delacktime*tick_sbt;
 	tp->snd_cwnd = TCP_MAXWIN << TCP_MAX_WINSHIFT;
 	tp->snd_ssthresh = TCP_MAXWIN << TCP_MAX_WINSHIFT;
 	tp->t_rcvtime = tcp_ts_getsbintime();
