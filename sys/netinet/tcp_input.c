@@ -3520,11 +3520,6 @@ tcp_xmit_timer(struct tcpcb *tp, sbintime_t rtt)
 	uint64_t expected_samples, shift, var_shift;
 
 	INP_WLOCK_ASSERT(tp->t_inpcb);
-	/*
-	 * track this
-	 */
-	if (rtt < SBT_1NS*100)
-		return;
 
 	/* RFC 7323 Appendix G RTO Calculation Modification */
 	/* ExpectedSamples = ceiling(FlightSize / (SMSS * 2)) */
