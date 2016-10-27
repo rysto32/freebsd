@@ -1764,6 +1764,19 @@ unlock_and_done:
 			INP_WLOCK_RECHECK(inp);
 			tp->t_rttmin = sbin;
 			goto unlock_and_done;
+		case TCP_REXMIT_SLOP:
+			INP_WUNLOCK(inp);
+			error = sooptcopyin(sopt, &ui, sizeof(ui),
+			    sizeof(ui));
+			if (error)
+				return (error);
+
+			if (ui > TCPTV_REXMTMAX*tick_sbt)
+				return (ERANGE);
+
+			INP_WLOCK_RECHECK(inp);
+			tp->t_rexmit_slop = ui;
+			goto unlock_and_done;
 
 #ifdef TCPPCAP
 		case TCP_PCAP_OUT:
@@ -1895,6 +1908,11 @@ unlock_and_done:
 			sbin = tp->t_rttmin;
 			INP_WUNLOCK(inp);
 			error = sooptcopyout(sopt, &sbin, sizeof sbin);
+			break;
+		case TCP_REXMIT_SLOP:
+			ui = tp->t_rexmit_slop;
+			INP_WUNLOCK(inp);
+			error = sooptcopyout(sopt, &ui, sizeof ui);
 			break;
 #endif
 

@@ -190,6 +190,7 @@ struct tcpcb {
 	u_int	t_tsomax;		/* TSO total burst length limit in bytes */
 	sbintime_t	t_delack;	/* delayed ack timer */
 	sbintime_t	t_delackmin;	/* min value of t_delack */
+	int	t_rexmit_slop;		/* slop value to add to RTO */
 	u_int	t_tsomaxsegcount;	/* TSO maximum segment count */
 	u_int	t_tsomaxsegsize;	/* TSO maximum segment size in bytes */
 	u_int	t_flags2;		/* More tcpcb flags storage */
@@ -838,8 +839,8 @@ int	 tcp_compute_pipe(struct tcpcb *tp);
 
 /*  1 < delack < tcp_delacktime - and should scale down with RTO/2 */
 #define TCPT_UPDATE_DELACK_TIMO(tp, rto) \
-	TCPT_RANGESET((tp)->t_delack, (rto) / 2, (tp)->t_delackmin, \
-	    TCPTV_DELACK * tick_sbt);
+	TCPT_RANGESET((tp)->t_delack, (rto) / 2, (tp)->t_rexmit_slop, \
+	    (tp)->t_delackmin, TCPTV_DELACK * tick_sbt)
 static inline void
 tcp_fields_to_host(struct tcphdr *th)
 {

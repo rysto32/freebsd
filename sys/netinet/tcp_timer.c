@@ -734,8 +734,8 @@ tcp_timer_rexmt(void * xtp)
 	}
 
 	TCPT_UPDATE_DELACK_TIMO(tp, rto);
-	TCPT_RANGESET(tp->t_rxtcur, rexmt,
-		      tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
+	TCPT_RANGESET(tp->t_rxtcur, rexmt, tp->t_rexmit_slop,
+	    tp->t_rttmin, TCPTV_REXMTMAX*tick_sbt);
 
 	/*
 	 * We enter the path for PLMTUD if connection is established or, if

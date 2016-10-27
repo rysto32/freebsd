@@ -1259,6 +1259,7 @@ tcp_newtcpcb(struct inpcb *inp)
 	tp->t_srtt = TCPTV_SRTTBASE;
 	tp->t_rttvar = ((TCPTV_RTOBASE - TCPTV_SRTTBASE) << TCP_RTTVAR_SHIFT) / 4;
 	tp->t_rttmin = tcp_rexmit_min*tick_sbt;
+	tp->t_rexmit_slop = tcp_rexmit_slop * tick_sbt;
 	tp->t_rxtcur = TCPTV_RTOBASE*tick_sbt;
 	tp->t_delack = tcp_delacktime*tick_sbt;
 	tp->t_delackmin = tcp_delacktime*tick_sbt;
