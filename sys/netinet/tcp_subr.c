@@ -725,7 +725,7 @@ tcp_init(void)
 	tcp_pcap_init();
 #endif
 
-	cpu_ts_getsbintime = getsbinuptime;
+	cpu_ts_getsbintime = sbinuptime;
 }
 
 #ifdef VIMAGE
