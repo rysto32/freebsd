@@ -136,9 +136,9 @@ static const char *tcptimers[] =
  */
 #define	TCPT_RANGESET(tv, value, slop, tvmin, tvmax) do { \
 	(tv) = (value) + (slop); \
-	if ((u_long)(tv) < (u_long)(tvmin)) \
+	if ((sbintime_t)(tv) < (sbintime_t)(tvmin)) \
 		(tv) = (tvmin); \
-	if ((u_long)(tv) > (u_long)(tvmax)) \
+	if ((sbintime_t)(tv) > (sbintime_t)(tvmax)) \
 		(tv) = (tvmax); \
 } while(0)
 

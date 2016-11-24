@@ -450,7 +450,7 @@ struct tcptw {
 #define	TCP_RTTVAR_SHIFT	4	/* shift for rttvar; 2 bits */
 #define	TCP_DELTA_SHIFT		2	/* see tcp_input.c */
 
-#define	TCP_REXMTVAL(tp) max((tp)->t_rttmin, (tp)->t_srtt + ((tp)->t_rttvar << 2))
+#define	TCP_REXMTVAL(tp) qmax((tp)->t_rttmin, (tp)->t_srtt + ((tp)->t_rttvar << 2))
 
 /*
  * TCP statistics.

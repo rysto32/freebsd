@@ -645,7 +645,7 @@ tcp_timer_rexmt(void * xtp)
 {
 	struct tcpcb *tp = xtp;
 	CURVNET_SET(tp->t_vnet);
-	int rexmt;
+	sbintime_t rexmt;
 	struct inpcb *inp;
 	sbintime_t rto;
 #ifdef TCPDEBUG
