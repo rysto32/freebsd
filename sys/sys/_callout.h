@@ -42,15 +42,21 @@
 
 struct lock_object;
 
-LIST_HEAD(callout_list, callout);
 SLIST_HEAD(callout_slist, callout);
 TAILQ_HEAD(callout_tailq, callout);
 
+struct callout_heap_entry
+{
+	struct callout *parent;
+	struct callout *left;
+	struct callout *right;
+};
+
 struct callout {
 	union {
-		LIST_ENTRY(callout) le;
 		SLIST_ENTRY(callout) sle;
 		TAILQ_ENTRY(callout) tqe;
+		struct callout_heap_entry heap;
 	} c_links;
 	sbintime_t c_time;			/* ticks to the event */
 	sbintime_t c_precision;			/* delta allowed wrt opt */

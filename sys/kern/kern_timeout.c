@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/bus.h>
 #include <sys/callout.h>
+#include <sys/callout_int.h>
 #include <sys/file.h>
 #include <sys/interrupt.h>
 #include <sys/kernel.h>
@@ -77,6 +78,8 @@ DPCPU_DECLARE(sbintime_t, hardclocktime);
 SDT_PROVIDER_DEFINE(callout_execute);
 SDT_PROBE_DEFINE1(callout_execute, , , callout__start, "struct callout *");
 SDT_PROBE_DEFINE1(callout_execute, , , callout__end, "struct callout *");
+SDT_PROBE_DEFINE2(callout_execute, , , callout__newest, "struct callout_cpu *",
+    "struct callout *");
 
 #ifdef CALLOUT_PROFILING
 static int avg_depth;
@@ -161,7 +164,7 @@ struct callout_cpu {
 	struct cc_exec 		cc_exec_entity[2];
 	struct callout		*cc_next;
 	struct callout		*cc_callout;
-	struct callout_list	*cc_callwheel;
+	struct callout_heap     cc_heap;
 	struct callout_tailq	cc_expireq;
 	struct callout_slist	cc_callfree;
 	sbintime_t		cc_firstevent;
@@ -318,10 +321,7 @@ callout_cpu_init(struct callout_cpu *cc, int cpu)
 	mtx_init(&cc->cc_lock, "callout", NULL, MTX_SPIN | MTX_RECURSE);
 	SLIST_INIT(&cc->cc_callfree);
 	cc->cc_inited = 1;
-	cc->cc_callwheel = malloc(sizeof(struct callout_list) * callwheelsize,
-	    M_CALLOUT, M_WAITOK);
-	for (i = 0; i < callwheelsize; i++)
-		LIST_INIT(&cc->cc_callwheel[i]);
+	callout_heap_init(&cc->cc_heap);
 	TAILQ_INIT(&cc->cc_expireq);
 	cc->cc_firstevent = SBT_MAX;
 	for (i = 0; i < 2; i++)
@@ -416,31 +416,27 @@ start_softclock(void *dummy)
 }
 SYSINIT(start_softclock, SI_SUB_SOFTINTR, SI_ORDER_FIRST, start_softclock, NULL);
 
-#define	CC_HASH_SHIFT	8
-
-static inline u_int
-callout_hash(sbintime_t sbt)
+static void
+callout_resched_et(struct callout_cpu *cc, struct callout *next)
 {
+	SDT_PROBE2(callout_execute, , , callout__newest, cc, next);
 
-	return (sbt >> (32 - CC_HASH_SHIFT));
-}
+	if (next == NULL) {
+		cc->cc_firstevent = SBT_MAX;
+		return;
+	}
 
-static inline u_int
-callout_get_bucket(sbintime_t sbt)
-{
-
-	return (callout_hash(sbt) & callwheelmask);
+	cc->cc_firstevent = next->c_time + next->c_precision;
+#ifndef NO_EVENTTIMERS
+	cpu_new_callout(next->c_cpu, cc->cc_firstevent, next->c_time);
+#endif
 }
 
 void
 callout_process(sbintime_t now)
 {
-	struct callout *tmp, *tmpn;
+	struct callout *tmp;
 	struct callout_cpu *cc;
-	struct callout_list *sc;
-	sbintime_t first, last, max, tmp_max;
-	uint32_t lookahead;
-	u_int firstb, lastb, nowb;
 #ifdef CALLOUT_PROFILING
 	int depth_dir = 0, mpcalls_dir = 0, lockcalls_dir = 0;
 #endif
@@ -448,103 +444,37 @@ callout_process(sbintime_t now)
 	cc = CC_SELF();
 	mtx_lock_spin_flags(&cc->cc_lock, MTX_QUIET);
 
-	/* Compute the buckets of the last scan and present times. */
-	firstb = callout_hash(cc->cc_lastscan);
 	cc->cc_lastscan = now;
-	nowb = callout_hash(now);
 
-	/* Compute the last bucket and minimum time of the bucket after it. */
-	if (nowb == firstb)
-		lookahead = (SBT_1S / 16);
-	else if (nowb - firstb == 1)
-		lookahead = (SBT_1S / 8);
-	else
-		lookahead = (SBT_1S / 2);
-	first = last = now;
-	first += (lookahead / 2);
-	last += lookahead;
-	last &= (0xffffffffffffffffLLU << (32 - CC_HASH_SHIFT));
-	lastb = callout_hash(last) - 1;
-	max = last;
+	while ((tmp = callout_heap_peek(&cc->cc_heap)) != NULL) {
+		/* Run the callout if present time within allowed. */
+		if (tmp->c_time > now)
+			break;
 
-	/*
-	 * Check if we wrapped around the entire wheel from the last scan.
-	 * In case, we need to scan entirely the wheel for pending callouts.
-	 */
-	if (lastb - firstb >= callwheelsize) {
-		lastb = firstb + callwheelsize - 1;
-		if (nowb - firstb >= callwheelsize)
-			nowb = lastb;
+		callout_heap_remove(&cc->cc_heap, tmp);
+
+		/*
+		 * Consumer told us the callout may be run
+		 * directly from hardware interrupt context.
+		 */
+		if (tmp->c_iflags & CALLOUT_DIRECT) {
+#ifdef CALLOUT_PROFILING
+			++depth_dir;
+#endif
+			softclock_call_cc(tmp, cc,
+#ifdef CALLOUT_PROFILING
+				&mpcalls_dir, &lockcalls_dir, NULL,
+#endif
+				1);
+		} else {
+			TAILQ_INSERT_TAIL(&cc->cc_expireq,
+				tmp, c_links.tqe);
+			tmp->c_iflags |= CALLOUT_PROCESSED;
+		}
 	}
 
-	/* Iterate callwheel from firstb to nowb and then up to lastb. */
-	do {
-		sc = &cc->cc_callwheel[firstb & callwheelmask];
-		tmp = LIST_FIRST(sc);
-		while (tmp != NULL) {
-			/* Run the callout if present time within allowed. */
-			if (tmp->c_time <= now) {
-				/*
-				 * Consumer told us the callout may be run
-				 * directly from hardware interrupt context.
-				 */
-				if (tmp->c_iflags & CALLOUT_DIRECT) {
-#ifdef CALLOUT_PROFILING
-					++depth_dir;
-#endif
-					cc_exec_next(cc) =
-					    LIST_NEXT(tmp, c_links.le);
-					cc->cc_bucket = firstb & callwheelmask;
-					LIST_REMOVE(tmp, c_links.le);
-					softclock_call_cc(tmp, cc,
-#ifdef CALLOUT_PROFILING
-					    &mpcalls_dir, &lockcalls_dir, NULL,
-#endif
-					    1);
-					tmp = cc_exec_next(cc);
-					cc_exec_next(cc) = NULL;
-				} else {
-					tmpn = LIST_NEXT(tmp, c_links.le);
-					LIST_REMOVE(tmp, c_links.le);
-					TAILQ_INSERT_TAIL(&cc->cc_expireq,
-					    tmp, c_links.tqe);
-					tmp->c_iflags |= CALLOUT_PROCESSED;
-					tmp = tmpn;
-				}
-				continue;
-			}
-			/* Skip events from distant future. */
-			if (tmp->c_time >= max)
-				goto next;
-			/*
-			 * Event minimal time is bigger than present maximal
-			 * time, so it cannot be aggregated.
-			 */
-			if (tmp->c_time > last) {
-				lastb = nowb;
-				goto next;
-			}
-			/* Update first and last time, respecting this event. */
-			if (tmp->c_time < first)
-				first = tmp->c_time;
-			tmp_max = tmp->c_time + tmp->c_precision;
-			if (tmp_max < last)
-				last = tmp_max;
-next:
-			tmp = LIST_NEXT(tmp, c_links.le);
-		}
-		/* Proceed with the next bucket. */
-		firstb++;
-		/*
-		 * Stop if we looked after present time and found
-		 * some event we can't execute at now.
-		 * Stop if we looked far enough into the future.
-		 */
-	} while (((int)(firstb - lastb)) <= 0);
-	cc->cc_firstevent = last;
-#ifndef NO_EVENTTIMERS
-	cpu_new_callout(curcpu, last, first);
-#endif
+	callout_resched_et(cc, tmp);
+
 #ifdef CALLOUT_PROFILING
 	avg_depth_dir += (depth_dir * 1000 - avg_depth_dir) >> 8;
 	avg_mpcalls_dir += (mpcalls_dir * 1000 - avg_mpcalls_dir) >> 8;
@@ -583,12 +513,12 @@ callout_lock(struct callout *c)
 	return (cc);
 }
 
-static void
+static bool
 callout_cc_add(struct callout *c, struct callout_cpu *cc,
     sbintime_t sbt, sbintime_t precision, void (*func)(void *),
     void *arg, int cpu, int flags)
 {
-	int bucket;
+	bool reschedule;
 
 	CC_LOCK_ASSERT(cc);
 	if (sbt < cc->cc_lastscan)
@@ -602,13 +532,10 @@ callout_cc_add(struct callout *c, struct callout_cpu *cc,
 	c->c_func = func;
 	c->c_time = sbt;
 	c->c_precision = precision;
-	bucket = callout_get_bucket(c->c_time);
 	CTR3(KTR_CALLOUT, "precision set for %p: %d.%08x",
 	    c, (int)(c->c_precision >> 32),
 	    (u_int)(c->c_precision & 0xffffffff));
-	LIST_INSERT_HEAD(&cc->cc_callwheel[bucket], c, c_links.le);
-	if (cc->cc_bucket == bucket)
-		cc_exec_next(cc) = c;
+	reschedule = callout_heap_insert(&cc->cc_heap, c);
 #ifndef NO_EVENTTIMERS
 	/*
 	 * Inform the eventtimers(4) subsystem there's a new callout
@@ -617,11 +544,13 @@ callout_cc_add(struct callout *c, struct callout_cpu *cc,
 	if (SBT_MAX - c->c_time < c->c_precision)
 		c->c_precision = SBT_MAX - c->c_time;
 	sbt = c->c_time + c->c_precision;
-	if (sbt < cc->cc_firstevent) {
+	if (reschedule) {
 		cc->cc_firstevent = sbt;
+		SDT_PROBE2(callout_execute, , , callout__newest, cc, c);
 		cpu_new_callout(cpu, sbt, c->c_time);
 	}
 #endif
+	return (reschedule);
 }
 
 static void
@@ -1019,8 +948,10 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 	struct callout_cpu *cc;
 	int cancelled, direct;
 	int ignore_cpu=0;
+	bool reschedule, resched_done;
 
 	cancelled = 0;
+	reschedule = false;
 	if (cpu == -1) {
 		ignore_cpu = 1;
 	} else if ((cpu >= MAXCPU) ||
@@ -1094,9 +1025,7 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 	}
 	if (c->c_iflags & CALLOUT_PENDING) {
 		if ((c->c_iflags & CALLOUT_PROCESSED) == 0) {
-			if (cc_exec_next(cc) == c)
-				cc_exec_next(cc) = LIST_NEXT(c, c_links.le);
-			LIST_REMOVE(c, c_links.le);
+			reschedule = callout_heap_remove(&cc->cc_heap, c);
 		} else {
 			TAILQ_REMOVE(&cc->cc_expireq, c, c_links.tqe);
 		}
@@ -1112,6 +1041,11 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 	 * to a more appropriate moment.
 	 */
 	if (c->c_cpu != cpu) {
+		if (reschedule) {
+			callout_resched_et(cc, callout_heap_peek(&cc->cc_heap));
+			reschedule = false;
+		}
+
 		if (cc_exec_curr(cc, direct) == c) {
 			/* 
 			 * Pending will have been removed since we are
@@ -1147,7 +1081,10 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 	}
 #endif
 
-	callout_cc_add(c, cc, to_sbt, precision, ftn, arg, cpu, flags);
+	resched_done = callout_cc_add(c, cc, to_sbt, precision, ftn, arg, cpu,
+	    flags);
+	if (reschedule && !resched_done)
+		callout_resched_et(cc, callout_heap_peek(&cc->cc_heap));
 	CTR6(KTR_CALLOUT, "%sscheduled %p func %p arg %p in %d.%08x",
 	    cancelled ? "re" : "", c, c->c_func, c->c_arg, (int)(to_sbt >> 32),
 	    (u_int)(to_sbt & 0xffffffff));
@@ -1178,6 +1115,7 @@ _callout_stop_safe(struct callout *c, int flags, void (*drain)(void *))
 	struct lock_class *class;
 	int direct, sq_locked, use_lock;
 	int cancelled, not_on_a_list;
+	bool reschedule;
 
 	if ((flags & CS_DRAIN) != 0)
 		WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, c->c_lock,
@@ -1408,9 +1346,10 @@ again:
 	    c, c->c_func, c->c_arg);
 	if (not_on_a_list == 0) {
 		if ((c->c_iflags & CALLOUT_PROCESSED) == 0) {
-			if (cc_exec_next(cc) == c)
-				cc_exec_next(cc) = LIST_NEXT(c, c_links.le);
-			LIST_REMOVE(c, c_links.le);
+			reschedule = callout_heap_remove(&cc->cc_heap, c);
+			if (reschedule)
+				callout_resched_et(cc,
+				    callout_heap_peek(&cc->cc_heap));
 		} else {
 			TAILQ_REMOVE(&cc->cc_expireq, c, c_links.tqe);
 		}
@@ -1515,6 +1454,7 @@ adjust_timeout_calltodo(struct timeval *time_change)
 }
 #endif /* APM_FIXUP_CALLTODO */
 
+#if 0
 static int
 flssbt(sbintime_t sbt)
 {
@@ -1632,6 +1572,8 @@ SYSCTL_PROC(_kern, OID_AUTO, callout_stat,
     CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     0, 0, sysctl_kern_callout_stat, "I",
     "Dump immediate statistic snapshot of the scheduled callouts");
+
+#endif
 
 #ifdef DDB
 static void
