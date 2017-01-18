@@ -520,11 +520,11 @@ tcp_timer_keep(void *xtp)
 				    tp->rcv_nxt, tp->snd_una - 1, 0);
 			free(t_template, M_TEMP);
 		}
-		callout_reset_sbt(&tp->t_timers->tt_keep, TP_KEEPINTVL(tp), SBT_1S,
-		    tcp_timer_keep, tp, 0);
+		callout_reset_sbt(&tp->t_timers->tt_keep, TP_KEEPINTVL(tp),
+		    SBT_1S, tcp_timer_keep, tp, 0);
 	} else
-		callout_reset_sbt(&tp->t_timers->tt_keep, TP_KEEPIDLE(tp), SBT_1S,
-			      tcp_timer_keep, tp, 0);
+		callout_reset_sbt(&tp->t_timers->tt_keep, TP_KEEPIDLE(tp),
+		    SBT_1S, tcp_timer_keep, tp, 0);
 
 #ifdef TCPDEBUG
 	if (inp->inp_socket->so_options & SO_DEBUG)
