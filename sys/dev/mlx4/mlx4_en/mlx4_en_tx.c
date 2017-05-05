@@ -448,7 +448,6 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 		if (atomic_fetchadd_int(&priv->blocked, -1) == 1)
 			atomic_clear_int(&dev->if_drv_flags ,IFF_DRV_OACTIVE);
 		ring->wake_queue++;
-		priv->port_stats.wake_queue++;
 	}
 	return (0);
 }
@@ -712,7 +711,6 @@ static int mlx4_en_xmit(struct mlx4_en_priv *priv, int tx_ind, struct mbuf **mbp
 			atomic_add_int(&priv->blocked, 1);
 		/* Set HW-queue-is-full flag */
 		atomic_set_int(&ifp->if_drv_flags, IFF_DRV_OACTIVE);
-		priv->port_stats.queue_stopped++;
 		ring->blocked = 1;
 		ring->queue_stopped++;
 
@@ -757,7 +755,6 @@ static int mlx4_en_xmit(struct mlx4_en_priv *priv, int tx_ind, struct mbuf **mbp
 
 	/* do statistics */
 	if (likely(tx_desc->ctrl.srcrb_flags != CTRL_FLAGS)) {
-		priv->port_stats.tx_chksum_offload++;
 		ring->tx_csum++;
 	}
 
@@ -795,7 +792,7 @@ static int mlx4_en_xmit(struct mlx4_en_priv *priv, int tx_ind, struct mbuf **mbp
 			num_pkts = DIV_ROUND_UP(payload_len, mss);
 		ring->bytes += payload_len + (num_pkts * ihs);
 		ring->packets += num_pkts;
-		priv->port_stats.tso_packets++;
+		ring->tso_packets++;
 		/* store pointer to inline header */
 		dseg_inline = dseg;
 		/* copy data inline */

@@ -278,6 +278,7 @@ struct mlx4_en_tx_ring {
 	unsigned long queue_stopped;
 	unsigned long oversized_packets;
 	unsigned long wake_queue;
+	unsigned long tso_packets;
 	struct mlx4_bf bf;
 	bool bf_enabled;
 	int hwtstamp_tx_type;
@@ -330,6 +331,7 @@ struct mlx4_en_rx_ring {
 #endif
 	unsigned long csum_ok;
 	unsigned long csum_none;
+	unsigned long alloc_failed;
 	int hwtstamp_rx_filter;
 	int numa_node;
 	struct lro_ctrl lro;

@@ -183,19 +183,23 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 
 	priv->port_stats.rx_chksum_good = 0;
 	priv->port_stats.rx_chksum_none = 0;
+	priv->port_stats.rx_alloc_failed = 0;
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		priv->port_stats.rx_chksum_good += priv->rx_ring[i]->csum_ok;
 		priv->port_stats.rx_chksum_none += priv->rx_ring[i]->csum_none;
+		priv->port_stats.rx_alloc_failed += priv->rx_ring[i]->alloc_failed;
 	}
 
 	priv->port_stats.tx_chksum_offload = 0;
 	priv->port_stats.queue_stopped = 0;
 	priv->port_stats.wake_queue = 0;
+	priv->port_stats.tso_packets = 0;
 	for (i = 0; i < priv->tx_ring_num; i++) {
 		priv->port_stats.tx_chksum_offload += priv->tx_ring[i]->tx_csum;
 		priv->port_stats.queue_stopped += priv->tx_ring[i]->queue_stopped;
 		priv->port_stats.wake_queue += priv->tx_ring[i]->wake_queue;
 		priv->port_stats.oversized_packets += priv->tx_ring[i]->oversized_packets;
+		priv->port_stats.tso_packets += priv->tx_ring[i]->tso_packets;
 	}
 	/* RX Statistics */
 	priv->pkstats.rx_packets = be64_to_cpu(mlx4_en_stats->RTOT_prio_0) +

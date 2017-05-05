@@ -174,7 +174,7 @@ mlx4_en_prepare_rx_desc(struct mlx4_en_priv *priv,
 	mb_list->mbuf = NULL;
 
 	if (mlx4_en_alloc_buf(ring, &rx_desc->data[0].addr, mb_list)) {
-		priv->port_stats.rx_alloc_failed++;
+		ring->alloc_failed++;
 		return (-ENOMEM);
 	}
 	return (0);
@@ -630,7 +630,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 		    (IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6)) &&
 		    (cqe->status & cpu_to_be16(MLX4_CQE_STATUS_IPOK)) &&
 		    (cqe->checksum == cpu_to_be16(0xffff))) {
-			priv->port_stats.rx_chksum_good++;
+			ring->csum_ok++;
 			mb->m_pkthdr.csum_flags =
 			    CSUM_IP_CHECKED | CSUM_IP_VALID |
 			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
@@ -654,7 +654,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 			INC_PERF_COUNTER(priv->pstats.lro_misses);
 		} else {
 			mb->m_pkthdr.csum_flags = 0;
-			priv->port_stats.rx_chksum_none++;
+			ring->csum_none++;
 		}
 
 		/* Push it up the stack */
