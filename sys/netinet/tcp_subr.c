@@ -2774,6 +2774,9 @@ tcp_inptoxtp(const struct inpcb *inp, struct xtcpcb *xt)
 		xt->t_sndzerowin = tp->t_sndzerowin;
 		xt->t_sndrexmitpack = tp->t_sndrexmitpack;
 		xt->t_rcvoopack = tp->t_rcvoopack;
+		xt->t_srtt = tp->t_srtt;
+		xt->t_rttvar = tp->t_rttvar;
+		xt->t_rto = tp->t_rxtcur;
 
 		now = getsbinuptime();
 #define	COPYTIMER(ttt)	do {						\

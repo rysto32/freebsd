@@ -639,7 +639,10 @@ struct xtcpcb {
 	size_t		xt_len;		/* length of this structure */
 	struct xinpcb	xt_inp;
 	char		xt_stack[TCP_FUNCTION_NAME_LEN_MAX];	/* (n) */
-	int64_t		spare64[8];
+	sbintime_t	t_srtt;			/* (s) */
+	sbintime_t	t_rttvar;		/* (s) */
+	sbintime_t	t_rto;			/* (s) */
+	int64_t		spare64[5];
 	int32_t		t_state;		/* (s,p) */
 	uint32_t	t_flags;		/* (s,p) */
 	int32_t		t_sndzerowin;		/* (s) */

@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
+#include <sys/time.h>
 
 #include <net/route.h>
 #include <net/if_arp.h>
@@ -302,11 +303,12 @@ protopr(u_long off, const char *name, int af1, int proto)
 				    "Proto", "Listen", "Local Address");
 			else if (Tflag)
 				xo_emit((Aflag && !Wflag) ?
-    "{T:/%-5.5s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-18.18s} {T:/%s}" :
+    "{T:/%-5.5s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-18.18s} {T:/%s}" :
 				    ((!Wflag || af1 == AF_INET) ?
-    "{T:/%-5.5s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-22.22s} {T:/%s}" :
-    "{T:/%-5.5s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-45.45s} {T:/%s}"),
+    "{T:/%-5.5s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-22.22s} {T:/%s}" :
+    "{T:/%-5.5s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-6.6s} {T:/%-45.45s} {T:/%s}"),
 				    "Proto", "Rexmit", "OOORcv", "0-win",
+				    "srtt", "rttvar", "rto",
 				    "Local Address", "Foreign Address");
 			else {
 				xo_emit((Aflag && !Wflag) ?
@@ -373,9 +375,14 @@ protopr(u_long off, const char *name, int af1, int proto)
 			if (istcp)
 				xo_emit("{:sent-retransmit-packets/%6u} "
 				    "{:received-out-of-order-packets/%6u} "
-				    "{:sent-zero-window/%6u} ",
+				    "{:sent-zero-window/%6u} "
+				    "{:smoothed-round-trip-time/%6u} "
+				    "{:round-trip-time-variance/%6u} "
+				    "{:retransmit-timeout/%6u} ",
 				    tp->t_sndrexmitpack, tp->t_rcvoopack,
-				    tp->t_sndzerowin);
+				    tp->t_sndzerowin, tp->t_srtt / SBT_1US,
+				    tp->t_rttvar / SBT_1US,
+				    tp->t_rto / SBT_1US);
 			else
 				xo_emit("{P:/%21s}", "");
 		} else {
