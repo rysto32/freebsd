@@ -102,6 +102,9 @@ struct tcphdr {
 #define	   TCPOLEN_FAST_OPEN_MIN	6
 #define	   TCPOLEN_FAST_OPEN_MAX	18
 
+#define	TCPOPT_HIGH_RES_TIMERS	253
+#define	   TCPOLEN_HIGH_RES_TIMERS 2
+
 /* Miscellaneous constants */
 #define	MAX_SACK_BLKS	6	/* Max # SACK blocks stored at receiver side */
 #define	TCP_MAX_SACK	4	/* MAX # SACKs sent in any segment */
@@ -174,6 +177,9 @@ struct tcphdr {
 #define	TCP_PCAP_OUT	2048	/* number of output packets to keep */
 #define	TCP_PCAP_IN	4096	/* number of input packets to keep */
 #define TCP_FUNCTION_BLK 8192	/* Set the tcp function pointers to the specified stack */
+#define	TCP_HIGH_RES_TIMERS 8193 /* set/get high res timer mode */
+/* The next value will be 8194!  Stop using powers of 2 for these values! */
+
 /* Start of reserved space for third-party user-settable options. */
 #define	TCP_VENDOR	SO_VENDOR
 

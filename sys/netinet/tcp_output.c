@@ -863,6 +863,8 @@ send:
 		if (tp->t_flags & TF_SIGNATURE)
 			to.to_flags |= TOF_SIGNATURE;
 #endif /* TCP_SIGNATURE */
+		if ((tp->t_flags2 & TF2_HIGH_RES_TIMERS) && (flags & TH_SYN))
+			to.to_flags |= TOF_HIGH_RES_TIMERS;
 
 		/* Processing the options. */
 		hdrlen += optlen = tcp_addoptions(&to, opt);
@@ -1829,6 +1831,16 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 			break;
 			}
 #endif
+		case TOF_HIGH_RES_TIMERS:
+			{
+			if (TCP_MAXOLEN - optlen < TCPOLEN_HIGH_RES_TIMERS)
+				continue;
+
+			*optp++ = TCPOPT_HIGH_RES_TIMERS;
+			*optp++ = TCPOLEN_HIGH_RES_TIMERS;
+			optlen += TCPOLEN_HIGH_RES_TIMERS;
+			}
+			break;
 		default:
 			panic("%s: unknown TCP option type", __func__);
 			break;

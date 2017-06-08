@@ -352,6 +352,7 @@ TAILQ_HEAD(tcp_funchead, tcp_function);
 #define	TF2_PLPMTU_BLACKHOLE	0x00000001 /* Possible PLPMTUD Black Hole. */
 #define	TF2_PLPMTU_PMTUD	0x00000002 /* Allowed to attempt PLPMTUD. */
 #define	TF2_PLPMTU_MAXSEGSNT	0x00000004 /* Last seg sent was full seg. */
+#define	TF2_HIGH_RES_TIMERS	0x00000008 /* high res timers mode */
 
 /*
  * Structure to hold TCP options that are only used during segment
@@ -370,7 +371,8 @@ struct tcpopt {
 #define	TOF_SIGNATURE	0x0040		/* TCP-MD5 signature option (RFC2385) */
 #define	TOF_SACK	0x0080		/* Peer sent SACK option */
 #define	TOF_FASTOPEN	0x0100		/* TCP Fast Open (TFO) cookie */
-#define	TOF_MAXOPT	0x0200
+#define	TOF_HIGH_RES_TIMERS 0x0200	/* High-res timers (Experimental) */
+#define	TOF_MAXOPT	0x0400
 	u_int32_t	to_tsval;	/* new timestamp */
 	u_int32_t	to_tsecr;	/* reflected timestamp */
 	u_char		*to_sacks;	/* pointer to the first SACK blocks */

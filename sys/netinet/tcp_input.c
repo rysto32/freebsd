@@ -3469,6 +3469,13 @@ tcp_dooptions(struct tcpopt *to, u_char *cp, int cnt, int flags)
 			to->to_tfo_cookie = to->to_tfo_len ? cp + 2 : NULL;
 			break;
 #endif
+		case TCPOPT_HIGH_RES_TIMERS:
+			if (optlen != TCPOLEN_HIGH_RES_TIMERS)
+				continue;
+			if (!(flags & TO_SYN))
+				continue;
+			to->to_flags |= TOF_HIGH_RES_TIMERS;
+			break;
 		default:
 			continue;
 		}

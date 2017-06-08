@@ -1819,6 +1819,28 @@ unlock_and_done:
 				tp->t_flags &= ~TF_FASTOPEN;
 			goto unlock_and_done;
 #endif
+		case TCP_HIGH_RES_TIMERS:
+			INP_WUNLOCK(inp);
+
+			error = sooptcopyin(sopt, &optval, sizeof optval,
+			    sizeof optval);
+			if (error)
+				return (error);
+
+			if (optval != 0 && optval != 1)
+				return (EINVAL);
+
+			INP_WLOCK_RECHECK(inp);
+			if (tp->t_state > TCPS_LISTEN) {
+				error = EBUSY;
+				goto unlock_and_done;
+			}
+
+			if (optval)
+				tp->t_flags2 |= TF2_HIGH_RES_TIMERS;
+			else
+				tp->t_flags2 &= ~TF2_HIGH_RES_TIMERS;
+			goto unlock_and_done;
 
 		default:
 			INP_WUNLOCK(inp);

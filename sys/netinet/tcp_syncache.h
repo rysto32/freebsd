@@ -91,6 +91,7 @@ struct syncache {
 #define SCF_SIGNATURE	0x20			/* send MD5 digests */
 #define SCF_SACK	0x80			/* send SACK option */
 #define SCF_ECN		0x100			/* send ECN setup packet */
+#define SCF_HIGH_RES	0x200			/* send high-res timers option */
 
 struct syncache_head {
 	struct mtx	sch_mtx;

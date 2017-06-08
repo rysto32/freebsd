@@ -887,6 +887,9 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	if (sc->sc_flags & SCF_ECN)
 		tp->t_flags |= TF_ECN_PERMIT;
 
+	if (sc->sc_flags & SCF_HIGH_RES)
+		tp->t_flags2 |= TF2_HIGH_RES_TIMERS;
+
 	/*
 	 * Set up MSS and get cached values from tcp_hostcache.
 	 * This might overwrite some of the defaults we just set.
@@ -1223,7 +1226,7 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	struct syncache *sc = NULL;
 	struct syncache_head *sch;
 	struct mbuf *ipopts = NULL;
-	u_int ltflags;
+	u_int ltflags, lt2flags;
 	int win, ip_ttl, ip_tos;
 	char *s;
 	int rv = 0;
@@ -1263,6 +1266,7 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	ip_tos = inp->inp_ip_tos;
 	win = sbspace(&so->so_rcv);
 	ltflags = (tp->t_flags & (TF_NOOPT | TF_SIGNATURE));
+	lt2flags = (tp->t_flags2 & TF2_HIGH_RES_TIMERS);
 
 #ifdef TCP_RFC7413
 	if (V_tcp_fastopen_enabled && IS_FASTOPEN(tp->t_flags) &&
@@ -1528,6 +1532,9 @@ skip_alloc:
 		sc->sc_flags |= SCF_NOOPT;
 	if ((th->th_flags & (TH_ECE|TH_CWR)) && V_tcp_do_ecn)
 		sc->sc_flags |= SCF_ECN;
+	if ((to->to_flags & TOF_HIGH_RES_TIMERS) &&
+	    (lt2flags & TF2_HIGH_RES_TIMERS) && (sc != &scs))
+		sc->sc_flags |= SCF_HIGH_RES;
 
 	if (V_tcp_syncookies)
 		sc->sc_iss = syncookie_generate(sch, sc);
