@@ -326,6 +326,7 @@ struct mlx4_en_rx_ring {
 	bus_dma_tag_t dma_tag;
 	struct mlx4_en_rx_spare spare;
 	u32 size ;	/* number of Rx descs*/
+	u32 num_mbufs;
 	u32 actual_size;
 	u32 size_mask;
 	u16 stride;
@@ -587,7 +588,7 @@ struct mlx4_en_priv {
 	u32 rx_alloc_size;
 	u32 rx_buf_size;
         u16 num_frags;
-	u16 log_rx_info;
+	u16 log_mbuf;
 
 	struct mlx4_en_tx_ring **tx_ring;
 	struct mlx4_en_rx_ring *rx_ring[MAX_RX_RINGS];

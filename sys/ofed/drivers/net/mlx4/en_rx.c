@@ -75,28 +75,31 @@ static void mlx4_en_init_rx_desc(struct mlx4_en_priv *priv,
 }
 
 static int mlx4_en_alloc_buf(struct mlx4_en_priv *priv,
-			     struct mlx4_en_rx_desc *rx_desc,
-			     struct mbuf **mb_list,
-			     int i)
+     __be64 *pdma, struct mlx4_en_rx_mbuf *mb_list, int flags, int frag_size)
 {
-	struct mlx4_en_dev *mdev = priv->mdev;
-	struct mlx4_en_frag_info *frag_info = &priv->frag_info[i];
+	bus_dma_segment_t segs[1];
 	struct mbuf *mb;
+	int nsegs;
+	int err;
 	dma_addr_t dma;
 
-	if (i == 0)
-		mb = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR, frag_info->frag_size);
-	else
-		mb = m_getjcl(M_NOWAIT, MT_DATA, 0, frag_info->frag_size);
+	mb = m_getjcl(M_NOWAIT, MT_DATA, flags, frag_size);
 	if (mb == NULL) {
 		priv->port_stats.rx_alloc_failed++;
 		return -ENOMEM;
 	}
-	dma = pci_map_single(mdev->pdev, mb->m_data, frag_info->frag_size,
-			     PCI_DMA_FROMDEVICE);
-	rx_desc->data[i].addr = cpu_to_be64(dma);
-	mb_list[i] = mb;
-	return 0;
+	err = -bus_dmamap_load_mbuf_sg(ring->dma_tag, mb_list->dma_map,
+	    mb, segs, &nsegs, BUS_DMA_NOWAIT);
+	if (unlikely(err != 0)) {
+		m_freem(mb);
+		return (err);
+	}
+
+	*pdma = cpu_to_be64(segs[0].ds_addr);
+	mb_list->mbuf = mb;
+
+	bus_dmamap_sync(ring->dma_tag, mb_list->dma_map, BUS_DMASYNC_PREREAD);
+	return (0);
 }
 
 
@@ -105,18 +108,23 @@ static int mlx4_en_prepare_rx_desc(struct mlx4_en_priv *priv,
 {
         struct mlx4_en_rx_desc *rx_desc = (struct mlx4_en_rx_desc *)
 		    (ring->buf + (index * ring->stride));
-        struct mbuf **mb_list = ring->rx_info + (index << priv->log_rx_info);
+        struct mlx4_en_rx_mbuf *mb_list = ring->mbuf + (index << priv->log_mbuf);
         int i;
+	int flags;
 
-        for (i = 0; i < priv->num_frags; i++)
-                if (mlx4_en_alloc_buf(priv, rx_desc, mb_list, i))
+	flags = M_PKTHDR;
+        for (i = 0; i < priv->num_frags; i++) {
+                if (mlx4_en_alloc_buf(priv, &rx_desc->data[i].addr, &mb_list[i],
+		    flags, priv->frag_info[i].frag_size))
                         goto err;
+		flags = 0;
+	}
 
         return 0;
 
 err:
         while (i--)
-                m_free(mb_list[i]);
+                m_free(mb_list[i].mbuf);
         return -ENOMEM;
 }
 
@@ -129,28 +137,18 @@ static void mlx4_en_free_rx_desc(struct mlx4_en_priv *priv,
 				 struct mlx4_en_rx_ring *ring,
 				 int index)
 {
-	struct mlx4_en_frag_info *frag_info;
-	struct mlx4_en_dev *mdev = priv->mdev;
-	struct mbuf **mb_list;
-	struct mlx4_en_rx_desc *rx_desc = (struct mlx4_en_rx_desc *)
-	    (ring->buf + (index << ring->log_stride));
-	dma_addr_t dma;
+	bus_dmamap_t map = mb_list->dma_map;
+	struct mlx4_en_rx_mbuf *mb_list;
 	int nr;
 
-	mb_list = ring->rx_info + (index << priv->log_rx_info);
+	mb_list = ring->mbuf + (index << priv->log_mbuf);
 	for (nr = 0; nr < priv->num_frags; nr++) {
 		en_dbg(DRV, priv, "Freeing fragment:%d\n", nr);
- 		frag_info = &priv->frag_info[nr];
-		dma = be64_to_cpu(rx_desc->data[nr].addr);
 
-#if BITS_PER_LONG == 64
-		en_dbg(DRV, priv, "Unmaping buffer at dma:0x%lx\n", (u64) dma);
-#elif BITS_PER_LONG == 32
-                en_dbg(DRV, priv, "Unmaping buffer at dma:0x%llx\n", (u64) dma);
-#endif
-		pci_unmap_single(mdev->pdev, dma, frag_info->frag_size,
-				 PCI_DMA_FROMDEVICE);
-		m_free(mb_list[nr]);
+		bus_dmamap_sync(ring->dma_tag, map, BUS_DMASYNC_POSTREAD);
+		bus_dmamap_unload(ring->dma_tag, map);
+		m_freem(mb_list->mbuf);
+		mb_list->mbuf = NULL;	/* safety clearing */
 	}
 }
 
@@ -255,8 +253,7 @@ void mlx4_en_calc_rx_buf(struct net_device *dev)
 
 	priv->num_frags = frag;
 	priv->rx_mb_size = eff_mtu;
-	priv->log_rx_info =
-	    ROUNDUP_LOG2(priv->num_frags * sizeof(struct mbuf *));
+	priv->log_mbuf = ROUNDUP_LOG2(priv->num_frags);
 
 	en_dbg(DRV, priv, "Rx buffer scatter-list (effective-mtu:%d "
 		  "num_frags:%d):\n", eff_mtu, priv->num_frags);
@@ -282,6 +279,24 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
                 en_err(priv, "Failed to allocate RX ring structure\n");
                 return -ENOMEM;
         }
+
+	/* Create DMA descriptor TAG */
+	if ((err = -bus_dma_tag_create(
+	    bus_get_dma_tag(mdev->pdev->dev.bsddev),
+	    1,				/* any alignment */
+	    0,				/* no boundary */
+	    BUS_SPACE_MAXADDR,		/* lowaddr */
+	    BUS_SPACE_MAXADDR,		/* highaddr */
+	    NULL, NULL,			/* filter, filterarg */
+	    MJUMPAGESIZE,		/* maxsize */
+	    1,				/* nsegments */
+	    MJUMPAGESIZE,		/* maxsegsize */
+	    0,				/* flags */
+	    NULL, NULL,			/* lockfunc, lockfuncarg */
+	    &ring->dma_tag))) {
+		en_err(priv, "Failed to create DMA tag\n");
+		goto err_ring;
+	}
  
 	ring->prod = 0;
 	ring->cons = 0;
@@ -292,22 +307,32 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 	ring->log_stride = ffs(ring->stride) - 1;
 	ring->buf_size = ring->size * ring->stride + TXBB_SIZE;
 
-	tmp = size * roundup_pow_of_two(MLX4_EN_MAX_RX_FRAGS *
-	                                        sizeof(struct mbuf *));
+	ring->num_mbufs = size * roundup_pow_of_two(MLX4_EN_MAX_RX_FRAGS);
+	tmp = ring->num_mbufs * sizeof(struct mlx4_en_rx_mbuf);
 
-        ring->rx_info = kmalloc(tmp, GFP_KERNEL);
-        if (!ring->rx_info) {
+        ring->mbuf = kmalloc(tmp, GFP_KERNEL);
+        if (!ring->mbuf) {
                 err = -ENOMEM;
                 goto err_ring;
         }
 
-	en_dbg(DRV, priv, "Allocated rx_info ring at addr:%p size:%d\n",
-		 ring->rx_info, tmp);
+	for (x = 0; x != ring->num_mbufs; x++) {
+		err = -bus_dmamap_create(ring->dma_tag, 0,
+		    &ring->mbuf[x].dma_map);
+		if (err != 0) {
+			while (x--)
+				bus_dmamap_destroy(ring->dma_tag,
+				    ring->mbuf[x].dma_map);
+			goto err_info;
+		}
+	}
+	en_dbg(DRV, priv, "Allocated mbuf ring at addr:%p size:%d\n",
+		 ring->mbuf, tmp);
 
 	err = mlx4_alloc_hwq_res(mdev->dev, &ring->wqres,
 				 ring->buf_size, 2 * PAGE_SIZE);
 	if (err)
-		goto err_info;
+		goto err_dma_map;
 
 	err = mlx4_en_map_buffer(&ring->wqres.buf);
 	if (err) {
@@ -320,8 +345,16 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 
 err_hwq:
 	mlx4_free_hwq_res(mdev->dev, &ring->wqres, ring->buf_size);
+err_dma_map:
+	for (x = 0; x != size; x++) {
+		bus_dmamap_destroy(ring->dma_tag,
+		    ring->mbuf[x].dma_map);
+	}
+	bus_dmamap_destroy(ring->dma_tag, ring->spare.dma_map);
 err_info:
-	vfree(ring->rx_info);
+	vfree(ring->mbuf);
+err_dma_tag:
+	bus_dma_tag_destroy(ring->dma_tag);
 err_ring:
 	kfree(ring);
 
@@ -412,10 +445,14 @@ void mlx4_en_destroy_rx_ring(struct mlx4_en_priv *priv,
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_en_rx_ring *ring = *pring;
+	uint32_t x;
 
 	mlx4_en_unmap_buffer(&ring->wqres.buf);
 	mlx4_free_hwq_res(mdev->dev, &ring->wqres, size * stride + TXBB_SIZE);
-	vfree(ring->rx_info);
+	for (x = 0; x != ring->num_mbufs; x++)
+		bus_dmamap_destroy(ring->dma_tag, ring->mbuf[x].dma_map);
+	vfree(ring->mbuf);
+	bus_dma_tag_destroy(ring->dma_tag);
 	kfree(ring);
 	*pring = NULL;
 #ifdef CONFIG_RFS_ACCEL
@@ -576,7 +613,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 	/* Process all completed CQEs */
 	while (XNOR(cqe->owner_sr_opcode & MLX4_CQE_OWNER_MASK,
 		    cons_index & size)) {
-		mb_list = ring->rx_info + (index << priv->log_rx_info);
+		mb_list = ring->mbuf + (index << priv->log_mbuf);
 		rx_desc = (struct mlx4_en_rx_desc *)
 		    (ring->buf + (index << ring->log_stride));
 
