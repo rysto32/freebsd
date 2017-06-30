@@ -66,9 +66,11 @@ static void mlx4_en_init_rx_desc(struct mlx4_en_priv *priv,
 		ip_align = 0;
 	}
 
-	/* If the number of used fragments does not fill up the ring stride,
-	 *          * remaining (unused) fragments must be padded with null address/size
-	 *                   * and a special memory key */
+	/*
+	 * If the number of used fragments does not fill up the ring
+	 * stride, remaining (unused) fragments must be padded with
+	 * null address/size and a special memory key:
+	 */
 	possible_frags = (ring->stride - sizeof(struct mlx4_en_rx_desc)) / DS_SIZE;
 	for (i = priv->num_frags; i < possible_frags; i++) {
 		rx_desc->data[i].byte_count = 0;
@@ -78,23 +80,30 @@ static void mlx4_en_init_rx_desc(struct mlx4_en_priv *priv,
 
 }
 
-static int mlx4_en_alloc_buf(struct mlx4_en_priv *priv,
+static int
+mlx4_en_alloc_buf(struct mlx4_en_priv *priv, struct mlx4_en_rx_ring *ring,
      __be64 *pdma, struct mlx4_en_rx_mbuf *mb_list, int flags, int frag_size)
 {
 	bus_dma_segment_t segs[1];
 	struct mbuf *mb;
 	int nsegs;
 	int err;
-	dma_addr_t dma;
 
 	mb = m_getjcl(M_NOWAIT, MT_DATA, flags, frag_size);
-	if (mb == NULL) {
+	if (unlikely(mb == NULL)) {
 		priv->port_stats.rx_alloc_failed++;
 		return -ENOMEM;
 	}
 
+	/* setup correct length */
+	mb->m_len = frag_size;
+
 	/* make sure IP header gets aligned */
-	m_adj(mb, MLX4_NET_IP_ALIGN);
+	if (flags & M_PKTHDR) {
+		mb->m_pkthdr.len = frag_size;
+		m_adj(mb, MLX4_NET_IP_ALIGN);
+	}
+
 	err = -bus_dmamap_load_mbuf_sg(ring->dma_tag, mb_list->dma_map,
 	    mb, segs, &nsegs, BUS_DMA_NOWAIT);
 	if (unlikely(err != 0)) {
@@ -109,9 +118,43 @@ static int mlx4_en_alloc_buf(struct mlx4_en_priv *priv,
 	return (0);
 }
 
+static void
+mlx4_en_free_buf(struct mlx4_en_priv *priv, struct mlx4_en_rx_ring *ring,
+    struct mlx4_en_rx_mbuf *mb_list)
+{
+	bus_dmamap_t map;
+	bus_dma_tag_t tag;
+	int nr;
 
-static int mlx4_en_prepare_rx_desc(struct mlx4_en_priv *priv,
-                                   struct mlx4_en_rx_ring *ring, int index)
+	for (nr = 0; nr < priv->num_frags; nr++) {
+		en_dbg(DRV, priv, "Freeing fragment:%d\n", nr);
+
+		if (mb_list->mbuf != NULL) {
+			map = mb_list->dma_map;
+			tag = ring->dma_tag;
+
+			bus_dmamap_sync(tag, map, BUS_DMASYNC_POSTREAD);
+			bus_dmamap_unload(tag, map);
+			m_freem(mb_list->mbuf);
+			mb_list->mbuf = NULL;	/* safety clearing */
+		}
+		mb_list++;
+	}
+}
+
+static void
+mlx4_en_free_rx_desc(struct mlx4_en_priv *priv, struct mlx4_en_rx_ring *ring,
+    int index)
+{
+	struct mlx4_en_rx_mbuf *mb_list;
+
+	mb_list = ring->mbuf + (index << priv->log_mbuf);
+	mlx4_en_free_buf(priv, ring, mb_list);
+}
+
+static int
+mlx4_en_prepare_rx_desc(struct mlx4_en_priv *priv,
+    struct mlx4_en_rx_ring *ring, int index)
 {
         struct mlx4_en_rx_desc *rx_desc = (struct mlx4_en_rx_desc *)
 		    (ring->buf + (index * ring->stride));
@@ -119,44 +162,26 @@ static int mlx4_en_prepare_rx_desc(struct mlx4_en_priv *priv,
         int i;
 	int flags;
 
+	mlx4_en_free_buf(priv, ring, mb_list);
+
 	flags = M_PKTHDR;
         for (i = 0; i < priv->num_frags; i++) {
-                if (mlx4_en_alloc_buf(priv, &rx_desc->data[i].addr, &mb_list[i],
+                if (mlx4_en_alloc_buf(priv, ring, &rx_desc->data[i].addr, &mb_list[i],
 		    flags, priv->frag_info[i].frag_size))
                         goto err;
 		flags = 0;
 	}
-
-        return 0;
+	return (0);
 
 err:
-        while (i--)
-                m_free(mb_list[i].mbuf);
-        return -ENOMEM;
+	mlx4_en_free_buf(priv, ring, mb_list);
+	return -ENOMEM;
 }
 
-static inline void mlx4_en_update_rx_prod_db(struct mlx4_en_rx_ring *ring)
+static inline void
+mlx4_en_update_rx_prod_db(struct mlx4_en_rx_ring *ring)
 {
 	*ring->wqres.db.db = cpu_to_be32(ring->prod & 0xffff);
-}
-
-static void mlx4_en_free_rx_desc(struct mlx4_en_priv *priv,
-				 struct mlx4_en_rx_ring *ring,
-				 int index)
-{
-	bus_dmamap_t map = mb_list->dma_map;
-	struct mlx4_en_rx_mbuf *mb_list;
-	int nr;
-
-	mb_list = ring->mbuf + (index << priv->log_mbuf);
-	for (nr = 0; nr < priv->num_frags; nr++) {
-		en_dbg(DRV, priv, "Freeing fragment:%d\n", nr);
-
-		bus_dmamap_sync(ring->dma_tag, map, BUS_DMASYNC_POSTREAD);
-		bus_dmamap_unload(ring->dma_tag, map);
-		m_freem(mb_list->mbuf);
-		mb_list->mbuf = NULL;	/* safety clearing */
-	}
 }
 
 static int mlx4_en_fill_rx_buffers(struct mlx4_en_priv *priv)
@@ -279,8 +304,9 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_en_rx_ring *ring;
-	int err = -ENOMEM;
+	int err;
 	int tmp;
+	uint32_t x;
 
         ring = kzalloc(sizeof(struct mlx4_en_rx_ring), GFP_KERNEL);
         if (!ring) {
@@ -311,17 +337,17 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 	ring->size = size;
 	ring->size_mask = size - 1;
 	ring->stride = roundup_pow_of_two(sizeof(struct mlx4_en_rx_desc) +
-	                                          DS_SIZE * MLX4_EN_MAX_RX_FRAGS);
+	    DS_SIZE * MLX4_EN_MAX_RX_FRAGS);
 	ring->log_stride = ffs(ring->stride) - 1;
 	ring->buf_size = ring->size * ring->stride + TXBB_SIZE;
 
 	ring->num_mbufs = size * roundup_pow_of_two(MLX4_EN_MAX_RX_FRAGS);
 	tmp = ring->num_mbufs * sizeof(struct mlx4_en_rx_mbuf);
 
-        ring->mbuf = kmalloc(tmp, GFP_KERNEL);
-        if (!ring->mbuf) {
+        ring->mbuf = kzalloc(tmp, GFP_KERNEL);
+        if (ring->mbuf == NULL) {
                 err = -ENOMEM;
-                goto err_ring;
+                goto err_dma_tag;
         }
 
 	for (x = 0; x != ring->num_mbufs; x++) {
@@ -334,7 +360,7 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 			goto err_info;
 		}
 	}
-	en_dbg(DRV, priv, "Allocated mbuf ring at addr:%p size:%d\n",
+	en_dbg(DRV, priv, "Allocated MBUF ring at addr:%p size:%d\n",
 		 ring->mbuf, tmp);
 
 	err = mlx4_alloc_hwq_res(mdev->dev, &ring->wqres,
@@ -365,8 +391,7 @@ err_dma_tag:
 	bus_dma_tag_destroy(ring->dma_tag);
 err_ring:
 	kfree(ring);
-
-	return err;
+	return (err);
 }
 
 
@@ -377,7 +402,7 @@ int mlx4_en_activate_rx_rings(struct mlx4_en_priv *priv)
 	int ring_ind;
 	int err;
 	int stride = roundup_pow_of_two(sizeof(struct mlx4_en_rx_desc) +
-	                                        DS_SIZE * priv->num_frags);
+	    DS_SIZE * priv->num_frags);
 
 	for (ring_ind = 0; ring_ind < priv->rx_ring_num; ring_ind++) {
 		ring = priv->rx_ring[ring_ind];
@@ -516,64 +541,61 @@ static inline int invalid_cqe(struct mlx4_en_priv *priv,
 
 
 /* Unmap a completed descriptor and free unused pages */
-static int mlx4_en_complete_rx_desc(struct mlx4_en_priv *priv,
-				    struct mlx4_en_rx_desc *rx_desc,
-				    struct mbuf **mb_list,
-				    int length)
+static int
+mlx4_en_complete_rx_desc(struct mlx4_en_priv *priv,
+    struct mlx4_en_rx_ring *ring, struct mlx4_en_rx_desc *rx_desc,
+    struct mlx4_en_rx_mbuf *mb_list, int length)
 {
-	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_en_frag_info *frag_info;
-	dma_addr_t dma;
-	struct mbuf *mb;
-	int nr;
+	struct mbuf *mb, *first_mb, *prev_mb;
+	int flags, nr;
 
-	mb = mb_list[0];
-	mb->m_pkthdr.len = length;
+	first_mb = mb_list[0].mbuf;
+	prev_mb = NULL;
+	first_mb->m_pkthdr.len = length;
+	flags = M_PKTHDR;
 	/* Collect used fragments while replacing them in the HW descirptors */
 	for (nr = 0; nr < priv->num_frags; nr++) {
 		frag_info = &priv->frag_info[nr];
 		if (length <= frag_info->frag_prefix_size)
 			break;
-		if (nr)
-			mb->m_next = mb_list[nr];
-		mb = mb_list[nr];
-		mb->m_len = frag_info->frag_size;
-		dma = be64_to_cpu(rx_desc->data[nr].addr);
+
+		mb = mb_list[nr].mbuf;
 
                 /* Allocate a replacement page */
-                if (mlx4_en_alloc_buf(priv, rx_desc, mb_list, nr))
+                if (mlx4_en_alloc_buf(priv, ring, &rx_desc->data[nr].addr,
+		    &mb_list[nr], flags, priv->frag_info[nr].frag_size))
                         goto fail;
 
-		/* Unmap buffer */
-		pci_unmap_single(mdev->pdev, dma, frag_info->frag_size,
-				 PCI_DMA_FROMDEVICE);
+		if (prev_mb != NULL)
+			prev_mb->m_next = mb;
+		mb->m_len = frag_info->frag_size;
+		prev_mb = mb;
+		flags = 0;
 	}
 	/* Adjust size of last fragment to match actual length */
-	mb->m_len = length - priv->frag_info[nr - 1].frag_prefix_size;
-	mb->m_next = NULL;
+	prev_mb->m_len = length - priv->frag_info[nr - 1].frag_prefix_size;
+	prev_mb->m_next = NULL;
 	return 0;
 
 fail:
         /* Drop all accumulated fragments (which have already been replaced in
          * the descriptor) of this packet; remaining fragments are reused... */
-        while (nr > 0) {
-                nr--;
-                m_free(mb_list[nr]);
-        }
+        m_freem(first_mb);
         return -ENOMEM;
 
 }
 
-static struct mbuf *mlx4_en_rx_mb(struct mlx4_en_priv *priv,
-				  struct mlx4_en_rx_desc *rx_desc,
-				  struct mbuf **mb_list,
-				  unsigned int length)
+static struct mbuf *
+mlx4_en_rx_mb(struct mlx4_en_priv *priv, struct mlx4_en_rx_ring *ring,
+    struct mlx4_en_rx_desc *rx_desc, struct mlx4_en_rx_mbuf *mb_list,
+    int length)
 {
 	struct mbuf *mb;
 
-	mb = mb_list[0];
+	mb = mb_list->mbuf;
 	/* Move relevant fragments to mb */
-	if (unlikely(mlx4_en_complete_rx_desc(priv, rx_desc, mb_list, length)))
+	if (unlikely(mlx4_en_complete_rx_desc(priv, ring, rx_desc, mb_list, length)))
 		return NULL;
 
 	return mb;
@@ -590,7 +612,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_cqe *cqe;
 	struct mlx4_en_rx_ring *ring = priv->rx_ring[cq->ring];
-	struct mbuf **mb_list;
+	struct mlx4_en_rx_mbuf *mb_list;
 	struct mlx4_en_rx_desc *rx_desc;
 	struct mbuf *mb;
 	struct mlx4_cq *mcq = &cq->mcq;
@@ -632,8 +654,8 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 		 */
 		length = be32_to_cpu(cqe->byte_cnt);
 		length -= ring->fcs_del;
-		mb = mlx4_en_rx_mb(priv, rx_desc, mb_list, length);
-		if (!mb) {
+		mb = mlx4_en_rx_mb(priv, ring, rx_desc, mb_list, length);
+		if (unlikely(!mb)) {
 			ring->errors++;
 			goto next;
 		}

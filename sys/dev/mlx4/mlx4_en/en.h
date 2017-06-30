@@ -581,8 +581,8 @@ struct mlx4_en_priv {
 	u32 tx_ring_num;
 	u32 rx_ring_num;
 	u32 rx_mb_size;
-        struct mlx4_en_frag_info frag_info[MLX4_EN_MAX_RX_FRAGS];
-        u16 num_frags;
+	struct mlx4_en_frag_info frag_info[MLX4_EN_MAX_RX_FRAGS];
+	u16 num_frags;
 	u16 log_mbuf;
 
 	struct mlx4_en_tx_ring **tx_ring;
