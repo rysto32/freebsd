@@ -668,19 +668,21 @@ route_output(struct mbuf *m, struct socket *so, ...)
 
 	case RTM_ADD:
 	case RTM_CHANGE:
-		if (info.rti_info[RTAX_GATEWAY] == NULL)
-			senderr(EINVAL);
 		saved_nrt = NULL;
+		if (rtm->rtm_type == RTM_ADD) {
+			if (info.rti_info[RTAX_GATEWAY] == NULL)
+				senderr(EINVAL);
 
-		/* support for new ARP code */
-		if (info.rti_info[RTAX_GATEWAY]->sa_family == AF_LINK &&
-		    (rtm->rtm_flags & RTF_LLDATA) != 0) {
-			error = lla_rt_output(rtm, &info);
-#ifdef INET6
-			if (error == 0)
-				rti_need_deembed = (V_deembed_scopeid) ? 1 : 0;
-#endif
-			break;
+			/* support for new ARP code */
+			if (info.rti_info[RTAX_GATEWAY]->sa_family == AF_LINK &&
+			(rtm->rtm_flags & RTF_LLDATA) != 0) {
+				error = lla_rt_output(rtm, &info);
+	#ifdef INET6
+				if (error == 0)
+					rti_need_deembed = (V_deembed_scopeid) ? 1 : 0;
+	#endif
+				break;
+			}
 		}
 		error = rtrequest1_fib(rtm->rtm_type, &info, &saved_nrt,
 		    fibnum);
