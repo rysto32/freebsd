@@ -78,6 +78,8 @@ static int in_difaddr_ioctl(u_long, caddr_t, struct ifnet *, struct thread *);
 static void	in_socktrim(struct sockaddr_in *);
 static void	in_purgemaddrs(struct ifnet *);
 
+static void	in_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info);
+
 static VNET_DEFINE(int, nosameprefix);
 #define	V_nosameprefix			VNET(nosameprefix)
 SYSCTL_INT(_net_inet_ip, OID_AUTO, no_same_prefix, CTLFLAG_VNET | CTLFLAG_RW,
@@ -401,6 +403,7 @@ in_aifaddr_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp, struct thread *td)
 	ifa->ifa_netmask = (struct sockaddr *)&ia->ia_sockmask;
 	callout_init_rw(&ia->ia_garp_timer, &ifp->if_addr_lock,
 	    CALLOUT_RETURNUNLOCKED);
+	ifa->ifa_rtrequest = in_rtrequest;
 
 	ia->ia_ifp = ifp;
 	ia->ia_addr = *addr;
@@ -1496,4 +1499,54 @@ in_domifdetach(struct ifnet *ifp, void *aux)
 	igmp_domifdetach(ifp);
 	lltable_free(ii->ii_llt);
 	free(ii, M_IFADDR);
+}
+
+/*
+ * Return true if the route described by info is the local subnet route for
+ * ifa, or false otherwise.
+ */
+static int
+in_is_subnet_route(struct ifaddr *ifa, struct rt_addrinfo *info)
+{
+	struct sockaddr *tmp_sa;
+	struct sockaddr_storage tmp_storage;
+
+	/* First test that the ifaddr falls into the subnet described by the route. */
+	tmp_sa = (struct sockaddr*)&tmp_storage;
+	rt_maskedcopy(ifa->ifa_addr, tmp_sa, ifa->ifa_netmask);
+
+	if (!sa_equal(tmp_sa, info->rti_info[RTAX_DST]))
+		return (0);
+
+	/*
+	 * Now test that the subnet mask is the same for the address and
+	 * the route.  If they are different then the route has a different
+	 * prefix size and ifa just happens to fall within that route.
+	 *
+	 * For some reason ifa->ifa_netmask sa_len field is not
+	 * sizeof(struct sockaddr_in).  This causes attempts to directly
+	 * compare against info->rti_info[RTAX_NETMASK] to incorrectly
+	 * fail even if the netmasks are the same.  Fix this by making a
+	 * copy of ifa->ifa_netmask with the length field correct.
+	 */
+	bzero(tmp_sa, sizeof(struct sockaddr_in));
+	memcpy(tmp_sa, ifa->ifa_netmask, ifa->ifa_netmask->sa_len);
+	tmp_sa->sa_len = sizeof(struct sockaddr_in);
+
+	return (sa_equal(info->rti_info[RTAX_NETMASK], tmp_sa));
+}
+
+static void
+in_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info)
+{
+
+	/*
+	 * If we are modifying a route to a subnet, we need to migrate the IFA_ROUTE
+	 * flag to the new source ifa for the route.
+	 */
+	if (req == RTM_DELETE && rt->rt_ifa->ifa_flags & IFA_ROUTE &&
+	    in_is_subnet_route(rt->rt_ifa, info)) {
+		rt->rt_ifa->ifa_flags &= ~IFA_ROUTE;
+		info->rti_ifa->ifa_flags |= IFA_ROUTE;
+	}
 }
