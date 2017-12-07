@@ -1732,6 +1732,8 @@ rtrequest1_fib_change(struct rib_head *rnh, struct rt_addrinfo *info,
 	int free_ifa = 0;
 	int family, mtu;
 	struct if_mtuinfo ifmtu;
+	struct sockaddr *tmp_sa;
+	struct sockaddr_storage tmp_storage;
 
 	rt = (struct rtentry *)rnh->rnh_lookup(info->rti_info[RTAX_DST],
 	    info->rti_info[RTAX_NETMASK], &rnh->head);
@@ -1784,6 +1786,22 @@ rtrequest1_fib_change(struct rib_head *rnh, struct rt_addrinfo *info,
 	    rt->rt_ifa != NULL) {
 		if (rt->rt_ifa->ifa_rtrequest != NULL)
 			rt->rt_ifa->ifa_rtrequest(RTM_DELETE, rt, info);
+		if (rt->rt_ifa->ifa_flags & IFA_ROUTE) {
+			tmp_sa = (struct sockaddr*)&tmp_storage;
+			rt_maskedcopy(rt->rt_ifa->ifa_addr, tmp_sa,
+			    rt->rt_ifa->ifa_netmask);
+
+			/*
+			 * Test if we're moving the local subnet's route.  If
+			 * so, we have to update some bookkeeping in the old and
+			 * new ifa
+			 */
+			if (sa_equal(rt_key(rt), tmp_sa) && 
+			    sa_equal(rt_mask(rt), rt->rt_ifa->ifa_netmask)) {
+				rt->rt_ifa->ifa_flags &= ~IFA_ROUTE;
+				info->rti_ifa->ifa_flags |= IFA_ROUTE;
+			}
+		}
 		ifa_free(rt->rt_ifa);
 	}
 	/* Update gateway address */
