@@ -417,10 +417,7 @@ struct rt_addrinfo {
 } while (0)
 
 #define	RO_INVALIDATE_CACHE(ro) do {					\
-		if ((ro)->ro_rt != NULL) {				\
-			RTFREE((ro)->ro_rt);				\
-			(ro)->ro_rt = NULL;				\
-		}							\
+		RO_RTFREE(ro);						\
 		if ((ro)->ro_lle != NULL) {				\
 			LLE_FREE((ro)->ro_lle);				\
 			(ro)->ro_lle = NULL;				\

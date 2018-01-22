@@ -303,6 +303,7 @@ again:
 			  dst->sin_family != AF_INET ||
 			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
 		RO_INVALIDATE_CACHE(ro);
+		rte = NULL;
 	}
 	ia = NULL;
 	have_ia_ref = 0;
