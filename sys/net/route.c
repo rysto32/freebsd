@@ -1825,6 +1825,11 @@ rtrequest1_fib_change(struct rib_head *rnh, struct rt_addrinfo *info,
 		}
 	}
 
+	/*
+	 * This route change may have modified the route's gateway.  In that
+	 * case, any inpcbs that have cached this route need to invalidate their
+	 * llentry cache.
+	 */
 	rnh->rnh_gen++;
 
 	if (ret_nrt) {
