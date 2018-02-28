@@ -1511,6 +1511,9 @@ in_is_subnet_route(struct ifaddr *ifa, struct rt_addrinfo *info)
 	struct sockaddr *tmp_sa;
 	struct sockaddr_storage tmp_storage;
 
+	if (info->rti_info[RTAX_DST] == NULL || info->rti_info[RTAX_NETMASK] == NULL)
+		return (0);
+
 	/* First test that the ifaddr falls into the subnet described by the route. */
 	tmp_sa = (struct sockaddr*)&tmp_storage;
 	rt_maskedcopy(ifa->ifa_addr, tmp_sa, ifa->ifa_netmask);
@@ -1545,7 +1548,7 @@ in_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info)
 	 * flag to the new source ifa for the route.
 	 */
 	if (req == RTM_DELETE && rt->rt_ifa->ifa_flags & IFA_ROUTE &&
-	    in_is_subnet_route(rt->rt_ifa, info)) {
+	    info->rti_ifa != NULL && in_is_subnet_route(rt->rt_ifa, info)) {
 		rt->rt_ifa->ifa_flags &= ~IFA_ROUTE;
 		info->rti_ifa->ifa_flags |= IFA_ROUTE;
 	}
