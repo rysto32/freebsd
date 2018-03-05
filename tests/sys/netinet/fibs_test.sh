@@ -34,6 +34,8 @@
 # All of the tests in this file requires the test-suite config variable "fibs"
 # to be defined to a space-delimited list of FIBs that may be used for testing.
 
+. $(atf_get_srcdir)/route.subr
+
 # arpresolve should check the interface fib for routes to a target when
 # creating an ARP table entry.  This is a regression for kern/167947, where
 # arpresolve only checked the default route.
@@ -720,84 +722,6 @@ udp_dontroute6_cleanup()
 	cleanup_ifaces
 }
 
-atf_test_case ipv4_move_subnet_route cleanup
-ipv4_move_subnet_route_head()
-{
-	atf_set "descr" "moving a subnet route to different ifa should be possible"
-	atf_set "require.user" "root"
-	atf_set "require.config" "fibs"
-}
-
-ipv4_move_subnet_route_body()
-{
-	# Configure the TAP interfaces to use a RFC5737 nonrouteable addresses
-	# and a non-default fib
-	SUBNET_PREFIX="192.0.2"
-	SUBNET="${SUBNET_PREFIX}.0"
-	ADDR0="${SUBNET_PREFIX}.1"
-	ADDR1="${SUBNET_PREFIX}.2"
-
-	MASK="24"
-
-	# Check system configuration
-	if [ 0 != `sysctl -n net.add_addr_allfibs` ]; then
-		atf_skip "This test requires net.add_addr_allfibs=0"
-	fi
-	get_fibs 1
-
-	get_epair
-	setup_iface "$EPAIRA" "$FIB0" inet ${ADDR0} $MASK
-	setup_iface "$EPAIRB" "$FIB0" inet ${ADDR1} $MASK
-
-	setfib $FIB0 route change ${SUBNET}/${MASK} -ifp "$EPAIRB"
-	ifconfig "$EPAIRA" inet ${ADDR0}/${MASK} fib "$FIB0" -alias
-	atf_check -s exit:0 ifconfig "$EPAIRB" inet ${ADDR0}/$MASK alias fib "$FIB0"
-}
-
-ipv4_move_subnet_route_cleanup()
-{
-	cleanup_ifaces
-}
-
-atf_test_case ipv6_move_subnet_route cleanup
-ipv6_move_subnet_route_head()
-{
-	atf_set "descr" "moving a subnet route to different ifa should be possible"
-	atf_set "require.user" "root"
-	atf_set "require.config" "fibs"
-}
-
-ipv6_move_subnet_route_body()
-{
-	# Configure the TAP interfaces to use a RFC5737 nonrouteable addresses
-	# and a non-default fib
-	SUBNET_PREFIX="2001:db8:"
-	SUBNET="${SUBNET_PREFIX}:0"
-	ADDR0="${SUBNET_PREFIX}:1"
-	ADDR1="${SUBNET_PREFIX}:2"
-
-	MASK="64"
-
-	# Check system configuration
-	if [ 0 != `sysctl -n net.add_addr_allfibs` ]; then
-		atf_skip "This test requires net.add_addr_allfibs=0"
-	fi
-	get_fibs 1
-
-	get_epair
-	setup_iface "$EPAIRA" "$FIB0" inet6 ${ADDR0} $MASK
-	setup_iface "$EPAIRB" "$FIB0" inet6 ${ADDR1} $MASK
-
-	setfib $FIB0 route -6 change ${SUBNET}/${MASK} -ifp "$EPAIRB"
-	ifconfig "$EPAIRA" inet6 ${ADDR0}/${MASK} fib "$FIB0" -alias
-	atf_check -s exit:0 setfib 1 ifconfig "$EPAIRB" inet6 ${ADDR0}/$MASK fib "$FIB0" alias
-}
-
-ipv6_move_subnet_route_cleanup()
-{
-	cleanup_ifaces
-}
-
 atf_init_test_cases()
 {
 	atf_add_test_case arpresolve_checks_interface_fib
@@ -813,112 +737,4 @@ atf_init_test_cases()
 	atf_add_test_case subnet_route_with_multiple_fibs_on_same_subnet_inet6
 	atf_add_test_case udp_dontroute
 	atf_add_test_case udp_dontroute6
-	atf_add_test_case ipv4_move_subnet_route
-	atf_add_test_case ipv6_move_subnet_route
-}
-
-# Looks up one or more fibs from the configuration data and validates them.
-# Returns the results in the env varilables FIB0, FIB1, etc.
-
-# parameter numfibs	The number of fibs to lookup
-get_fibs()
-{
-	NUMFIBS=$1
-	net_fibs=`sysctl -n net.fibs`
-	i=0
-	while [ $i -lt "$NUMFIBS" ]; do
-		fib=`atf_config_get "fibs" | \
-			awk -v i=$(( i + 1 )) '{print $i}'`
-		echo "fib is ${fib}"
-		eval FIB${i}=${fib}
-		if [ "$fib" -ge "$net_fibs" ]; then
-			atf_skip "The ${i}th configured fib is ${fib}, which is not less than net.fibs, which is ${net_fibs}"
-		fi
-		i=$(( $i + 1 ))
-	done
-}
-
-# Creates a new pair of connected epair(4) interface, registers them for
-# cleanup, and returns their namen via the environment variables EPAIRA and
-# EPAIRB
-get_epair()
-{
-	local EPAIRD
-
-	if  (which pfctl && pfctl -s info | grep -q 'Status: Enabled') || 
-	    [ `sysctl -n net.inet.ip.fw.enable` = "1" ] ||
-	    (which ipf && ipf -V); then
-		atf_skip "firewalls interfere with this test"
-	fi
-
-	if EPAIRD=`ifconfig epair create`; then
-		# Record the epair device so we can clean it up later
-		echo ${EPAIRD} >> "ifaces_to_cleanup"
-		EPAIRA=${EPAIRD}
-		EPAIRB=${EPAIRD%a}b
-	else
-		atf_skip "Could not create epair(4) interfaces"
-	fi
-}
-
-# Creates a new tap(4) interface, registers it for cleanup, and returns the
-# name via the environment variable TAP
-get_tap()
-{
-	local TAPD
-
-	if TAPD=`ifconfig tap create`; then
-		# Record the TAP device so we can clean it up later
-		echo ${TAPD} >> "ifaces_to_cleanup"
-		TAP=${TAPD}
-	else
-		atf_skip "Could not create a tap(4) interface"
-	fi
-}
-
-# Configure an ethernet interface
-# parameters:
-# Interface name
-# fib
-# Protocol (inet or inet6)
-# IP address
-# Netmask in number of bits (eg 24 or 8)
-# Extra flags
-# Return: None
-setup_iface()
-{
-	local IFACE=$1
-	local FIB=$2
-	local PROTO=$3
-	local ADDR=$4
-	local MASK=$5
-	local FLAGS=$6
-	echo setfib ${FIB} \
-		ifconfig $IFACE ${PROTO} ${ADDR}/${MASK} fib $FIB $FLAGS
-	setfib ${FIB} ifconfig $IFACE ${PROTO} ${ADDR}/${MASK} fib $FIB $FLAGS
-}
-
-# Create a tap(4) interface, configure it, and register it for cleanup.
-# parameters:
-# fib
-# Protocol (inet or inet6)
-# IP address
-# Netmask in number of bits (eg 24 or 8)
-# Extra flags
-# Return: the tap interface name as the env variable TAP
-setup_tap()
-{
-	get_tap
-	setup_iface "$TAP" "$@"
-}
-
-cleanup_ifaces()
-{
-	if [ -f ifaces_to_cleanup ]; then
-		for iface in $(cat ifaces_to_cleanup); do
-			echo ifconfig "${iface}" destroy
-			ifconfig "${iface}" destroy 2>/dev/null || true
-		done
-		rm -f ifaces_to_cleanup
-	fi
 }

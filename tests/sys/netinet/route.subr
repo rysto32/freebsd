@@ -1,0 +1,138 @@
+#
+#  Copyright (c) 2014 Spectra Logic Corporation
+#  All rights reserved.
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions
+#  are met:
+#  1. Redistributions of source code must retain the above copyright
+#     notice, this list of conditions, and the following disclaimer,
+#     without modification.
+#  2. Redistributions in binary form must reproduce at minimum a disclaimer
+#     substantially similar to the "NO WARRANTY" disclaimer below
+#     ("Disclaimer") and any redistribution must be conditioned upon
+#     including a substantially similar Disclaimer requirement for further
+#     binary redistribution.
+#
+#  NO WARRANTY
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR
+#  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#  HOLDERS OR CONTRIBUTORS BE LIABLE FOR SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+#  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+#  OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+#  HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+#  STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+#  IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGES.
+#
+#  Authors: Alan Somers         (Spectra Logic Corporation)
+#
+# $FreeBSD$
+
+# Looks up one or more fibs from the configuration data and validates them.
+# Returns the results in the env varilables FIB0, FIB1, etc.
+
+# parameter numfibs	The number of fibs to lookup
+get_fibs()
+{
+	NUMFIBS=$1
+	net_fibs=`sysctl -n net.fibs`
+	i=0
+	while [ $i -lt "$NUMFIBS" ]; do
+		fib=`atf_config_get "fibs" | \
+			awk -v i=$(( i + 1 )) '{print $i}'`
+		echo "fib is ${fib}"
+		eval FIB${i}=${fib}
+		if [ "$fib" -ge "$net_fibs" ]; then
+			atf_skip "The ${i}th configured fib is ${fib}, which is not less than net.fibs, which is ${net_fibs}"
+		fi
+		i=$(( $i + 1 ))
+	done
+}
+
+# Creates a new pair of connected epair(4) interface, registers them for
+# cleanup, and returns their namen via the environment variables EPAIRA and
+# EPAIRB
+get_epair()
+{
+	local EPAIRD
+
+	if  (which pfctl && pfctl -s info | grep -q 'Status: Enabled') ||
+	    [ `sysctl -n net.inet.ip.fw.enable` = "1" ] ||
+	    (which ipf && ipf -V); then
+		atf_skip "firewalls interfere with this test"
+	fi
+
+	if EPAIRD=`ifconfig epair create`; then
+		# Record the epair device so we can clean it up later
+		echo ${EPAIRD} >> "ifaces_to_cleanup"
+		EPAIRA=${EPAIRD}
+		EPAIRB=${EPAIRD%a}b
+	else
+		atf_skip "Could not create epair(4) interfaces"
+	fi
+}
+
+# Creates a new tap(4) interface, registers it for cleanup, and returns the
+# name via the environment variable TAP
+get_tap()
+{
+	local TAPD
+
+	if TAPD=`ifconfig tap create`; then
+		# Record the TAP device so we can clean it up later
+		echo ${TAPD} >> "ifaces_to_cleanup"
+		TAP=${TAPD}
+	else
+		atf_skip "Could not create a tap(4) interface"
+	fi
+}
+
+# Configure an ethernet interface
+# parameters:
+# Interface name
+# fib
+# Protocol (inet or inet6)
+# IP address
+# Netmask in number of bits (eg 24 or 8)
+# Extra flags
+# Return: None
+setup_iface()
+{
+	local IFACE=$1
+	local FIB=$2
+	local PROTO=$3
+	local ADDR=$4
+	local MASK=$5
+	local FLAGS=$6
+	echo setfib ${FIB} \
+		ifconfig $IFACE ${PROTO} ${ADDR}/${MASK} fib $FIB $FLAGS
+	setfib ${FIB} ifconfig $IFACE ${PROTO} ${ADDR}/${MASK} fib $FIB $FLAGS
+}
+
+# Create a tap(4) interface, configure it, and register it for cleanup.
+# parameters:
+# fib
+# Protocol (inet or inet6)
+# IP address
+# Netmask in number of bits (eg 24 or 8)
+# Extra flags
+# Return: the tap interface name as the env variable TAP
+setup_tap()
+{
+	get_tap
+	setup_iface "$TAP" "$@"
+}
+
+cleanup_ifaces()
+{
+	if [ -f ifaces_to_cleanup ]; then
+		for iface in $(cat ifaces_to_cleanup); do
+			echo ifconfig "${iface}" destroy
+			ifconfig "${iface}" destroy 2>/dev/null || true
+		done
+		rm -f ifaces_to_cleanup
+	fi
+}
