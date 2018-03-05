@@ -32,17 +32,15 @@
 
 . $(atf_get_srcdir)/route.subr
 
-# Test that a route can be modified with "route change $SUBNET/$MASK" without
-# needing to also specify the gateway of the route.
-atf_test_case ipv4_change_route_without_dest cleanup
-ipv4_change_route_without_dest_head()
+atf_test_case ipv4_move_subnet_route cleanup
+ipv4_move_subnet_route_head()
 {
-	atf_set "descr" "Test modifying a route without re-specifying its gateway"
+	atf_set "descr" "moving a subnet route to different ifa should be possible"
 	atf_set "require.user" "root"
 	atf_set "require.config" "fibs"
 }
 
-ipv4_change_route_without_dest_body()
+ipv4_move_subnet_route_body()
 {
 	# Configure the TAP interfaces to use a RFC5737 nonrouteable addresses
 	# and a non-default fib
@@ -59,33 +57,29 @@ ipv4_change_route_without_dest_body()
 	fi
 	get_fibs 1
 
-	setup_tap "$FIB0" inet ${ADDR0} $MASK
-	ifconfig $TAP mtu 9000
+	get_epair
+	setup_iface "$EPAIRA" "$FIB0" inet ${ADDR0} $MASK
+	setup_iface "$EPAIRB" "$FIB0" inet ${ADDR1} $MASK
 
-	atf_check -s exit:0 -o ignore setfib $FIB0 route change \
-	    ${SUBNET}/${MASK} -mtu 8723
-
-	# Just searching for "8723" is awful, but the output of 'route get' is
-	# not amenable to parsing
-	atf_check -o match:8723 setfib $FIB0 route get $ADDR1
+	setfib $FIB0 route change ${SUBNET}/${MASK} -ifp "$EPAIRB"
+	ifconfig "$EPAIRA" inet ${ADDR0}/${MASK} fib "$FIB0" -alias
+	atf_check -s exit:0 ifconfig "$EPAIRB" inet ${ADDR0}/$MASK alias fib "$FIB0"
 }
 
-ipv4_change_route_without_dest_cleanup()
+ipv4_move_subnet_route_cleanup()
 {
 	cleanup_ifaces
 }
 
-# Test that a route can be modified with "route change $SUBNET/$MASK" without
-# needing to also specify the gateway of the route.
-atf_test_case ipv6_change_route_without_dest cleanup
-ipv6_change_route_without_dest_head()
+atf_test_case ipv6_move_subnet_route cleanup
+ipv6_move_subnet_route_head()
 {
-	atf_set "descr" "Test modifying a route without re-specifying its gateway"
+	atf_set "descr" "moving a subnet route to different ifa should be possible"
 	atf_set "require.user" "root"
 	atf_set "require.config" "fibs"
 }
 
-ipv6_change_route_without_dest_body()
+ipv6_move_subnet_route_body()
 {
 	# Configure the TAP interfaces to use a RFC5737 nonrouteable addresses
 	# and a non-default fib
@@ -102,24 +96,22 @@ ipv6_change_route_without_dest_body()
 	fi
 	get_fibs 1
 
-	setup_tap "$FIB0" inet6 ${ADDR0} $MASK
-	ifconfig $TAP mtu 9000
+	get_epair
+	setup_iface "$EPAIRA" "$FIB0" inet6 ${ADDR0} $MASK
+	setup_iface "$EPAIRB" "$FIB0" inet6 ${ADDR1} $MASK
 
-	atf_check -s exit:0 -o ignore setfib $FIB0 route -6 change \
-	    ${SUBNET}/${MASK} -mtu 8723
-
-	# Just searching for "8723" is awful, but the output of 'route get' is
-	# not amenable to parsing
-	atf_check -o match:8723 setfib $FIB0 route -6 get $ADDR1
+	setfib $FIB0 route -6 change ${SUBNET}/${MASK} -ifp "$EPAIRB"
+	ifconfig "$EPAIRA" inet6 ${ADDR0}/${MASK} fib "$FIB0" -alias
+	atf_check -s exit:0 setfib 1 ifconfig "$EPAIRB" inet6 ${ADDR0}/$MASK fib "$FIB0" alias
 }
 
-ipv6_change_route_without_dest_cleanup()
+ipv6_move_subnet_route_cleanup()
 {
 	cleanup_ifaces
 }
 
 atf_init_test_cases()
 {
-	atf_add_test_case ipv4_change_route_without_dest
-	atf_add_test_case ipv6_change_route_without_dest
+	atf_add_test_case ipv4_move_subnet_route
+	atf_add_test_case ipv6_move_subnet_route
 }
