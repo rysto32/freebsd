@@ -422,6 +422,7 @@ VNET_DEFINE(int, ip6_norbit_raif) = 0;
 VNET_DEFINE(int, ip6_rfc6204w3) = 0;
 VNET_DEFINE(int, ip6_maxfragpackets);	/* initialized in frag6.c:frag6_init() */
 int ip6_maxfrags;		/* initialized in frag6.c:frag6_init() */
+VNET_DEFINE(int, ip6_maxfragbucketsize);/* initialized in frag6.c:frag6_init() */
 VNET_DEFINE(int, ip6_maxfragsperpacket); /* initialized in frag6.c:frag6_init() */
 VNET_DEFINE(int, ip6_log_interval) = 5;
 VNET_DEFINE(int, ip6_hdrnestlimit) = 15;/* How many header options will we
@@ -517,6 +518,20 @@ sysctl_ip6_tempvltime(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+static int
+sysctl_ip6_maxfragpackets(SYSCTL_HANDLER_ARGS)
+{
+	int error, val;
+
+	val = V_ip6_maxfragpackets;
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || !req->newptr)
+		return (error);
+	V_ip6_maxfragpackets = val;
+	frag6_set_bucketsize();
+	return (0);
+}
+
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_FORWARDING, forwarding, CTLFLAG_RW,
 	&VNET_NAME(ip6_forwarding), 0, "");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_SENDREDIRECTS, redirect, CTLFLAG_RW,
@@ -525,8 +540,12 @@ SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_DEFHLIM, hlim, CTLFLAG_RW,
 	&VNET_NAME(ip6_defhlim), 0, "");
 SYSCTL_VNET_PCPUSTAT(_net_inet6_ip6, IPV6CTL_STATS, stats, struct ip6stat,
     ip6stat, "IP6 statistics (struct ip6stat, netinet6/ip6_var.h)");
-SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_MAXFRAGPACKETS, maxfragpackets,
-	CTLFLAG_RW, &VNET_NAME(ip6_maxfragpackets), 0, "");
+SYSCTL_VNET_PROC(_net_inet6_ip6, IPV6CTL_MAXFRAGPACKETS, maxfragpackets,
+	CTLTYPE_INT | CTLFLAG_RW, NULL, 0,
+	sysctl_ip6_maxfragpackets, "I",
+	"Default maximum number of outstanding fragmented IPv6 packets. "
+	"A value of 0 means no fragmented packets will be accepted, while a "
+	"a value of -1 means no limit");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_ACCEPT_RTADV, accept_rtadv,
 	CTLFLAG_RW, &VNET_NAME(ip6_accept_rtadv), 0,
 	"Default value of per-interface flag for accepting ICMPv6 Router"
@@ -588,6 +607,9 @@ SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_MAXFRAGS, maxfrags, CTLFLAG_RW,
 	"Maximum allowed number of outstanding IPv6 packet fragments. "
 	"A value of 0 means no fragmented packets will be accepted, while a "
 	"a value of -1 means no limit");
+SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_MAXFRAGBUCKETSIZE, maxfragbucketsize,
+	CTLFLAG_RW, &VNET_NAME(ip6_maxfragbucketsize), 0,
+	"Maximum number of reassembly queues per hash bucket");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_MAXFRAGSPERPACKET, maxfragsperpacket,
 	CTLFLAG_RW, &VNET_NAME(ip6_maxfragsperpacket), 0,
 	"Maximum allowed number of fragments per packet");
