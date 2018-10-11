@@ -43,6 +43,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/mbuf.h>
 #include <sys/malloc.h>
+/* Begin Isilon -- r281352 */
+#include <sys/hash.h>
+/* End Isilon */
 #include <sys/domain.h>
 #include <sys/protosw.h>
 #include <sys/socket.h>
@@ -161,6 +164,10 @@ static struct mtx ipqlock;
 
 #define	V_ipq_zone		VNET(ipq_zone)
 #define	V_ipq			VNET(ipq)
+/* Begin Isilon -- r281352 */
+static VNET_DEFINE(uint32_t, ipq_hashseed);
+#define V_ipq_hashseed   VNET(ipq_hashseed)
+/* End Isilon */
 
 #define	IPQ_LOCK()	mtx_lock(&ipqlock)
 #define	IPQ_UNLOCK()	mtx_unlock(&ipqlock)
@@ -286,6 +293,9 @@ ip_init(void)
 	for (i = 0; i < IPREASS_NHASH; i++)
 		TAILQ_INIT(&V_ipq[i]);
 	V_maxnipq = nmbclusters / 32;
+	/* Begin Isilon -- r281352  */
+	V_ipq_hashseed = arc4random();
+	/* End Isilon */
 	V_maxfragsperpacket = 16;
 	V_ipq_zone = uma_zcreate("ipq", sizeof(struct ipq), NULL, NULL, NULL,
 	    NULL, UMA_ALIGN_PTR, 0);
