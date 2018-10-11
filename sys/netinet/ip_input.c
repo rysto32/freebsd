@@ -830,7 +830,12 @@ ip_reass(struct mbuf *m)
 	struct ipqhead *head;
 	int i, hlen, next;
 	u_int8_t ecn, ecn0;
+	/* Begin Isilon -- r337775 */
+#if 0
 	u_short hash;
+#endif
+	uint32_t hash, hashkey[3];
+	/* End Isilon */
 
 	/* If maxnipq or maxfragsperpacket are 0, never accept fragments. */
 	if (V_maxnipq == 0 || V_maxfragsperpacket == 0) {
@@ -843,7 +848,17 @@ ip_reass(struct mbuf *m)
 	ip = mtod(m, struct ip *);
 	hlen = ip->ip_hl << 2;
 
+	/* Begin Isilon -- r337775  */
+#if 0
 	hash = IPREASS_HASH(ip->ip_src.s_addr, ip->ip_id);
+#endif
+	hashkey[0] = ip->ip_src.s_addr;
+	hashkey[1] = ip->ip_dst.s_addr;
+	hashkey[2] = (uint32_t)ip->ip_p << 16;
+	hashkey[2] += ip->ip_id;
+	hash = jenkins_hash32(hashkey, nitems(hashkey), V_ipq_hashseed);
+	hash &= IPREASS_HMASK;
+	/* End Isilon */
 	head = &V_ipq[hash];
 	IPQ_LOCK();
 
