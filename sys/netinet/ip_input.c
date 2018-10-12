@@ -160,6 +160,22 @@ VNET_DEFINE(struct in_ifaddrhashhead *, in_ifaddrhashtbl); /* inet addr hash tab
 VNET_DEFINE(u_long, in_ifaddrhmask);		/* mask for hash table */
 
 /* Begin Isilon */
+/*
+ * By default, limit the number of IP fragments across all reassembly
+ * queues to  1/32 of the total number of mbuf clusters.
+ *
+ * Limit the total number of reassembly queues per VNET to the
+ * IP fragment limit, but ensure the limit will not allow any bucket
+ * to grow above 100 items. (The bucket limit is
+ * IP_MAXFRAGPACKETS / (IPREASS_NHASH / 2), so the 50 is the correct
+ * multiplier to reach a 100-item limit.)
+ * The 100-item limit was chosen as brief testing seems to show that
+ * this produces "reasonable" performance on some subset of systems
+ * under DoS attack.
+ */
+#define	IP_MAXFRAGS		(nmbclusters / 32)
+#define	IP_MAXFRAGPACKETS	(imin(IP_MAXFRAGS, IPREASS_NHASH * 50))
+
 static int		maxfrags;
 static volatile u_int	nfrags;
 SYSCTL_INT(_net_inet_ip, OID_AUTO, maxfrags, CTLFLAG_RW,
@@ -333,11 +349,11 @@ ip_init(void)
 	V_ipq_zone = uma_zcreate("ipq", sizeof(struct ipq), NULL, NULL, NULL,
 	    NULL, UMA_ALIGN_PTR, 0);
 	/* Begin Isilon */
-	max = nmbclusters / 32;
+	max = IP_MAXFRAGPACKETS;
 	max = uma_zone_set_max(V_ipq_zone, max);
 	V_ipreass_maxbucketsize = imax(max / (IPREASS_NHASH / 2), 1);
 	if (IS_DEFAULT_VNET(curvnet)) {
-		maxfrags = nmbclusters / 32;
+		maxfrags = IP_MAXFRAGS;
 	}
 	/* End Isilon */
 	maxnipq_update();
@@ -824,7 +840,7 @@ ipq_zone_change(void *tag)
 		maxnipq_update();
 	}
 	/* Begin Isilon */
-	maxfrags = nmbclusters / 32;
+	maxfrags = IP_MAXFRAGS;
 	/* End Isilon */
 }
 

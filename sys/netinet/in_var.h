@@ -179,7 +179,9 @@ do {									\
 /*
  * IP datagram reassembly.
  */
-#define	IPREASS_NHASH_LOG2	6
+/* Begin Isilon */
+#define	IPREASS_NHASH_LOG2	10
+/* End Isilon */
 #define	IPREASS_NHASH		(1 << IPREASS_NHASH_LOG2)
 #define	IPREASS_HMASK		(IPREASS_NHASH - 1)
 #define	IPREASS_HASH(x,y) \
