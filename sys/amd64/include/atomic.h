@@ -600,4 +600,9 @@ u_long	atomic_swap_long(volatile u_long *p, u_long v);
 
 #endif /* !WANT_FUNCTIONS */
 
+/* Begin Isilon */
+/* Compatibility for atomic_common.h in -head */
+#define atomic_load_int(p)      (*(volatile u_int *)(p))
+/* End Isilon */
+
 #endif /* !_MACHINE_ATOMIC_H_ */

@@ -158,6 +158,17 @@ VNET_DEFINE(struct in_ifaddrhead, in_ifaddrhead);  /* first inet address */
 VNET_DEFINE(struct in_ifaddrhashhead *, in_ifaddrhashtbl); /* inet addr hash table  */
 VNET_DEFINE(u_long, in_ifaddrhmask);		/* mask for hash table */
 
+/* Begin Isilon */
+static int		maxfrags;
+static volatile u_int	nfrags;
+SYSCTL_INT(_net_inet_ip, OID_AUTO, maxfrags, CTLFLAG_RW,
+    &maxfrags, 0,
+    "Maximum number of IPv4 fragments allowed across all reassembly queues");
+SYSCTL_UINT(_net_inet_ip, OID_AUTO, curfrags, CTLFLAG_RD,
+    __DEVOLATILE(u_int *, &nfrags), 0,
+    "Current number of IPv4 fragments across all reassembly queues");
+/* End Isilon */
+
 static VNET_DEFINE(uma_zone_t, ipq_zone);
 static VNET_DEFINE(TAILQ_HEAD(ipqhead, ipq), ipq[IPREASS_NHASH]);
 static struct mtx ipqlock;
@@ -299,6 +310,11 @@ ip_init(void)
 	V_maxfragsperpacket = 16;
 	V_ipq_zone = uma_zcreate("ipq", sizeof(struct ipq), NULL, NULL, NULL,
 	    NULL, UMA_ALIGN_PTR, 0);
+	/* Begin Isilon */
+	if (IS_DEFAULT_VNET(curvnet)) {
+		maxfrags = nmbclusters / 32;
+	}
+	/* End Isilon */
 	maxnipq_update();
 
 	/* Initialize packet filter hooks. */
@@ -782,6 +798,9 @@ ipq_zone_change(void *tag)
 		V_maxnipq = nmbclusters / 32;
 		maxnipq_update();
 	}
+	/* Begin Isilon */
+	maxfrags = nmbclusters / 32;
+	/* End Isilon */
 }
 
 static int
@@ -828,7 +847,9 @@ ip_reass(struct mbuf *m)
 	struct mbuf *p, *q, *nq, *t;
 	struct ipq *fp = NULL;
 	struct ipqhead *head;
-	int i, hlen, next;
+	/* Begin Isilon */
+	int i, hlen, next, tmpmax;
+	/* End Isilon */
 	u_int8_t ecn, ecn0;
 	/* Begin Isilon -- r337775 */
 #if 0
@@ -837,13 +858,20 @@ ip_reass(struct mbuf *m)
 	uint32_t hash, hashkey[3];
 	/* End Isilon */
 
-	/* If maxnipq or maxfragsperpacket are 0, never accept fragments. */
-	if (V_maxnipq == 0 || V_maxfragsperpacket == 0) {
+	/* Begin Isilon */
+	/* If maxnipq or maxfragsperpacket are 0, never accept fragments.
+	 * Also, drop packet if it would exceed the maximum
+	 * number of fragments.
+	 */
+	tmpmax = maxfrags;
+	if (V_maxnipq == 0 || V_maxfragsperpacket == 0 ||
+	    (tmpmax >= 0 && atomic_load_int(&nfrags) >= (u_int)tmpmax)) {
 		IPSTAT_INC(ips_fragments);
 		IPSTAT_INC(ips_fragdropped);
 		m_freem(m);
 		return (NULL);
 	}
+	/* End Isilon */
 
 	ip = mtod(m, struct ip *);
 	hlen = ip->ip_hl << 2;
@@ -957,6 +985,9 @@ found:
 		TAILQ_INSERT_HEAD(head, fp, ipq_list);
 		V_nipq++;
 		fp->ipq_nfrags = 1;
+		/* Begin Isilon */
+		atomic_add_int(&nfrags, 1);
+		/* End Isilon */
 		fp->ipq_ttl = IPFRAGTTL;
 		fp->ipq_p = ip->ip_p;
 		fp->ipq_id = ip->ip_id;
@@ -967,6 +998,9 @@ found:
 		goto done;
 	} else {
 		fp->ipq_nfrags++;
+		/* Begin Isilon */
+		atomic_add_int(&nfrags, 1);
+		/* End Isilon */
 #ifdef MAC
 		mac_ipq_update(m, fp);
 #endif
@@ -1043,6 +1077,9 @@ found:
 		m->m_nextpkt = nq;
 		IPSTAT_INC(ips_fragdropped);
 		fp->ipq_nfrags--;
+		/* Begin Isilon */
+		atomic_subtract_int(&nfrags, 1);
+		/* End Isilon */
 		m_freem(q);
 	}
 
@@ -1112,6 +1149,9 @@ found:
 	while (m->m_pkthdr.csum_data & 0xffff0000)
 		m->m_pkthdr.csum_data = (m->m_pkthdr.csum_data & 0xffff) +
 		    (m->m_pkthdr.csum_data >> 16);
+	/* Begin Isilon */
+	atomic_subtract_int(&nfrags, fp->ipq_nfrags);
+	/* End Isilon */
 #ifdef MAC
 	mac_ipq_reassemble(fp, m);
 	mac_ipq_destroy(fp);
@@ -1139,8 +1179,12 @@ found:
 
 dropfrag:
 	IPSTAT_INC(ips_fragdropped);
-	if (fp != NULL)
+	/* Begin Isilon */
+	if (fp != NULL) {
 		fp->ipq_nfrags--;
+		atomic_subtract_int(&nfrags, 1);
+	}
+	/* End Isilon */
 	m_freem(m);
 done:
 	IPQ_UNLOCK();
@@ -1160,6 +1204,9 @@ ip_freef(struct ipqhead *fhp, struct ipq *fp)
 
 	IPQ_LOCK_ASSERT();
 
+	/* Begin Isilon */
+	atomic_subtract_int(&nfrags, fp->ipq_nfrags);
+	/* End Isilon */
 	while (fp->ipq_frags) {
 		q = fp->ipq_frags;
 		fp->ipq_frags = q->m_nextpkt;
