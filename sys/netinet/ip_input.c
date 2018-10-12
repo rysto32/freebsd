@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 /* Begin Isilon -- r281352 */
 #include <sys/hash.h>
+#include <sys/limits.h>
 /* End Isilon */
 #include <sys/domain.h>
 #include <sys/protosw.h>
@@ -167,11 +168,18 @@ SYSCTL_INT(_net_inet_ip, OID_AUTO, maxfrags, CTLFLAG_RW,
 SYSCTL_UINT(_net_inet_ip, OID_AUTO, curfrags, CTLFLAG_RD,
     __DEVOLATILE(u_int *, &nfrags), 0,
     "Current number of IPv4 fragments across all reassembly queues");
-/* End Isilon */
+
+struct ipqbucket
+{
+	TAILQ_HEAD(ipqhead, ipq) head;
+	int			 count;
+};
+
 
 static VNET_DEFINE(uma_zone_t, ipq_zone);
-static VNET_DEFINE(TAILQ_HEAD(ipqhead, ipq), ipq[IPREASS_NHASH]);
+static VNET_DEFINE(struct ipqbucket, ipq[IPREASS_NHASH]);
 static struct mtx ipqlock;
+/* End Isilon */
 
 #define	V_ipq_zone		VNET(ipq_zone)
 #define	V_ipq			VNET(ipq)
@@ -184,6 +192,11 @@ static VNET_DEFINE(uint32_t, ipq_hashseed);
 #define	IPQ_UNLOCK()	mtx_unlock(&ipqlock)
 #define	IPQ_LOCK_INIT()	mtx_init(&ipqlock, "ipqlock", NULL, MTX_DEF)
 #define	IPQ_LOCK_ASSERT()	mtx_assert(&ipqlock, MA_OWNED)
+
+/* Begin Isilon */
+static VNET_DEFINE(int, ipreass_maxbucketsize);
+#define	V_ipreass_maxbucketsize	VNET(ipreass_maxbucketsize)
+/* End Isilon */
 
 static void	maxnipq_update(void);
 static void	ipq_zone_change(void *);
@@ -215,7 +228,9 @@ SYSCTL_VNET_INT(_net_inet_ip, OID_AUTO, stealth, CTLFLAG_RW,
     "IP stealth mode, no TTL decrementation on forwarding");
 #endif
 
-static void	ip_freef(struct ipqhead *, struct ipq *);
+/* Begin Isilon */
+static void	ip_freef(struct ipqbucket *, struct ipq *);
+/* End Isilon */
 
 /*
  * IP statistics are stored in the "array" of counter(9)s.
@@ -294,6 +309,9 @@ ip_init(void)
 {
 	struct protosw *pr;
 	int i;
+	/* Begin Isilon */
+	int max;
+	/* End Isilon */
 
 	V_ip_id = time_second & 0xffff;
 
@@ -301,8 +319,12 @@ ip_init(void)
 	V_in_ifaddrhashtbl = hashinit(INADDR_NHASH, M_IFADDR, &V_in_ifaddrhmask);
 
 	/* Initialize IP reassembly queue. */
-	for (i = 0; i < IPREASS_NHASH; i++)
-		TAILQ_INIT(&V_ipq[i]);
+	/* Begin Isilon */
+	for (i = 0; i < IPREASS_NHASH; i++) {
+		TAILQ_INIT(&V_ipq[i].head);
+		V_ipq[i].count = 0;
+	}
+	/* End Isilon */
 	V_maxnipq = nmbclusters / 32;
 	/* Begin Isilon -- r281352  */
 	V_ipq_hashseed = arc4random();
@@ -311,6 +333,9 @@ ip_init(void)
 	V_ipq_zone = uma_zcreate("ipq", sizeof(struct ipq), NULL, NULL, NULL,
 	    NULL, UMA_ALIGN_PTR, 0);
 	/* Begin Isilon */
+	max = nmbclusters / 32;
+	max = uma_zone_set_max(V_ipq_zone, max);
+	V_ipreass_maxbucketsize = imax(max / (IPREASS_NHASH / 2), 1);
 	if (IS_DEFAULT_VNET(curvnet)) {
 		maxfrags = nmbclusters / 32;
 	}
@@ -886,8 +911,8 @@ ip_reass(struct mbuf *m)
 	hashkey[2] += ip->ip_id;
 	hash = jenkins_hash32(hashkey, nitems(hashkey), V_ipq_hashseed);
 	hash &= IPREASS_HMASK;
+	head = &V_ipq[hash].head;
 	/* End Isilon */
-	head = &V_ipq[hash];
 	IPQ_LOCK();
 
 	/*
@@ -918,7 +943,9 @@ ip_reass(struct mbuf *m)
 		struct ipq *q = TAILQ_LAST(head, ipqhead);
 		if (q == NULL) {   /* gak */
 			for (i = 0; i < IPREASS_NHASH; i++) {
-				struct ipq *r = TAILQ_LAST(&V_ipq[i], ipqhead);
+				/* Begin Isilon */
+				struct ipq *r = TAILQ_LAST(&V_ipq[i].head, ipqhead);
+				/* End Isilon */
 				if (r) {
 					IPSTAT_ADD(ips_fragtimeout,
 					    r->ipq_nfrags);
@@ -928,7 +955,9 @@ ip_reass(struct mbuf *m)
 			}
 		} else {
 			IPSTAT_ADD(ips_fragtimeout, q->ipq_nfrags);
-			ip_freef(head, q);
+			/* Begin Isilon */
+			ip_freef(&V_ipq[hash], q);
+			/* End Isilon */
 		}
 	}
 
@@ -971,7 +1000,10 @@ found:
 	 * If first fragment to arrive, create a reassembly queue.
 	 */
 	if (fp == NULL) {
-		fp = uma_zalloc(V_ipq_zone, M_NOWAIT);
+		/* Begin Isilon */
+		if (V_ipq[hash].count < V_ipreass_maxbucketsize)
+			fp = uma_zalloc(V_ipq_zone, M_NOWAIT);
+		/* End Isilon */
 		if (fp == NULL)
 			goto dropfrag;
 #ifdef MAC
@@ -983,6 +1015,9 @@ found:
 		mac_ipq_create(m, fp);
 #endif
 		TAILQ_INSERT_HEAD(head, fp, ipq_list);
+		/* Begin Isilon */
+		V_ipq[hash].count++;
+		/* End Isilon */
 		V_nipq++;
 		fp->ipq_nfrags = 1;
 		/* Begin Isilon */
@@ -1098,7 +1133,9 @@ found:
 		if (ntohs(GETIP(q)->ip_off) != next) {
 			if (fp->ipq_nfrags > V_maxfragsperpacket) {
 				IPSTAT_ADD(ips_fragdropped, fp->ipq_nfrags);
-				ip_freef(head, fp);
+				/* Begin Isilon */
+				ip_freef(&V_ipq[hash], fp);
+				/* End Isilon */
 			}
 			goto done;
 		}
@@ -1108,7 +1145,9 @@ found:
 	if (p->m_flags & M_IP_FRAG) {
 		if (fp->ipq_nfrags > V_maxfragsperpacket) {
 			IPSTAT_ADD(ips_fragdropped, fp->ipq_nfrags);
-			ip_freef(head, fp);
+			/* Begin Isilon */
+			ip_freef(&V_ipq[hash], fp);
+			/* End Isilon */
 		}
 		goto done;
 	}
@@ -1121,7 +1160,9 @@ found:
 	if (next + (ip->ip_hl << 2) > IP_MAXPACKET) {
 		IPSTAT_INC(ips_toolong);
 		IPSTAT_ADD(ips_fragdropped, fp->ipq_nfrags);
-		ip_freef(head, fp);
+		/* Begin Isilon */
+		ip_freef(&V_ipq[hash], fp);
+		/* End Isilon */
 		goto done;
 	}
 
@@ -1166,6 +1207,9 @@ found:
 	ip->ip_src = fp->ipq_src;
 	ip->ip_dst = fp->ipq_dst;
 	TAILQ_REMOVE(head, fp, ipq_list);
+	/* Begin Isilon */
+	V_ipq[hash].count--;
+	/* End Isilon */
 	V_nipq--;
 	uma_zfree(V_ipq_zone, fp);
 	m->m_len += (ip->ip_hl << 2);
@@ -1197,8 +1241,9 @@ done:
  * Free a fragment reassembly header and all
  * associated datagrams.
  */
+/* Begin Isilon */
 static void
-ip_freef(struct ipqhead *fhp, struct ipq *fp)
+ip_freef(struct ipqbucket *bucket, struct ipq *fp)
 {
 	struct mbuf *q;
 
@@ -1212,10 +1257,12 @@ ip_freef(struct ipqhead *fhp, struct ipq *fp)
 		fp->ipq_frags = q->m_nextpkt;
 		m_freem(q);
 	}
-	TAILQ_REMOVE(fhp, fp, ipq_list);
+	TAILQ_REMOVE(&bucket->head, fp, ipq_list);
+	bucket->count--;
 	uma_zfree(V_ipq_zone, fp);
 	V_nipq--;
 }
+/* End Isilon */
 
 /*
  * IP timer processing;
@@ -1234,7 +1281,8 @@ ip_slowtimo(void)
 	VNET_FOREACH(vnet_iter) {
 		CURVNET_SET(vnet_iter);
 		for (i = 0; i < IPREASS_NHASH; i++) {
-			for(fp = TAILQ_FIRST(&V_ipq[i]); fp;) {
+			/* Begin Isilon */
+			for(fp = TAILQ_FIRST(&V_ipq[i].head); fp;) {
 				struct ipq *fpp;
 
 				fpp = fp;
@@ -1245,6 +1293,7 @@ ip_slowtimo(void)
 					ip_freef(&V_ipq[i], fpp);
 				}
 			}
+			/* End Isilon */
 		}
 		/*
 		 * If we are over the maximum number of fragments
@@ -1253,13 +1302,15 @@ ip_slowtimo(void)
 		 */
 		if (V_maxnipq >= 0 && V_nipq > V_maxnipq) {
 			for (i = 0; i < IPREASS_NHASH; i++) {
+				/* Begin Isilon */
 				while (V_nipq > V_maxnipq &&
-				    !TAILQ_EMPTY(&V_ipq[i])) {
+				    !TAILQ_EMPTY(&V_ipq[i].head)) {
 					IPSTAT_ADD(ips_fragdropped,
-					    TAILQ_FIRST(&V_ipq[i])->ipq_nfrags);
+					    TAILQ_FIRST(&V_ipq[i].head)->ipq_nfrags);
 					ip_freef(&V_ipq[i],
-					    TAILQ_FIRST(&V_ipq[i]));
+					    TAILQ_FIRST(&V_ipq[i].head));
 				}
+				/* End Isilon */
 			}
 		}
 		CURVNET_RESTORE();
@@ -1279,11 +1330,16 @@ ip_drain_locked(void)
 	IPQ_LOCK_ASSERT();
 
 	for (i = 0; i < IPREASS_NHASH; i++) {
-		while(!TAILQ_EMPTY(&V_ipq[i])) {
+		/* Begin Isilon */
+		while(!TAILQ_EMPTY(&V_ipq[i].head)) {
 			IPSTAT_ADD(ips_fragdropped,
-			    TAILQ_FIRST(&V_ipq[i])->ipq_nfrags);
-			ip_freef(&V_ipq[i], TAILQ_FIRST(&V_ipq[i]));
+			    TAILQ_FIRST(&V_ipq[i].head)->ipq_nfrags);
+			ip_freef(&V_ipq[i], TAILQ_FIRST(&V_ipq[i].head));
 		}
+		KASSERT(V_ipq[i].count == 0,
+		    ("%s: V_ipq[%d] count %d (V_ipq=%p)", __func__, i,
+		    V_ipq[i].count, V_ipq));
+		/* End Isilon */
 	}
 }
 
