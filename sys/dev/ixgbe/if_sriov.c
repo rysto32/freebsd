@@ -39,6 +39,9 @@
 
 MALLOC_DEFINE(M_IXGBE_SRIOV, "ix_sriov", "ix SR-IOV allocations");
 
+
+static void ixgbe_config_vf_antispoof(struct adapter *, struct ixgbe_vf *);
+
 /************************************************************************
  * ixgbe_pci_iov_detach
  ************************************************************************/
@@ -61,6 +64,10 @@ ixgbe_define_iov_schemas(device_t dev, int *error)
 	pci_iov_schema_add_unicast_mac(vf_schema, "mac-addr", 0, NULL);
 	pci_iov_schema_add_bool(vf_schema, "mac-anti-spoof",
 	    IOV_SCHEMA_HASDEFAULT, TRUE);
+	pci_iov_schema_add_bool(vf_schema, "vlan-anti-spoof",
+	    IOV_SCHEMA_HASDEFAULT, FALSE);
+	pci_iov_schema_add_uint16(vf_schema, "vlan-tag",
+	    IOV_SCHEMA_HASDEFAULT, 0);
 	pci_iov_schema_add_bool(vf_schema, "allow-set-mac",
 	    IOV_SCHEMA_HASDEFAULT, FALSE);
 	pci_iov_schema_add_bool(vf_schema, "allow-promisc",
@@ -756,7 +763,9 @@ ixgbe_init_vf(struct adapter *adapter, struct ixgbe_vf *vf)
 	pfmbimr |= IXGBE_VF_BIT(vf->pool);
 	IXGBE_WRITE_REG(hw, IXGBE_PFMBIMR(vf_index), pfmbimr);
 
-	ixgbe_vf_set_default_vlan(adapter, vf, vf->vlan_tag);
+	ixgbe_config_vf_antispoof(adapter, vf);
+
+	ixgbe_vf_set_default_vlan(adapter, vf, vf->default_vlan);
 
 	// XXX multicast addresses
 
@@ -830,6 +839,25 @@ ixgbe_initialize_iov(struct adapter *adapter)
 		ixgbe_init_vf(adapter, &adapter->vfs[i]);
 } /* ixgbe_initialize_iov */
 
+static void
+ixgbe_config_vf_antispoof(struct adapter *adapter, struct ixgbe_vf *vf)
+{
+	struct ixgbe_hw *hw;
+	uint32_t vf_index, pfvfspoof;
+
+	hw = &adapter->hw;
+
+	vf_index = IXGBE_AS_INDEX(vf->pool);
+	pfvfspoof = IXGBE_READ_REG(hw, IXGBE_PFVFSPOOF(vf_index));
+
+	if (vf->flags & IXGBE_VF_MAC_ANTISPOOF)
+		pfvfspoof |= IXGBE_MAC_AS_BIT(vf->pool);
+
+	if (vf->flags & IXGBE_VF_VLAN_ANTISPOOF)
+		pfvfspoof |= IXGBE_VLAN_AS_BIT(vf->pool);
+
+	IXGBE_WRITE_REG(hw, IXGBE_PFVFSPOOF(vf_index), pfvfspoof);
+} /* ixgbe_config_vf_antispoof */
 
 /* Check the max frame setting of all active VF's */
 void
@@ -850,6 +878,7 @@ ixgbe_if_iov_vf_add(if_ctx_t ctx, u16 vfnum, const nvlist_t *config)
 	struct adapter *adapter;
 	struct ixgbe_vf *vf;
 	const void *mac;
+	uint16_t vlan_tag;
 
 	adapter = iflib_get_softc(ctx);
 
@@ -859,11 +888,25 @@ ixgbe_if_iov_vf_add(if_ctx_t ctx, u16 vfnum, const nvlist_t *config)
 	vf = &adapter->vfs[vfnum];
 	vf->pool= vfnum;
 
+	vlan_tag = nvlist_get_number(config, "vlan-tag");
+	if (vlan_tag >= EVL_VLID_MASK)
+		return (EINVAL);
+
 	/* RAR[0] is used by the PF so use vfnum + 1 for VF RAR. */
 	vf->rar_index = vfnum + 1;
-	vf->default_vlan = 0;
+	vf->default_vlan = vlan_tag;
 	vf->maximum_frame_size = ETHER_MAX_LEN;
 	ixgbe_update_max_frame(adapter, vf->maximum_frame_size);
+
+	if (nvlist_get_bool(config, "mac-anti-spoof"))
+		vf->flags |= IXGBE_VF_MAC_ANTISPOOF;
+
+	/*
+	 * Note: As per 82599 datasheet S7.10.3.9.2 Output Security, vlan
+	 * antispoof implies MAC antispoof.
+	 */
+	if (nvlist_get_bool(config, "vlan-anti-spoof"))
+		vf->flags |= IXGBE_VF_MAC_ANTISPOOF | IXGBE_VF_VLAN_ANTISPOOF;
 
 	if (nvlist_exists_binary(config, "mac-addr")) {
 		mac = nvlist_get_binary(config, "mac-addr", NULL);

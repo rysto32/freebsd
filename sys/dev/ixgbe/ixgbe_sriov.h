@@ -48,8 +48,15 @@
 #define IXGBE_VF_CAP_MAC        (1 << 1) /* VF is permitted to change MAC. */
 #define IXGBE_VF_CAP_VLAN       (1 << 2) /* VF is permitted to join vlans. */
 #define IXGBE_VF_ACTIVE         (1 << 3) /* VF is active. */
+#define IXGBE_VF_MAC_ANTISPOOF  (1 << 4) /* Enable MAC antispoof for VM */
+#define IXGBE_VF_VLAN_ANTISPOOF (1 << 5) /* Enable VLAN antispoof for VM */
+
 #define IXGBE_VF_INDEX(vmdq)    ((vmdq) / 32)
 #define IXGBE_VF_BIT(vmdq)      (1 << ((vmdq) % 32))
+
+#define IXGBE_AS_INDEX(vmdq) ((vmdq) / 8)
+#define IXGBE_MAC_AS_BIT(vmdq) (1 << ((vmdq) % 8))
+#define IXGBE_VLAN_AS_BIT(vmdq) (1 << (((vmdq) % 8) + IXGBE_SPOOF_VLANAS_SHIFT))
 
 #define IXGBE_VT_MSG_MASK	0xFFFF
 
