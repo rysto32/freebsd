@@ -1,0 +1,162 @@
+kern-arch-options = [
+	{
+		option = "AUTO_EOI_1",
+		header = "opt_auto_eoi.h",
+	},
+	{
+		option = "AUTO_EOI_2",
+		header = "opt_auto_eoi.h",
+	},
+	{
+		option = "COUNT_XINVLTLB_HITS",
+		header = "opt_smp.h",
+	},
+	{
+		option = "COUNT_IPIS",
+		header = "opt_smp.h",
+	},
+	{
+		option = "MAXMEM",
+	},
+	{
+		option = "MPTABLE_FORCE_HTT",
+	},
+	{
+		option = "MP_WATCHDOG",
+	},
+	{
+		option = "NKPT",
+		header = "opt_pmap.h",
+	},
+	{
+		option = "PV_STATS",
+		header = "opt_pmap.h",
+	},
+	{
+		option = "COMPAT_AOUT",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "COMPAT_FREEBSD32",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_LINUX32",
+		header = "opt_compat.h",
+	},
+	{
+		option = "LINPROCFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "LINSYSFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "NDISAPI",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "TIMER_FREQ",
+		header = "opt_clock.h",
+	},
+	{
+		option = "COM_ESP",
+		header = "opt_sio.h",
+	},
+	{
+		option = "COM_MULTIPORT",
+		header = "opt_sio.h",
+	},
+	{
+		option = "CONSPEED",
+		header = "opt_sio.h",
+	},
+	{
+		option = "GDBSPEED",
+		header = "opt_sio.h",
+	},
+	{
+		option = "COM_NO_ACPI",
+		header = "opt_sio.h",
+	},
+	{
+		option = "VGA_ALT_SEQACCESS",
+		header = "opt_vga.h",
+	},
+	{
+		option = "VGA_DEBUG",
+		header = "opt_vga.h",
+	},
+	{
+		option = "VGA_NO_FONT_LOADING",
+		header = "opt_vga.h",
+	},
+	{
+		option = "VGA_NO_MODE_CHANGE",
+		header = "opt_vga.h",
+	},
+	{
+		option = "VGA_SLOW_IOACCESS",
+		header = "opt_vga.h",
+	},
+	{
+		option = "VGA_WIDTH90",
+		header = "opt_vga.h",
+	},
+	{
+		option = "VESA",
+	},
+	{
+		option = "VESA_DEBUG",
+		header = "opt_vesa.h",
+	},
+	{
+		option = "AGP_DEBUG",
+		header = "opt_agp.h",
+	},
+	{
+		option = "ATKBD_DFLT_KEYMAP",
+		header = "opt_atkbd.h",
+	},
+	{
+		option = "IXL_IW",
+		header = "opt_ixl.h",
+	},
+	{
+		option = "HAMMER",
+		header = "opt_cpu.h",
+	},
+	{
+		option = "PSM_HOOKRESUME",
+		header = "opt_psm.h",
+	},
+	{
+		option = "PSM_RESETAFTERSUSPEND",
+		header = "opt_psm.h",
+	},
+	{
+		option = "PSM_DEBUG",
+		header = "opt_psm.h",
+	},
+	{
+		option = "DEV_ATPIC",
+		header = "opt_atpic.h",
+	},
+	{
+		option = "BPF_JITTER",
+		header = "opt_bpf.h",
+	},
+	{
+		option = "XENHVM",
+		header = "opt_global.h",
+	},
+	{
+		option = "ISCI_LOGGING",
+		header = "opt_isci.h",
+	},
+	{
+		option = "EFIRT",
+		header = "opt_efirt.h",
+	},
+]

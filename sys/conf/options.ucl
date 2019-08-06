@@ -1,0 +1,2918 @@
+kern-options = [
+	{
+		option = "AAC_DEBUG",
+		header = "opt_aac.h",
+	},
+	{
+		option = "AACRAID_DEBUG",
+		header = "opt_aacraid.h",
+	},
+	{
+		option = "AHC_ALLOW_MEMIO",
+		header = "opt_aic7xxx.h",
+	},
+	{
+		option = "AHC_TMODE_ENABLE",
+		header = "opt_aic7xxx.h",
+	},
+	{
+		option = "AHC_DUMP_EEPROM",
+		header = "opt_aic7xxx.h",
+	},
+	{
+		option = "AHC_DEBUG",
+		header = "opt_aic7xxx.h",
+	},
+	{
+		option = "AHC_DEBUG_OPTS",
+		header = "opt_aic7xxx.h",
+	},
+	{
+		option = "AHC_REG_PRETTY_PRINT",
+		header = "opt_aic7xxx.h",
+	},
+	{
+		option = "AHD_DEBUG",
+		header = "opt_aic79xx.h",
+	},
+	{
+		option = "AHD_DEBUG_OPTS",
+		header = "opt_aic79xx.h",
+	},
+	{
+		option = "AHD_TMODE_ENABLE",
+		header = "opt_aic79xx.h",
+	},
+	{
+		option = "AHD_REG_PRETTY_PRINT",
+		header = "opt_aic79xx.h",
+	},
+	{
+		option = "TWA_DEBUG",
+		header = "opt_twa.h",
+	},
+	{
+		option = "ALT_BREAK_TO_DEBUGGER",
+		header = "opt_kdb.h",
+	},
+	{
+		option = "BREAK_TO_DEBUGGER",
+		header = "opt_kdb.h",
+	},
+	{
+		option = "BUF_TRACKING",
+		header = "opt_global.h",
+	},
+	{
+		option = "DDB",
+	},
+	{
+		option = "DDB_BUFR_SIZE",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "DDB_CAPTURE_DEFAULTBUFSIZE",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "DDB_CAPTURE_MAXBUFSIZE",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "DDB_CTF",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "DDB_NUMSYM",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "FULL_BUF_TRACKING",
+		header = "opt_global.h",
+	},
+	{
+		option = "GDB",
+	},
+	{
+		option = "KDB",
+		header = "opt_global.h",
+	},
+	{
+		option = "KDB_TRACE",
+		header = "opt_kdb.h",
+	},
+	{
+		option = "KDB_UNATTENDED",
+		header = "opt_kdb.h",
+	},
+	{
+		option = "KLD_DEBUG",
+		header = "opt_kld.h",
+	},
+	{
+		option = "SYSCTL_DEBUG",
+		header = "opt_sysctl.h",
+	},
+	{
+		option = "EARLY_PRINTF",
+		header = "opt_global.h",
+	},
+	{
+		option = "TEXTDUMP_PREFERRED",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "TEXTDUMP_VERBOSE",
+		header = "opt_ddb.h",
+	},
+	{
+		option = "NUM_CORE_FILES",
+		header = "opt_global.h",
+	},
+	{
+		option = "TSLOG",
+		header = "opt_global.h",
+	},
+	{
+		option = "TSLOGSIZE",
+		header = "opt_global.h",
+	},
+	{
+		option = "ALQ",
+	},
+	{
+		option = "ALTERA_SDCARD_FAST_SIM",
+		header = "opt_altera_sdcard.h",
+	},
+	{
+		option = "ATSE_CFI_HACK",
+		header = "opt_cfi.h",
+	},
+	{
+		option = "AUDIT",
+		header = "opt_global.h",
+	},
+	{
+		option = "BOOTHOWTO",
+		header = "opt_global.h",
+	},
+	{
+		option = "BOOTVERBOSE",
+		header = "opt_global.h",
+	},
+	{
+		option = "CALLOUT_PROFILING",
+	},
+	{
+		option = "CAPABILITIES",
+		header = "opt_capsicum.h",
+	},
+	{
+		option = "CAPABILITY_MODE",
+		header = "opt_capsicum.h",
+	},
+	{
+		option = "COMPAT_43",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_43TTY",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD4",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD5",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD6",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD7",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD9",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD10",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD11",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_FREEBSD12",
+		header = "opt_global.h",
+	},
+	{
+		option = "COMPAT_CLOUDABI32",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "COMPAT_CLOUDABI64",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "COMPAT_LINUXKPI",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "_COMPAT_LINUX32",
+		header = "opt_compat.h",
+	},
+	{
+		option = "COMPILING_LINT",
+		header = "opt_global.h",
+	},
+	{
+		option = "CY_PCI_FASTINTR",
+	},
+	{
+		option = "DEADLKRES",
+		header = "opt_watchdog.h",
+	},
+	{
+		option = "EXPERIMENTAL",
+		header = "opt_global.h",
+	},
+	{
+		option = "EXT_RESOURCES",
+		header = "opt_global.h",
+	},
+	{
+		option = "DIRECTIO",
+	},
+	{
+		option = "FILEMON",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "FFCLOCK",
+	},
+	{
+		option = "FULL_PREEMPTION",
+		header = "opt_sched.h",
+	},
+	{
+		option = "GZIO",
+		header = "opt_gzio.h",
+	},
+	{
+		option = "IMAGACT_BINMISC",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "IPI_PREEMPTION",
+		header = "opt_sched.h",
+	},
+	{
+		option = "GEOM_BDE",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_BSD",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_CACHE",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_CONCAT",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_ELI",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_FOX",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_GATE",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_JOURNAL",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_LABEL",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_LABEL_GPT",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_LINUX_LVM",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_MAP",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_MBR",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_MIRROR",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_MOUNTVER",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_MULTIPATH",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_NOP",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_APM",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_BSD",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_BSD64",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_EBR",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_EBR_COMPAT",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_GPT",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_LDM",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_MBR",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_PART_VTOC8",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_RAID",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_RAID3",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_SHSEC",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_STRIPE",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_SUNLABEL",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_UZIP",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_UZIP_DEBUG",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_VINUM",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_VIRSTOR",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_VOL",
+		header = "opt_geom.h",
+	},
+	{
+		option = "GEOM_ZERO",
+		header = "opt_geom.h",
+	},
+	{
+		option = "IFLIB",
+		header = "opt_iflib.h",
+	},
+	{
+		option = "KDTRACE_HOOKS",
+		header = "opt_global.h",
+	},
+	{
+		option = "KDTRACE_FRAME",
+		header = "opt_kdtrace.h",
+	},
+	{
+		option = "KN_HASHSIZE",
+		header = "opt_kqueue.h",
+	},
+	{
+		option = "KSTACK_MAX_PAGES",
+	},
+	{
+		option = "KSTACK_PAGES",
+	},
+	{
+		option = "KSTACK_USAGE_PROF",
+	},
+	{
+		option = "KTRACE",
+	},
+	{
+		option = "KTRACE_REQUEST_POOL",
+		header = "opt_ktrace.h",
+	},
+	{
+		option = "LIBICONV",
+	},
+	{
+		option = "MAC",
+		header = "opt_global.h",
+	},
+	{
+		option = "MAC_BIBA",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_BSDEXTENDED",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_IFOFF",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_LOMAC",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_MLS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_NONE",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_NTPD",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_PARTITION",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_PORTACL",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_SEEOTHERUIDS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_STATIC",
+		header = "opt_mac.h",
+	},
+	{
+		option = "MAC_STUB",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_TEST",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_VERIEXEC",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_VERIEXEC_SHA1",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_VERIEXEC_SHA256",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_VERIEXEC_SHA384",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MAC_VERIEXEC_SHA512",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MD_ROOT",
+		header = "opt_md.h",
+	},
+	{
+		option = "MD_ROOT_FSTYPE",
+		header = "opt_md.h",
+	},
+	{
+		option = "MD_ROOT_READONLY",
+		header = "opt_md.h",
+	},
+	{
+		option = "MD_ROOT_SIZE",
+		header = "opt_md.h",
+	},
+	{
+		option = "MD_ROOT_MEM",
+		header = "opt_md.h",
+	},
+	{
+		option = "MFI_DEBUG",
+		header = "opt_mfi.h",
+	},
+	{
+		option = "MFI_DECODE_LOG",
+		header = "opt_mfi.h",
+	},
+	{
+		option = "MPROF_BUFFERS",
+		header = "opt_mprof.h",
+	},
+	{
+		option = "MPROF_HASH_SIZE",
+		header = "opt_mprof.h",
+	},
+	{
+		option = "NEW_PCIB",
+		header = "opt_global.h",
+	},
+	{
+		option = "NO_ADAPTIVE_MUTEXES",
+		header = "opt_adaptive_mutexes.h",
+	},
+	{
+		option = "NO_ADAPTIVE_RWLOCKS",
+	},
+	{
+		option = "NO_ADAPTIVE_SX",
+	},
+	{
+		option = "NO_EVENTTIMERS",
+		header = "opt_timer.h",
+	},
+	{
+		option = "NO_OBSOLETE_CODE",
+		header = "opt_global.h",
+	},
+	{
+		option = "NO_SYSCTL_DESCR",
+		header = "opt_global.h",
+	},
+	{
+		option = "NSWBUF_MIN",
+		header = "opt_param.h",
+	},
+	{
+		option = "MBUF_PACKET_ZONE_DISABLE",
+		header = "opt_global.h",
+	},
+	{
+		option = "PANIC_REBOOT_WAIT_TIME",
+		header = "opt_panic.h",
+	},
+	{
+		option = "PCI_HP",
+		header = "opt_pci.h",
+	},
+	{
+		option = "PCI_IOV",
+		header = "opt_global.h",
+	},
+	{
+		option = "PPC_DEBUG",
+		header = "opt_ppc.h",
+	},
+	{
+		option = "PPC_PROBE_CHIPSET",
+		header = "opt_ppc.h",
+	},
+	{
+		option = "PPS_SYNC",
+		header = "opt_ntp.h",
+	},
+	{
+		option = "PREEMPTION",
+		header = "opt_sched.h",
+	},
+	{
+		option = "QUOTA",
+	},
+	{
+		option = "SCHED_4BSD",
+		header = "opt_sched.h",
+	},
+	{
+		option = "SCHED_STATS",
+		header = "opt_sched.h",
+	},
+	{
+		option = "SCHED_ULE",
+		header = "opt_sched.h",
+	},
+	{
+		option = "SLEEPQUEUE_PROFILING",
+	},
+	{
+		option = "SLHCI_DEBUG",
+		header = "opt_slhci.h",
+	},
+	{
+		option = "STACK",
+		header = "opt_stack.h",
+	},
+	{
+		option = "SUIDDIR",
+	},
+	{
+		option = "MSGMNB",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "MSGMNI",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "MSGSEG",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "MSGSSZ",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "MSGTQL",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SEMMNI",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SEMMNS",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SEMMNU",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SEMMSL",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SEMOPM",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SEMUME",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SHMALL",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SHMMAX",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SHMMAXPGS",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SHMMIN",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SHMMNI",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SHMSEG",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SYSVMSG",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SYSVSEM",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SYSVSHM",
+		header = "opt_sysvipc.h",
+	},
+	{
+		option = "SW_WATCHDOG",
+		header = "opt_watchdog.h",
+	},
+	{
+		option = "TCPHPTS",
+		header = "opt_inet.h",
+	},
+	{
+		option = "TURNSTILE_PROFILING",
+	},
+	{
+		option = "UMTX_PROFILING",
+	},
+	{
+		option = "UMTX_CHAINS",
+		header = "opt_global.h",
+	},
+	{
+		option = "VERBOSE_SYSINIT",
+	},
+	{
+		option = "ZSTDIO",
+		header = "opt_zstdio.h",
+	},
+	{
+		option = "COVERAGE",
+		header = "opt_global.h",
+	},
+	{
+		option = "KCOV",
+	},
+	{
+		option = "KUBSAN",
+		header = "opt_global.h",
+	},
+	{
+		option = "P1003_1B_MQUEUE",
+		header = "opt_posix.h",
+	},
+	{
+		option = "P1003_1B_SEMAPHORES",
+		header = "opt_posix.h",
+	},
+	{
+		option = "_KPOSIX_PRIORITY_SCHEDULING",
+		header = "opt_posix.h",
+	},
+	{
+		option = "INCLUDE_CONFIG_FILE",
+		header = "opt_config.h",
+	},
+	{
+		option = "AUTOFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "CD9660",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "EXT2FS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "FDESCFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "FFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "FUSEFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MSDOSFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "NULLFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "PROCFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "PSEUDOFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "SMBFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "TMPFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "UDF",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "UNIONFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "ZFS",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "PSEUDOFS_TRACE",
+		header = "opt_pseudofs.h",
+	},
+	{
+		option = "KGSSAPI",
+		header = "opt_kgssapi.h",
+	},
+	{
+		option = "KGSSAPI_DEBUG",
+		header = "opt_kgssapi.h",
+	},
+	{
+		option = "NFSCL",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "NFSD",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "CD9660_ICONV",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "MSDOSFS_ICONV",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "UDF_ICONV",
+		header = "opt_dontuse.h",
+	},
+	{
+		option = "SOFTUPDATES",
+		header = "opt_ffs.h",
+	},
+	{
+		option = "NO_FFS_SNAPSHOT",
+		header = "opt_ffs.h",
+	},
+	{
+		option = "UFS_ACL",
+		header = "opt_ufs.h",
+	},
+	{
+		option = "UFS_EXTATTR",
+		header = "opt_ufs.h",
+	},
+	{
+		option = "UFS_EXTATTR_AUTOSTART",
+		header = "opt_ufs.h",
+	},
+	{
+		option = "UFS_DIRHASH",
+		header = "opt_ufs.h",
+	},
+	{
+		option = "UFS_GJOURNAL",
+		header = "opt_ufs.h",
+	},
+	{
+		option = "NFS_ROOT",
+		header = "opt_nfsroot.h",
+	},
+	{
+		option = "NETSMB",
+		header = "opt_netsmb.h",
+	},
+	{
+		option = "NETDUMP",
+		header = "opt_global.h",
+	},
+	{
+		option = "HZ",
+		header = "opt_param.h",
+	},
+	{
+		option = "MAXFILES",
+		header = "opt_param.h",
+	},
+	{
+		option = "NBUF",
+		header = "opt_param.h",
+	},
+	{
+		option = "NSFBUFS",
+		header = "opt_param.h",
+	},
+	{
+		option = "VM_BCACHE_SIZE_MAX",
+		header = "opt_param.h",
+	},
+	{
+		option = "VM_SWZONE_SIZE_MAX",
+		header = "opt_param.h",
+	},
+	{
+		option = "MAXUSERS",
+	},
+	{
+		option = "DFLDSIZ",
+		header = "opt_param.h",
+	},
+	{
+		option = "MAXDSIZ",
+		header = "opt_param.h",
+	},
+	{
+		option = "MAXSSIZ",
+		header = "opt_param.h",
+	},
+	{
+		option = "CAM_MAX_HIGHPOWER",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAMDEBUG",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_DEBUG_COMPILE",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_DEBUG_DELAY",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_DEBUG_BUS",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_DEBUG_TARGET",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_DEBUG_LUN",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_DEBUG_FLAGS",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_BOOT_DELAY",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_IOSCHED_DYNAMIC",
+		header = "opt_cam.h",
+	},
+	{
+		option = "CAM_TEST_FAILURE",
+		header = "opt_cam.h",
+	},
+	{
+		option = "SCSI_DELAY",
+		header = "opt_scsi.h",
+	},
+	{
+		option = "SCSI_NO_SENSE_STRINGS",
+		header = "opt_scsi.h",
+	},
+	{
+		option = "SCSI_NO_OP_STRINGS",
+		header = "opt_scsi.h",
+	},
+	{
+		option = "ATA_STATIC_ID",
+		header = "opt_ada.h",
+	},
+	{
+		option = "CHANGER_MIN_BUSY_SECONDS",
+		header = "opt_cd.h",
+	},
+	{
+		option = "CHANGER_MAX_BUSY_SECONDS",
+		header = "opt_cd.h",
+	},
+	{
+		option = "DA_TRACK_REFS",
+		header = "opt_da.h",
+	},
+	{
+		option = "SA_IO_TIMEOUT",
+		header = "opt_sa.h",
+	},
+	{
+		option = "SA_SPACE_TIMEOUT",
+		header = "opt_sa.h",
+	},
+	{
+		option = "SA_REWIND_TIMEOUT",
+		header = "opt_sa.h",
+	},
+	{
+		option = "SA_ERASE_TIMEOUT",
+		header = "opt_sa.h",
+	},
+	{
+		option = "SA_1FM_AT_EOD",
+		header = "opt_sa.h",
+	},
+	{
+		option = "SCSI_PT_DEFAULT_TIMEOUT",
+		header = "opt_pt.h",
+	},
+	{
+		option = "SES_ENABLE_PASSTHROUGH",
+		header = "opt_ses.h",
+	},
+	{
+		option = "SYM_SETUP_SCSI_DIFF",
+		header = "opt_sym.h",
+	},
+	{
+		option = "SYM_SETUP_PCI_PARITY",
+		header = "opt_sym.h",
+	},
+	{
+		option = "SYM_SETUP_MAX_LUN",
+		header = "opt_sym.h",
+	},
+	{
+		option = "ISP_TARGET_MODE",
+		header = "opt_isp.h",
+	},
+	{
+		option = "ISP_FW_CRASH_DUMP",
+		header = "opt_isp.h",
+	},
+	{
+		option = "ISP_DEFAULT_ROLES",
+		header = "opt_isp.h",
+	},
+	{
+		option = "ISP_INTERNAL_TARGET",
+		header = "opt_isp.h",
+	},
+	{
+		option = "ISP_FCTAPE_OFF",
+		header = "opt_isp.h",
+	},
+	{
+		option = "ISCSI_INITIATOR_DEBUG",
+		header = "opt_iscsi_initiator.h",
+	},
+	{
+		option = "ACCEPT_FILTER_DATA",
+	},
+	{
+		option = "ACCEPT_FILTER_DNS",
+	},
+	{
+		option = "ACCEPT_FILTER_HTTP",
+	},
+	{
+		option = "ALTQ",
+		header = "opt_global.h",
+	},
+	{
+		option = "ALTQ_CBQ",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_CDNR",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_CODEL",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_DEBUG",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_HFSC",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_FAIRQ",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_NOPCC",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_PRIQ",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_RED",
+		header = "opt_altq.h",
+	},
+	{
+		option = "ALTQ_RIO",
+		header = "opt_altq.h",
+	},
+	{
+		option = "BOOTP",
+		header = "opt_bootp.h",
+	},
+	{
+		option = "BOOTP_BLOCKSIZE",
+		header = "opt_bootp.h",
+	},
+	{
+		option = "BOOTP_COMPAT",
+		header = "opt_bootp.h",
+	},
+	{
+		option = "BOOTP_NFSROOT",
+		header = "opt_bootp.h",
+	},
+	{
+		option = "BOOTP_NFSV3",
+		header = "opt_bootp.h",
+	},
+	{
+		option = "BOOTP_WIRED_TO",
+		header = "opt_bootp.h",
+	},
+	{
+		option = "DEVICE_POLLING",
+	},
+	{
+		option = "DUMMYNET",
+		header = "opt_ipdn.h",
+	},
+	{
+		option = "RATELIMIT",
+		header = "opt_ratelimit.h",
+	},
+	{
+		option = "RATELIMIT_DEBUG",
+		header = "opt_ratelimit.h",
+	},
+	{
+		option = "INET",
+		header = "opt_inet.h",
+	},
+	{
+		option = "INET6",
+		header = "opt_inet6.h",
+	},
+	{
+		option = "IPDIVERT",
+	},
+	{
+		option = "IPFILTER",
+		header = "opt_ipfilter.h",
+	},
+	{
+		option = "IPFILTER_DEFAULT_BLOCK",
+		header = "opt_ipfilter.h",
+	},
+	{
+		option = "IPFILTER_LOG",
+		header = "opt_ipfilter.h",
+	},
+	{
+		option = "IPFILTER_LOOKUP",
+		header = "opt_ipfilter.h",
+	},
+	{
+		option = "IPFIREWALL",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_DEFAULT_TO_ACCEPT",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_NAT",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_NAT64",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_NPTV6",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_VERBOSE",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_VERBOSE_LIMIT",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPFIREWALL_PMOD",
+		header = "opt_ipfw.h",
+	},
+	{
+		option = "IPSEC",
+		header = "opt_ipsec.h",
+	},
+	{
+		option = "IPSEC_DEBUG",
+		header = "opt_ipsec.h",
+	},
+	{
+		option = "IPSEC_SUPPORT",
+		header = "opt_ipsec.h",
+	},
+	{
+		option = "IPSTEALTH",
+	},
+	{
+		option = "KRPC",
+	},
+	{
+		option = "LIBALIAS",
+	},
+	{
+		option = "LIBMCHAIN",
+	},
+	{
+		option = "MBUF_PROFILING",
+	},
+	{
+		option = "MBUF_STRESS_TEST",
+	},
+	{
+		option = "MROUTING",
+		header = "opt_mrouting.h",
+	},
+	{
+		option = "NFSLOCKD",
+	},
+	{
+		option = "PCBGROUP",
+		header = "opt_pcbgroup.h",
+	},
+	{
+		option = "PF_DEFAULT_TO_DROP",
+		header = "opt_pf.h",
+	},
+	{
+		option = "RADIX_MPATH",
+		header = "opt_mpath.h",
+	},
+	{
+		option = "ROUTETABLES",
+		header = "opt_route.h",
+	},
+	{
+		option = "RSS",
+		header = "opt_rss.h",
+	},
+	{
+		option = "SLIP_IFF_OPTS",
+		header = "opt_slip.h",
+	},
+	{
+		option = "TCPDEBUG",
+	},
+	{
+		option = "TCPPCAP",
+		header = "opt_global.h",
+	},
+	{
+		option = "SIFTR",
+	},
+	{
+		option = "TCP_BLACKBOX",
+		header = "opt_global.h",
+	},
+	{
+		option = "TCP_HHOOK",
+		header = "opt_inet.h",
+	},
+	{
+		option = "TCP_OFFLOAD",
+		header = "opt_inet.h",
+	},
+	{
+		option = "TCP_RFC7413",
+		header = "opt_inet.h",
+	},
+	{
+		option = "TCP_RFC7413_MAX_KEYS",
+		header = "opt_inet.h",
+	},
+	{
+		option = "TCP_RFC7413_MAX_PSKS",
+		header = "opt_inet.h",
+	},
+	{
+		option = "TCP_SIGNATURE",
+		header = "opt_ipsec.h",
+	},
+	{
+		option = "VLAN_ARRAY",
+		header = "opt_vlan.h",
+	},
+	{
+		option = "XBONEHACK",
+	},
+	{
+		option = "SCTP",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_DEBUG",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_LOCK_LOGGING",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_MBUF_LOGGING",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_MBCNT_LOGGING",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_PACKET_LOGGING",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_LTRACE_CHUNKS",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_LTRACE_ERRORS",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_USE_PERCPU_STAT",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_MCORE_INPUT",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_LOCAL_TRACE_BUF",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "SCTP_DETAILED_STR_STATS",
+		header = "opt_sctp.h",
+	},
+	{
+		option = "NETGRAPH",
+	},
+	{
+		option = "NETGRAPH_DEBUG",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ASYNC",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ATMLLC",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ATM_ATMPIF",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_BT3C",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_H4",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_HCI",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_L2CAP",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_SOCKET",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_UBT",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BLUETOOTH_UBTBCMFW",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BPF",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_BRIDGE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_CAR",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_CHECKSUM",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_CISCO",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_DEFLATE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_DEVICE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ECHO",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_EIFACE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ETHER",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ETHER_ECHO",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_FEC",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_FRAME_RELAY",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_GIF",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_GIF_DEMUX",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_HOLE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_IFACE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_IP_INPUT",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_IPFW",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_KSOCKET",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_L2TP",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_LMI",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_MPPC_COMPRESSION",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_MPPC_ENCRYPTION",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_NAT",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_NETFLOW",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_ONE2MANY",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_PATCH",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_PIPE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_PPP",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_PPPOE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_PPTPGRE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_PRED1",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_RFC1490",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_SOCKET",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_SPLIT",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_SPPP",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_TAG",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_TCPMSS",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_TEE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_TTY",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_UI",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_VJC",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NETGRAPH_VLAN",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NGATM_ATM",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NGATM_ATMBASE",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NGATM_SSCOP",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NGATM_SSCFU",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NGATM_UNI",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "NGATM_CCATM",
+		header = "opt_netgraph.h",
+	},
+	{
+		option = "DRM_DEBUG",
+		header = "opt_drm.h",
+	},
+	{
+		option = "TI_SF_BUF_JUMBO",
+		header = "opt_ti.h",
+	},
+	{
+		option = "TI_JUMBO_HDRSPLIT",
+		header = "opt_ti.h",
+	},
+	{
+		option = "CLUSTERDEBUG",
+		header = "opt_debug_cluster.h",
+	},
+	{
+		option = "DEBUG_1284",
+		header = "opt_ppb_1284.h",
+	},
+	{
+		option = "VP0_DEBUG",
+		header = "opt_vpo.h",
+	},
+	{
+		option = "LPT_DEBUG",
+		header = "opt_lpt.h",
+	},
+	{
+		option = "PLIP_DEBUG",
+		header = "opt_plip.h",
+	},
+	{
+		option = "LOCKF_DEBUG",
+		header = "opt_debug_lockf.h",
+	},
+	{
+		option = "SI_DEBUG",
+		header = "opt_debug_si.h",
+	},
+	{
+		option = "IFMEDIA_DEBUG",
+		header = "opt_ifmedia.h",
+	},
+	{
+		option = "FB_DEBUG",
+		header = "opt_fb.h",
+	},
+	{
+		option = "FB_INSTALL_CDEV",
+		header = "opt_fb.h",
+	},
+	{
+		option = "PERIPH_1284",
+		header = "opt_ppb_1284.h",
+	},
+	{
+		option = "DONTPROBE_1284",
+		header = "opt_ppb_1284.h",
+	},
+	{
+		option = "ENABLE_ALART",
+		header = "opt_intpm.h",
+	},
+	{
+		option = "BLKDEV_IOSIZE",
+		header = "opt_global.h",
+	},
+	{
+		option = "BURN_BRIDGES",
+		header = "opt_global.h",
+	},
+	{
+		option = "DEBUG",
+		header = "opt_global.h",
+	},
+	{
+		option = "DEBUG_LOCKS",
+		header = "opt_global.h",
+	},
+	{
+		option = "DEBUG_VFS_LOCKS",
+		header = "opt_global.h",
+	},
+	{
+		option = "DFLTPHYS",
+		header = "opt_global.h",
+	},
+	{
+		option = "DIAGNOSTIC",
+		header = "opt_global.h",
+	},
+	{
+		option = "INVARIANT_SUPPORT",
+		header = "opt_global.h",
+	},
+	{
+		option = "INVARIANTS",
+		header = "opt_global.h",
+	},
+	{
+		option = "KASSERT_PANIC_OPTIONAL",
+		header = "opt_global.h",
+	},
+	{
+		option = "MAXCPU",
+		header = "opt_global.h",
+	},
+	{
+		option = "MAXMEMDOM",
+		header = "opt_global.h",
+	},
+	{
+		option = "MAXPHYS",
+		header = "opt_global.h",
+	},
+	{
+		option = "MCLSHIFT",
+		header = "opt_global.h",
+	},
+	{
+		option = "MUTEX_NOINLINE",
+		header = "opt_global.h",
+	},
+	{
+		option = "LOCK_PROFILING",
+		header = "opt_global.h",
+	},
+	{
+		option = "LOCK_PROFILING_FAST",
+		header = "opt_global.h",
+	},
+	{
+		option = "MSIZE",
+		header = "opt_global.h",
+	},
+	{
+		option = "REGRESSION",
+		header = "opt_global.h",
+	},
+	{
+		option = "RWLOCK_NOINLINE",
+		header = "opt_global.h",
+	},
+	{
+		option = "SX_NOINLINE",
+		header = "opt_global.h",
+	},
+	{
+		option = "VFS_BIO_DEBUG",
+		header = "opt_global.h",
+	},
+	{
+		option = "VM_KMEM_SIZE",
+		header = "opt_vm.h",
+	},
+	{
+		option = "VM_KMEM_SIZE_SCALE",
+		header = "opt_vm.h",
+	},
+	{
+		option = "VM_KMEM_SIZE_MAX",
+		header = "opt_vm.h",
+	},
+	{
+		option = "VM_NRESERVLEVEL",
+		header = "opt_vm.h",
+	},
+	{
+		option = "VM_LEVEL_0_ORDER",
+		header = "opt_vm.h",
+	},
+	{
+		option = "NO_SWAPPING",
+		header = "opt_vm.h",
+	},
+	{
+		option = "MALLOC_MAKE_FAILURES",
+		header = "opt_vm.h",
+	},
+	{
+		option = "MALLOC_PROFILE",
+		header = "opt_vm.h",
+	},
+	{
+		option = "MALLOC_DEBUG_MAXZONES",
+		header = "opt_vm.h",
+	},
+	{
+		option = "DEBUG_MEMGUARD",
+		header = "opt_vm.h",
+	},
+	{
+		option = "DEBUG_REDZONE",
+		header = "opt_vm.h",
+	},
+	{
+		option = "EARLY_AP_STARTUP",
+		header = "opt_global.h",
+	},
+	{
+		option = "SMP",
+		header = "opt_global.h",
+	},
+	{
+		option = "NUMA",
+		header = "opt_global.h",
+	},
+	{
+		option = "MSGBUF_SIZE",
+		header = "opt_msgbuf.h",
+	},
+	{
+		option = "NFS_MINATTRTIMO",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "NFS_MAXATTRTIMO",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "NFS_MINDIRATTRTIMO",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "NFS_MAXDIRATTRTIMO",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "NFS_DEBUG",
+		header = "opt_nfs.h",
+	},
+	{
+		option = "TMPFS_PAGES_MINRESERVED",
+		header = "opt_tmpfs.h",
+	},
+	{
+		option = "OVERRIDE_CARD",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "OVERRIDE_TUNER",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "OVERRIDE_DBX",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "OVERRIDE_MSP",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BROOKTREE_SYSTEM_DEFAULT",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BROOKTREE_ALLOC_PAGES",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_OVERRIDE_CARD",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_OVERRIDE_TUNER",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_OVERRIDE_DBX",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_OVERRIDE_MSP",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_SYSTEM_DEFAULT",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_ALLOC_PAGES",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_USE_PLL",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_GPIO_ACCESS",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_NO_MSP_RESET",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_430_FX_MODE",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_SIS_VIA_MODE",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_USE_FREEBSD_SMBUS",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "BKTR_NEW_MSP34XX_DRIVER",
+		header = "opt_bktr.h",
+	},
+	{
+		option = "UART_PPS_ON_CTS",
+		header = "opt_uart.h",
+	},
+	{
+		option = "UART_POLL_FREQ",
+		header = "opt_uart.h",
+	},
+	{
+		option = "UART_DEV_TOLERANCE_PCT",
+		header = "opt_uart.h",
+	},
+	{
+		option = "BUS_DEBUG",
+		header = "opt_bus.h",
+	},
+	{
+		option = "USB_DEBUG",
+		header = "opt_usb.h",
+	},
+	{
+		option = "USB_HOST_ALIGN",
+		header = "opt_usb.h",
+	},
+	{
+		option = "USB_REQ_DEBUG",
+		header = "opt_usb.h",
+	},
+	{
+		option = "USB_TEMPLATE",
+		header = "opt_usb.h",
+	},
+	{
+		option = "USB_VERBOSE",
+		header = "opt_usb.h",
+	},
+	{
+		option = "USB_DMA_SINGLE_ALLOC",
+		header = "opt_usb.h",
+	},
+	{
+		option = "USB_EHCI_BIG_ENDIAN_DESC",
+		header = "opt_usb.h",
+	},
+	{
+		option = "U3G_DEBUG",
+		header = "opt_u3g.h",
+	},
+	{
+		option = "UKBD_DFLT_KEYMAP",
+		header = "opt_ukbd.h",
+	},
+	{
+		option = "UPLCOM_INTR_INTERVAL",
+		header = "opt_uplcom.h",
+	},
+	{
+		option = "UVSCOM_DEFAULT_OPKTSIZE",
+		header = "opt_uvscom.h",
+	},
+	{
+		option = "UVSCOM_INTR_INTERVAL",
+		header = "opt_uvscom.h",
+	},
+	{
+		option = "RTWN_DEBUG",
+		header = "opt_rtwn.h",
+	},
+	{
+		option = "RTWN_WITHOUT_UCODE",
+		header = "opt_rtwn.h",
+	},
+	{
+		option = "INIT_PATH",
+	},
+	{
+		option = "ROOTDEVNAME",
+	},
+	{
+		option = "FDC_DEBUG",
+		header = "opt_fdc.h",
+	},
+	{
+		option = "PCFCLOCK_VERBOSE",
+		header = "opt_pcfclock.h",
+	},
+	{
+		option = "PCFCLOCK_MAX_RETRIES",
+		header = "opt_pcfclock.h",
+	},
+	{
+		option = "KTR",
+		header = "opt_global.h",
+	},
+	{
+		option = "KTR_ALQ",
+		header = "opt_ktr.h",
+	},
+	{
+		option = "KTR_MASK",
+		header = "opt_ktr.h",
+	},
+	{
+		option = "KTR_CPUMASK",
+		header = "opt_ktr.h",
+	},
+	{
+		option = "KTR_COMPILE",
+		header = "opt_global.h",
+	},
+	{
+		option = "KTR_BOOT_ENTRIES",
+		header = "opt_global.h",
+	},
+	{
+		option = "KTR_ENTRIES",
+		header = "opt_global.h",
+	},
+	{
+		option = "KTR_VERBOSE",
+		header = "opt_ktr.h",
+	},
+	{
+		option = "WITNESS",
+		header = "opt_global.h",
+	},
+	{
+		option = "WITNESS_KDB",
+		header = "opt_witness.h",
+	},
+	{
+		option = "WITNESS_NO_VNODE",
+		header = "opt_witness.h",
+	},
+	{
+		option = "WITNESS_SKIPSPIN",
+		header = "opt_witness.h",
+	},
+	{
+		option = "WITNESS_COUNT",
+		header = "opt_witness.h",
+	},
+	{
+		option = "OPENSOLARIS_WITNESS",
+		header = "opt_global.h",
+	},
+	{
+		option = "ACPI_DEBUG",
+		header = "opt_acpi.h",
+	},
+	{
+		option = "ACPI_MAX_TASKS",
+		header = "opt_acpi.h",
+	},
+	{
+		option = "ACPI_MAX_THREADS",
+		header = "opt_acpi.h",
+	},
+	{
+		option = "ACPI_DMAR",
+		header = "opt_acpi.h",
+	},
+	{
+		option = "DEV_ACPI",
+		header = "opt_acpi.h",
+	},
+	{
+		option = "DEV_ISA",
+		header = "opt_isa.h",
+	},
+	{
+		option = "ISAPNP",
+		header = "opt_isa.h",
+	},
+	{
+		option = "DEV_BPF",
+		header = "opt_bpf.h",
+	},
+	{
+		option = "DEV_CARP",
+		header = "opt_carp.h",
+	},
+	{
+		option = "DEV_NETMAP",
+		header = "opt_global.h",
+	},
+	{
+		option = "DEV_PCI",
+		header = "opt_pci.h",
+	},
+	{
+		option = "DEV_PF",
+		header = "opt_pf.h",
+	},
+	{
+		option = "DEV_PFLOG",
+		header = "opt_pf.h",
+	},
+	{
+		option = "DEV_PFSYNC",
+		header = "opt_pf.h",
+	},
+	{
+		option = "DEV_SPLASH",
+		header = "opt_splash.h",
+	},
+	{
+		option = "DEV_VLAN",
+		header = "opt_vlan.h",
+	},
+	{
+		option = "ED_HPP",
+		header = "opt_ed.h",
+	},
+	{
+		option = "ED_3C503",
+		header = "opt_ed.h",
+	},
+	{
+		option = "ED_SIC",
+		header = "opt_ed.h",
+	},
+	{
+		option = "BCE_DEBUG",
+		header = "opt_bce.h",
+	},
+	{
+		option = "BCE_NVRAM_WRITE_SUPPORT",
+		header = "opt_bce.h",
+	},
+	{
+		option = "SOCKBUF_DEBUG",
+		header = "opt_global.h",
+	},
+	{
+		option = "UBSEC_DEBUG",
+		header = "opt_ubsec.h",
+	},
+	{
+		option = "UBSEC_RNDTEST",
+		header = "opt_ubsec.h",
+	},
+	{
+		option = "UBSEC_NO_RNG",
+		header = "opt_ubsec.h",
+	},
+	{
+		option = "HIFN_DEBUG",
+		header = "opt_hifn.h",
+	},
+	{
+		option = "HIFN_RNDTEST",
+		header = "opt_hifn.h",
+	},
+	{
+		option = "SAFE_DEBUG",
+		header = "opt_safe.h",
+	},
+	{
+		option = "SAFE_NO_RNG",
+		header = "opt_safe.h",
+	},
+	{
+		option = "SAFE_RNDTEST",
+		header = "opt_safe.h",
+	},
+	{
+		option = "MAXCONS",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_ALT_MOUSE_IMAGE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_CUT_SPACES2TABS",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_CUT_SEPCHARS",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_DEBUG_LEVEL",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_DFLT_FONT",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_DFLT_TERM",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_DISABLE_KDBKEY",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_DISABLE_REBOOT",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_HISTORY_SIZE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_KERNEL_CONS_ATTR",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_KERNEL_CONS_ATTRS",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_KERNEL_CONS_REV_ATTR",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_MOUSE_CHAR",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_CUTPASTE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_FONT_LOADING",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_HISTORY",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_MODE_CHANGE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_SUSPEND_VTYSWITCH",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_SYSMOUSE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_TERM_DUMB",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_TERM_SC",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NO_TERM_TEKEN",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NORM_ATTR",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_NORM_REV_ATTR",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_PIXEL_MODE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_RENDER_DEBUG",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "SC_TWOBUTTON_MOUSE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "VT_ALT_TO_ESC_HACK",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "VT_FB_DEFAULT_WIDTH",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "VT_FB_DEFAULT_HEIGHT",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "VT_MAXWINDOWS",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "VT_TWOBUTTON_MOUSE",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "DEV_SC",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "DEV_VT",
+		header = "opt_syscons.h",
+	},
+	{
+		option = "TEKEN_CONS25",
+		header = "opt_teken.h",
+	},
+	{
+		option = "TEKEN_UTF8",
+		header = "opt_teken.h",
+	},
+	{
+		option = "TERMINAL_KERN_ATTR",
+		header = "opt_teken.h",
+	},
+	{
+		option = "TERMINAL_NORM_ATTR",
+		header = "opt_teken.h",
+	},
+	{
+		option = "PRINTF_BUFR_SIZE",
+		header = "opt_printf.h",
+	},
+	{
+		option = "BOOT_TAG",
+		header = "opt_printf.h",
+	},
+	{
+		option = "BOOT_TAG_SZ",
+		header = "opt_printf.h",
+	},
+	{
+		option = "KBD_DISABLE_KEYMAP_LOAD",
+		header = "opt_kbd.h",
+	},
+	{
+		option = "KBD_INSTALL_CDEV",
+		header = "opt_kbd.h",
+	},
+	{
+		option = "KBD_MAXRETRY",
+		header = "opt_kbd.h",
+	},
+	{
+		option = "KBD_MAXWAIT",
+		header = "opt_kbd.h",
+	},
+	{
+		option = "KBD_RESETDELAY",
+		header = "opt_kbd.h",
+	},
+	{
+		option = "KBDIO_DEBUG",
+		header = "opt_kbd.h",
+	},
+	{
+		option = "KBDMUX_DFLT_KEYMAP",
+		header = "opt_kbdmux.h",
+	},
+	{
+		option = "ATH_DEBUG",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_TXBUF",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_RXBUF",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_DIAGAPI",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_TX99_DIAG",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_ENABLE_11N",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_ENABLE_DFS",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_EEPROM_FIRMWARE",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_ENABLE_RADIOTAP_VENDOR_EXT",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_DEBUG_ALQ",
+		header = "opt_ath.h",
+	},
+	{
+		option = "ATH_KTR_INTR_DEBUG",
+		header = "opt_ath.h",
+	},
+	{
+		option = "AH_SUPPORT_AR9130",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_SUPPORT_AR9330",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_SUPPORT_AR9340",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_SUPPORT_QCA9530",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_SUPPORT_QCA9550",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_DEBUG",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_ASSERT",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_DEBUG_ALQ",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_REGOPS_FUNC",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_WRITE_REGDOMAIN",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_DEBUG_COUNTRY",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_WRITE_EEPROM",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_PRIVATE_DIAG",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_NEED_DESC_SWAP",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_USE_INIPDGAIN",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_MAXCHAN",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_RXCFG_SDMAMW_4BYTES",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_INTERRUPT_DEBUGGING",
+		header = "opt_ah.h",
+	},
+	{
+		option = "AH_AR5416_INTERRUPT_MITIGATION",
+		header = "opt_ah.h",
+	},
+	{
+		option = "ALTERA_MSGDMA_DESC_STD",
+		header = "opt_altera_msgdma.h",
+	},
+	{
+		option = "ALTERA_MSGDMA_DESC_EXT",
+		header = "opt_altera_msgdma.h",
+	},
+	{
+		option = "ALTERA_MSGDMA_DESC_PF_STD",
+		header = "opt_altera_msgdma.h",
+	},
+	{
+		option = "ALTERA_MSGDMA_DESC_PF_EXT",
+		header = "opt_altera_msgdma.h",
+	},
+	{
+		option = "BWI_DEBUG",
+		header = "opt_bwi.h",
+	},
+	{
+		option = "BWI_DEBUG_VERBOSE",
+		header = "opt_bwi.h",
+	},
+	{
+		option = "BWN_DEBUG",
+		header = "opt_bwn.h",
+	},
+	{
+		option = "BWN_GPL_PHY",
+		header = "opt_bwn.h",
+	},
+	{
+		option = "BWN_USE_SIBA",
+		header = "opt_bwn.h",
+	},
+	{
+		option = "SIBA_DEBUG",
+		header = "opt_siba.h",
+	},
+	{
+		option = "MALO_DEBUG",
+		header = "opt_malo.h",
+	},
+	{
+		option = "MALO_TXBUF",
+		header = "opt_malo.h",
+	},
+	{
+		option = "MALO_RXBUF",
+		header = "opt_malo.h",
+	},
+	{
+		option = "MWL_DEBUG",
+		header = "opt_mwl.h",
+	},
+	{
+		option = "MWL_TXBUF",
+		header = "opt_mwl.h",
+	},
+	{
+		option = "MWL_RXBUF",
+		header = "opt_mwl.h",
+	},
+	{
+		option = "MWL_DIAGAPI",
+		header = "opt_mwl.h",
+	},
+	{
+		option = "MWL_AGGR_SIZE",
+		header = "opt_mwl.h",
+	},
+	{
+		option = "MWL_TX_NODROP",
+		header = "opt_mwl.h",
+	},
+	{
+		option = "MVNETA_MULTIQUEUE",
+		header = "opt_mvneta.h",
+	},
+	{
+		option = "MVNETA_KTR",
+		header = "opt_mvneta.h",
+	},
+	{
+		option = "IWM_DEBUG",
+		header = "opt_iwm.h",
+	},
+	{
+		option = "IWN_DEBUG",
+		header = "opt_iwn.h",
+	},
+	{
+		option = "WPI_DEBUG",
+		header = "opt_wpi.h",
+	},
+	{
+		option = "DCONS_BUF_SIZE",
+		header = "opt_dcons.h",
+	},
+	{
+		option = "DCONS_POLL_HZ",
+		header = "opt_dcons.h",
+	},
+	{
+		option = "DCONS_FORCE_CONSOLE",
+		header = "opt_dcons.h",
+	},
+	{
+		option = "DCONS_FORCE_GDB",
+		header = "opt_dcons.h",
+	},
+	{
+		option = "HWPMC_DEBUG",
+		header = "opt_global.h",
+	},
+	{
+		option = "HWPMC_HOOKS",
+	},
+	{
+		option = "HWPMC_MIPS_BACKTRACE",
+		header = "opt_hwpmc_hooks.h",
+	},
+	{
+		option = "IEEE80211_DEBUG",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "IEEE80211_DEBUG_REFCNT",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "IEEE80211_SUPPORT_MESH",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "IEEE80211_SUPPORT_SUPERG",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "IEEE80211_SUPPORT_TDMA",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "IEEE80211_ALQ",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "IEEE80211_DFS_DEBUG",
+		header = "opt_wlan.h",
+	},
+	{
+		option = "TDMA_SLOTLEN_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_SLOTCNT_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_BINTVAL_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_11B_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_11G_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_11A_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_TURBO_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_HALF_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_QUARTER_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_11NA_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "TDMA_TXRATE_11NG_DEFAULT",
+		header = "opt_tdma.h",
+	},
+	{
+		option = "PICKMODE_DEBUG",
+		header = "opt_videomode.h",
+	},
+	{
+		option = "VIMAGE",
+		header = "opt_global.h",
+	},
+	{
+		option = "VNET_DEBUG",
+		header = "opt_global.h",
+	},
+	{
+		option = "CFI_SUPPORT_STRATAFLASH",
+		header = "opt_cfi.h",
+	},
+	{
+		option = "CFI_ARMEDANDDANGEROUS",
+		header = "opt_cfi.h",
+	},
+	{
+		option = "CFI_HARDWAREBYTESWAP",
+		header = "opt_cfi.h",
+	},
+	{
+		option = "SND_DEBUG",
+		header = "opt_snd.h",
+	},
+	{
+		option = "SND_DIAGNOSTIC",
+		header = "opt_snd.h",
+	},
+	{
+		option = "SND_FEEDER_MULTIFORMAT",
+		header = "opt_snd.h",
+	},
+	{
+		option = "SND_FEEDER_FULL_MULTIFORMAT",
+		header = "opt_snd.h",
+	},
+	{
+		option = "SND_FEEDER_RATE_HP",
+		header = "opt_snd.h",
+	},
+	{
+		option = "SND_PCM_64",
+		header = "opt_snd.h",
+	},
+	{
+		option = "SND_OLDSTEREO",
+		header = "opt_snd.h",
+	},
+	{
+		option = "X86BIOS",
+	},
+	{
+		option = "FDT",
+		header = "opt_platform.h",
+	},
+	{
+		option = "FDT_DTB_STATIC",
+		header = "opt_platform.h",
+	},
+	{
+		option = "OFED",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "OFED_DEBUG_INIT",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "SDP",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "SDP_DEBUG",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "IPOIB",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "IPOIB_DEBUG",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "IPOIB_CM",
+		header = "opt_ofed.h",
+	},
+	{
+		option = "RACCT",
+		header = "opt_global.h",
+	},
+	{
+		option = "RACCT_DEFAULT_TO_DISABLED",
+		header = "opt_global.h",
+	},
+	{
+		option = "RCTL",
+		header = "opt_global.h",
+	},
+	{
+		option = "RANDOM_LOADABLE",
+		header = "opt_global.h",
+	},
+	{
+		option = "RANDOM_ENABLE_UMA",
+		header = "opt_global.h",
+	},
+	{
+		option = "RANDOM_ENABLE_ETHER",
+		header = "opt_global.h",
+	},
+	{
+		option = "TPM_HARVEST",
+		header = "opt_tpm.h",
+	},
+	{
+		option = "BHND_LOGLEVEL",
+		header = "opt_global.h",
+	},
+	{
+		option = "GPIO_SPI_DEBUG",
+		header = "opt_gpio.h",
+	},
+	{
+		option = "SPIGEN_LEGACY_CDEVNAME",
+		header = "opt_spi.h",
+	},
+	{
+		option = "RTL8366_SOFT_RESET",
+		header = "opt_etherswitch.h",
+	},
+	{
+		option = "EVDEV_SUPPORT",
+		header = "opt_evdev.h",
+	},
+	{
+		option = "EVDEV_DEBUG",
+		header = "opt_evdev.h",
+	},
+	{
+		option = "UINPUT_DEBUG",
+		header = "opt_evdev.h",
+	},
+	{
+		option = "HN_DEBUG",
+		header = "opt_hn.h",
+	},
+	{
+		option = "MMCCAM",
+	},
+	{
+		option = "EKCD",
+		header = "opt_ekcd.h",
+	},
+	{
+		option = "NVME_USE_NVD",
+		header = "opt_nvme.h",
+	},
+	{
+		option = "AMDSBWD_DEBUG",
+		header = "opt_amdsbwd.h",
+	},
+	{
+		option = "GCOV",
+		header = "opt_global.h",
+	},
+	{
+		option = "LINDEBUGFS",
+	},
+]
