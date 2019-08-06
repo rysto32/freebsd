@@ -1,0 +1,15 @@
+.include GENERIC.ucl
+kernconf = {
+	ident = GENERIC-NODEBUG,
+	options = [
+		{INVARIANTS = false},
+		{INVARIANT_SUPPORT = false},
+		{WITNESS = false},
+		{WITNESS_SKIPSPIN = false},
+		{BUF_TRACKING = false},
+		{DEADLKRES = false},
+		{FULL_BUF_TRACKING = false},
+		{COVERAGE = false},
+		{KCOV = false},
+	]
+}
