@@ -1,0 +1,2497 @@
+{
+	kern-arch-src = [
+		{
+			path : "cloudabi32_vdso.o"
+			options : "compat_cloudabi32"
+			no-obj : true
+			compile-with : "${CC} -x assembler-with-cpp -m32 -shared -nostdinc -nostdlib -Wl,-T$S/compat/cloudabi/cloudabi_vdso.lds $S/contrib/cloudabi/cloudabi_vdso_i686_on_64bit.S -o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "$S/contrib/cloudabi/cloudabi_vdso_i686_on_64bit.S"
+			clean : "cloudabi32_vdso.o"
+		},
+		{
+			path : "cloudabi32_vdso_blob.o"
+			options : "compat_cloudabi32"
+			compile-with : "${OBJCOPY} --input-target binary --output-target elf64-x86-64-freebsd --binary-architecture i386 cloudabi32_vdso.o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "cloudabi32_vdso.o"
+			clean : "cloudabi32_vdso_blob.o"
+		},
+		{
+			path : "cloudabi64_vdso.o"
+			options : "compat_cloudabi64"
+			no-obj : true
+			compile-with : "${CC} -x assembler-with-cpp -shared -nostdinc -nostdlib -Wl,-T$S/compat/cloudabi/cloudabi_vdso.lds $S/contrib/cloudabi/cloudabi_vdso_x86_64.S -o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "$S/contrib/cloudabi/cloudabi_vdso_x86_64.S"
+			clean : "cloudabi64_vdso.o"
+		},
+		{
+			path : "cloudabi64_vdso_blob.o"
+			options : "compat_cloudabi64"
+			compile-with : "${OBJCOPY} --input-target binary --output-target elf64-x86-64-freebsd --binary-architecture i386 cloudabi64_vdso.o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "cloudabi64_vdso.o"
+			clean : "cloudabi64_vdso_blob.o"
+		},
+		{
+			path : "linux32_genassym.o"
+			options : "compat_linux32"
+			no-obj : true
+			compile-with : "${CC} ${CFLAGS:N-flto:N-fno-common} -c ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/amd64/linux32/linux32_genassym.c offset.inc"
+			clean : "linux32_genassym.o"
+		},
+		{
+			path : "linux32_assym.h"
+			options : "compat_linux32"
+			no-obj : true
+			compile-with : "sh $S/kern/genassym.sh linux32_genassym.o > ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "$S/kern/genassym.sh linux32_genassym.o"
+			before-depend : true
+			clean : "linux32_assym.h"
+		},
+		{
+			path : "linux32_locore.o"
+			options : "compat_linux32"
+			no-obj : true
+			compile-with : "${CC} -x assembler-with-cpp -DLOCORE -m32 -shared -s -pipe -I. -I$S -Werror -Wall -fPIC -fno-common -nostdinc -nostdlib -Wl,-T$S/amd64/linux32/linux32_vdso.lds.s -Wl,-soname=linux32_vdso.so,--eh-frame-hdr,-warn-common ${.IMPSRC} -o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "linux32_assym.h $S/amd64/linux32/linux32_locore.asm"
+			clean : "linux32_locore.o"
+		},
+		{
+			path : "linux32_vdso.so"
+			options : "compat_linux32"
+			compile-with : "${OBJCOPY} --input-target binary --output-target elf64-x86-64-freebsd --binary-architecture i386 linux32_locore.o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "linux32_locore.o"
+			clean : "linux32_vdso.so"
+		},
+		{
+			path : "ia32_genassym.o"
+			no-obj : true
+			compile-with : "${CC} ${CFLAGS:N-flto:N-fno-common} -c ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/compat/ia32/ia32_genassym.c offset.inc"
+			clean : "ia32_genassym.o"
+		},
+		{
+			path : "ia32_assym.h"
+			no-obj : true
+			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh ia32_genassym.o > ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "$S/kern/genassym.sh ia32_genassym.o"
+			before-depend : true
+			clean : "ia32_assym.h"
+		},
+		{
+			path : "font.h"
+			options : "sc_dflt_font"
+			no-obj : true
+			compile-with : "uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x16.fnt && file2c 'static u_char dflt_font_16[16*256] = {' '};' < ${SC_DFLT_FONT}-8x16 > font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x14.fnt && file2c 'static u_char dflt_font_14[14*256] = {' '};' < ${SC_DFLT_FONT}-8x14 >> font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x8.fnt && file2c 'static u_char dflt_font_8[8*256] = {' '};' < ${SC_DFLT_FONT}-8x8 >> font.h"
+			no-implicit-rule : true
+			before-depend : true
+			clean : "font.h ${SC_DFLT_FONT}-8x14 ${SC_DFLT_FONT}-8x16 ${SC_DFLT_FONT}-8x8"
+		},
+		{
+			path : "atkbdmap.h"
+			options : "atkbd_dflt_keymap"
+			no-obj : true
+			compile-with : "kbdcontrol -P ${S:S/sys$/share/}/vt/keymaps -P ${S:S/sys$/share/}/syscons/keymaps -L ${ATKBD_DFLT_KEYMAP} | sed -e 's/^static keymap_t.* = /static keymap_t key_map = /' -e 's/^static accentmap_t.* = /static accentmap_t accent_map = /' > atkbdmap.h"
+			no-implicit-rule : true
+			before-depend : true
+			clean : "atkbdmap.h"
+		},
+		{
+			path : "ukbdmap.h"
+			options : "ukbd_dflt_keymap"
+			no-obj : true
+			compile-with : "kbdcontrol -P ${S:S/sys$/share/}/vt/keymaps -P ${S:S/sys$/share/}/syscons/keymaps -L ${UKBD_DFLT_KEYMAP} | sed -e 's/^static keymap_t.* = /static keymap_t key_map = /' -e 's/^static accentmap_t.* = /static accentmap_t accent_map = /' > ukbdmap.h"
+			no-implicit-rule : true
+			before-depend : true
+			clean : "ukbdmap.h"
+		},
+		{
+			path : "hpt27xx_lib.o"
+			options : "hpt27xx"
+			compile-with : "uudecode < $S/dev/hpt27xx/amd64-elf.hpt27xx_lib.o.uu"
+			no-implicit-rule : true
+			dependency : "$S/dev/hpt27xx/amd64-elf.hpt27xx_lib.o.uu"
+		},
+		{
+			path : "hptmvraid.o"
+			options : "hptmv"
+			compile-with : "uudecode < $S/dev/hptmv/amd64-elf.raid.o.uu"
+			no-implicit-rule : true
+			dependency : "$S/dev/hptmv/amd64-elf.raid.o.uu"
+		},
+		{
+			path : "hptnr_lib.o"
+			options : "hptnr"
+			compile-with : "uudecode < $S/dev/hptnr/amd64-elf.hptnr_lib.o.uu"
+			no-implicit-rule : true
+			dependency : "$S/dev/hptnr/amd64-elf.hptnr_lib.o.uu"
+		},
+		{
+			path : "hptrr_lib.o"
+			options : "hptrr"
+			compile-with : "uudecode < $S/dev/hptrr/amd64-elf.hptrr_lib.o.uu"
+			no-implicit-rule : true
+			dependency : "$S/dev/hptrr/amd64-elf.hptrr_lib.o.uu"
+		},
+		{
+			path : "amd64/acpica/acpi_machdep.c"
+			options : "acpi"
+		},
+		{
+			path : "acpi_wakecode.o"
+			options : "acpi"
+			no-obj : true
+			compile-with : "${NORMAL_S}"
+			no-implicit-rule : true
+			dependency : "$S/amd64/acpica/acpi_wakecode.S assym.inc"
+			before-depend : true
+			clean : "acpi_wakecode.o"
+		},
+		{
+			path : "acpi_wakecode.bin"
+			options : "acpi"
+			no-obj : true
+			compile-with : "${OBJCOPY} -S -O binary acpi_wakecode.o ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "acpi_wakecode.o"
+			before-depend : true
+			clean : "acpi_wakecode.bin"
+		},
+		{
+			path : "acpi_wakecode.h"
+			options : "acpi"
+			no-obj : true
+			compile-with : "file2c -sx 'static char wakecode[] = {' '};' < acpi_wakecode.bin > ${.TARGET}"
+			no-implicit-rule : true
+			dependency : "acpi_wakecode.bin"
+			before-depend : true
+			clean : "acpi_wakecode.h"
+		},
+		{
+			path : "acpi_wakedata.h"
+			options : "acpi"
+			no-obj : true
+			compile-with : '${NM} -n --defined-only acpi_wakecode.o | while read offset dummy what; do echo "#define	$${what}	0x$${offset}"; done > ${.TARGET}'
+			no-implicit-rule : true
+			dependency : "acpi_wakecode.o"
+			before-depend : true
+			clean : "acpi_wakedata.h"
+		},
+		{
+			path : "amd64/amd64/bios.c"
+		},
+		{
+			path : "amd64/amd64/bpf_jit_machdep.c"
+			options : "bpf_jitter"
+		},
+		{
+			path : "amd64/amd64/copyout.c"
+		},
+		{
+			path : "amd64/amd64/cpu_switch.S"
+		},
+		{
+			path : "amd64/amd64/db_disasm.c"
+			options : "ddb"
+		},
+		{
+			path : "amd64/amd64/db_interface.c"
+			options : "ddb"
+		},
+		{
+			path : "amd64/amd64/db_trace.c"
+			options : "ddb"
+		},
+		{
+			path : "amd64/amd64/efirt_machdep.c"
+			options : "efirt"
+		},
+		{
+			path : "amd64/amd64/efirt_support.S"
+			options : "efirt"
+		},
+		{
+			path : "amd64/amd64/elf_machdep.c"
+		},
+		{
+			path : "amd64/amd64/exception.S"
+		},
+		{
+			path : "amd64/amd64/fpu.c"
+		},
+		{
+			path : "amd64/amd64/gdb_machdep.c"
+			options : "gdb"
+		},
+		{
+			path : "amd64/amd64/in_cksum.c"
+			options : {any-of : ["inet", "inet6"]}
+		},
+		{
+			path : "amd64/amd64/initcpu.c"
+		},
+		{
+			path : "amd64/amd64/io.c"
+			options : "io"
+		},
+		{
+			path : "amd64/amd64/locore.S"
+			no-obj : true
+		},
+		{
+			path : "amd64/amd64/xen-locore.S"
+			options : "xenhvm"
+		},
+		{
+			path : "amd64/amd64/machdep.c"
+		},
+		{
+			path : "amd64/amd64/mem.c"
+			options : "mem"
+		},
+		{
+			path : "amd64/amd64/minidump_machdep.c"
+		},
+		{
+			path : "amd64/amd64/mp_machdep.c"
+			options : "smp"
+		},
+		{
+			path : "amd64/amd64/mpboot.S"
+			options : "smp"
+		},
+		{
+			path : "amd64/amd64/pmap.c"
+		},
+		{
+			path : "amd64/amd64/prof_machdep.c"
+			options : "profiling-routine"
+		},
+		{
+			path : "amd64/amd64/ptrace_machdep.c"
+		},
+		{
+			path : "amd64/amd64/sigtramp.S"
+		},
+		{
+			path : "amd64/amd64/support.S"
+		},
+		{
+			path : "amd64/amd64/sys_machdep.c"
+		},
+		{
+			path : "amd64/amd64/trap.c"
+		},
+		{
+			path : "amd64/amd64/uio_machdep.c"
+		},
+		{
+			path : "amd64/amd64/uma_machdep.c"
+		},
+		{
+			path : "amd64/amd64/vm_machdep.c"
+		},
+		{
+			path : "amd64/cloudabi32/cloudabi32_sysvec.c"
+			options : "compat_cloudabi32"
+		},
+		{
+			path : "amd64/cloudabi64/cloudabi64_sysvec.c"
+			options : "compat_cloudabi64"
+		},
+		{
+			path : "amd64/pci/pci_cfgreg.c"
+			options : "pci"
+		},
+		{
+			path : "cddl/contrib/opensolaris/common/atomic/amd64/opensolaris_atomic.S"
+			options : {any-of : ["zfs", "dtrace"]}
+			compile-with : "${ZFS_S}"
+		},
+		{
+			path : "cddl/dev/dtrace/amd64/dtrace_asm.S"
+			options : "dtrace"
+			compile-with : "${DTRACE_S}"
+		},
+		{
+			path : "cddl/dev/dtrace/amd64/dtrace_subr.c"
+			options : "dtrace"
+			compile-with : "${DTRACE_C}"
+		},
+		{
+			path : "cddl/dev/fbt/x86/fbt_isa.c"
+			options : {any-of : ["dtrace_fbt", "dtraceall"]}
+			compile-with : "${FBT_C}"
+		},
+		{
+			path : "cddl/dev/dtrace/x86/dis_tables.c"
+			options : {any-of : ["dtrace_fbt", "dtraceall"]}
+			compile-with : "${DTRACE_C}"
+		},
+		{
+			path : "cddl/dev/dtrace/x86/instr_size.c"
+			options : {any-of : ["dtrace_fbt", "dtraceall"]}
+			compile-with : "${DTRACE_C}"
+		},
+		{
+			path : "crypto/aesni/aeskeys_amd64.S"
+			options : "aesni"
+		},
+		{
+			path : "crypto/aesni/aesni.c"
+			options : "aesni"
+		},
+		{
+			path : "aesni_ghash.o"
+			options : "aesni"
+			compile-with : "${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -mmmx -msse -msse4 -maes -mpclmul ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/crypto/aesni/aesni_ghash.c"
+			clean : "aesni_ghash.o"
+		},
+		{
+			path : "aesni_ccm.o"
+			options : "aesni"
+			compile-with : "${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -mmmx -msse -msse4 -maes -mpclmul ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/crypto/aesni/aesni_ccm.c"
+			clean : "aesni_ccm.o"
+		},
+		{
+			path : "aesni_wrap.o"
+			options : "aesni"
+			compile-with : "${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${NO_WCAST_QUAL} ${PROF} -mmmx -msse -msse4 -maes ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/crypto/aesni/aesni_wrap.c"
+			clean : "aesni_wrap.o"
+		},
+		{
+			path : "crypto/blowfish/bf_enc.c"
+			options : {any-of : ["crypto", "ipsec", "ipsec_support"]}
+		},
+		{
+			path : "crypto/des/des_enc.c"
+			options : {any-of : ["crypto", "ipsec", "ipsec_support", "netsmb"]}
+		},
+		{
+			path : "intel_sha1.o"
+			options : "aesni"
+			compile-with : "${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${PROF} -mmmx -msse -msse4 -msha ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/crypto/aesni/intel_sha1.c"
+			clean : "intel_sha1.o"
+		},
+		{
+			path : "intel_sha256.o"
+			options : "aesni"
+			compile-with : "${CC} -c ${CFLAGS:C/^-O2$/-O3/:N-nostdinc} ${WERROR} ${PROF} -mmmx -msse -msse4 -msha ${.IMPSRC}"
+			no-implicit-rule : true
+			dependency : "$S/crypto/aesni/intel_sha256.c"
+			clean : "intel_sha256.o"
+		},
+		{
+			path : "crypto/via/padlock.c"
+			options : "padlock"
+		},
+		{
+			path : "crypto/via/padlock_cipher.c"
+			options : "padlock"
+		},
+		{
+			path : "crypto/via/padlock_hash.c"
+			options : "padlock"
+		},
+		{
+			path : "dev/acpica/acpi_if.m"
+		},
+		{
+			path : "dev/acpica/acpi_hpet.c"
+			options : "acpi"
+		},
+		{
+			path : "dev/acpica/acpi_pci.c"
+			options : { all-of : ["acpi", "pci"]}
+		},
+		{
+			path : "dev/acpica/acpi_pci_link.c"
+			options : { all-of : ["acpi", "pci"]}
+		},
+		{
+			path : "dev/acpica/acpi_pcib.c"
+			options : { all-of : ["acpi", "pci"]}
+		},
+		{
+			path : "dev/acpica/acpi_pcib_acpi.c"
+			options : { all-of : ["acpi", "pci"]}
+		},
+		{
+			path : "dev/acpica/acpi_pcib_pci.c"
+			options : { all-of : ["acpi", "pci"]}
+		},
+		{
+			path : "dev/acpica/acpi_pxm.c"
+			options : "acpi"
+		},
+		{
+			path : "dev/acpica/acpi_timer.c"
+			options : "acpi"
+		},
+		{
+			path : "dev/acpi_support/acpi_wmi_if.m"
+		},
+		{
+			path : "dev/agp/agp_amd64.c"
+			options : "agp"
+		},
+		{
+			path : "dev/agp/agp_i810.c"
+			options : "agp"
+		},
+		{
+			path : "dev/agp/agp_via.c"
+			options : "agp"
+		},
+		{
+			path : "dev/amdgpio/amdgpio.c"
+			options : "amdgpio"
+		},
+		{
+			path : "dev/amdsbwd/amdsbwd.c"
+			options : "amdsbwd"
+		},
+		{
+			path : "dev/amdsmn/amdsmn.c"
+			options : {any-of : ["amdsmn", "amdtemp"]}
+		},
+		{
+			path : "dev/amdtemp/amdtemp.c"
+			options : "amdtemp"
+		},
+		{
+			path : "dev/arcmsr/arcmsr.c"
+			options : { all-of : ["arcmsr", "pci"]}
+		},
+		{
+			path : "dev/asmc/asmc.c"
+			options : { all-of : ["asmc", "isa"]}
+		},
+		{
+			path : "dev/atkbdc/atkbd.c"
+			options : { all-of : ["atkbd", "atkbdc"]}
+		},
+		{
+			path : "dev/atkbdc/atkbd_atkbdc.c"
+			options : { all-of : ["atkbd", "atkbdc"]}
+		},
+		{
+			path : "dev/atkbdc/atkbdc.c"
+			options : "atkbdc"
+		},
+		{
+			path : "dev/atkbdc/atkbdc_isa.c"
+			options : { all-of : ["atkbdc", "isa"]}
+		},
+		{
+			path : "dev/atkbdc/atkbdc_subr.c"
+			options : "atkbdc"
+		},
+		{
+			path : "dev/atkbdc/psm.c"
+			options : { all-of : ["psm", "atkbdc"]}
+		},
+		{
+			path : "dev/bxe/bxe.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/bxe_stats.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/bxe_debug.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/ecore_sp.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/bxe_elink.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/57710_init_values.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/57711_init_values.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/bxe/57712_init_values.c"
+			options : { all-of : ["bxe", "pci"]}
+		},
+		{
+			path : "dev/coretemp/coretemp.c"
+			options : "coretemp"
+		},
+		{
+			path : "dev/cpuctl/cpuctl.c"
+			options : "cpuctl"
+		},
+		{
+			path : "dev/dpms/dpms.c"
+			options : "dpms"
+		},
+		{
+			path : "dev/ed/if_ed_3c503.c"
+			options : { all-of : ["ed", "isa", "ed_3c503"]}
+		},
+		{
+			path : "dev/ed/if_ed_isa.c"
+			options : { all-of : ["ed", "isa"]}
+		},
+		{
+			path : "dev/ed/if_ed_wd80x3.c"
+			options : { all-of : ["ed", "isa"]}
+		},
+		{
+			path : "dev/ed/if_ed_hpp.c"
+			options : { all-of : ["ed", "isa", "ed_hpp"]}
+		},
+		{
+			path : "dev/ed/if_ed_sic.c"
+			options : { all-of : ["ed", "isa", "ed_sic"]}
+		},
+		{
+			path : "dev/fb/fb.c"
+			options : {any-of : ["fb", "vga"]}
+		},
+		{
+			path : "dev/fb/s3_pci.c"
+			options : "s3pci"
+		},
+		{
+			path : "dev/fb/vesa.c"
+			options : { all-of : ["vga", "vesa"]}
+		},
+		{
+			path : "dev/fb/vga.c"
+			options : "vga"
+		},
+		{
+			path : "dev/ichwd/ichwd.c"
+			options : "ichwd"
+		},
+		{
+			path : "dev/if_ndis/if_ndis.c"
+			options : "ndis"
+		},
+		{
+			path : "dev/if_ndis/if_ndis_pccard.c"
+			options : { all-of : ["ndis", "pccard"]}
+		},
+		{
+			path : "dev/if_ndis/if_ndis_pci.c"
+			options : {any-of : [{ all-of : ["ndis", "cardbus"]}, { all-of : ["ndis", "pci"]}]}
+		},
+		{
+			path : "dev/if_ndis/if_ndis_usb.c"
+			options : { all-of : ["ndis", "usb"]}
+		},
+		{
+			path : "dev/imcsmb/imcsmb.c"
+			options : "imcsmb"
+		},
+		{
+			path : "dev/imcsmb/imcsmb_pci.c"
+			options : { all-of : ["imcsmb", "pci"]}
+		},
+		{
+			path : "dev/intel/spi.c"
+			options : "intelspi"
+		},
+		{
+			path : "dev/io/iodev.c"
+			options : "io"
+		},
+		{
+			path : "dev/ioat/ioat.c"
+			options : { all-of : ["ioat", "pci"]}
+		},
+		{
+			path : "dev/ioat/ioat_test.c"
+			options : { all-of : ["ioat", "pci"]}
+		},
+		{
+			path : "dev/ipmi/ipmi.c"
+			options : "ipmi"
+		},
+		{
+			path : "dev/ipmi/ipmi_acpi.c"
+			options : { all-of : ["ipmi", "acpi"]}
+		},
+		{
+			path : "dev/ipmi/ipmi_isa.c"
+			options : { all-of : ["ipmi", "isa"]}
+		},
+		{
+			path : "dev/ipmi/ipmi_kcs.c"
+			options : "ipmi"
+		},
+		{
+			path : "dev/ipmi/ipmi_smic.c"
+			options : "ipmi"
+		},
+		{
+			path : "dev/ipmi/ipmi_smbus.c"
+			options : { all-of : ["ipmi", "smbus"]}
+		},
+		{
+			path : "dev/ipmi/ipmi_smbios.c"
+			options : "ipmi"
+		},
+		{
+			path : "dev/ipmi/ipmi_ssif.c"
+			options : { all-of : ["ipmi", "smbus"]}
+		},
+		{
+			path : "dev/ipmi/ipmi_pci.c"
+			options : { all-of : ["ipmi", "pci"]}
+		},
+		{
+			path : "dev/ipmi/ipmi_linux.c"
+			options : { all-of : ["ipmi", "compat_linux32"]}
+		},
+		{
+			path : "dev/ixl/if_ixl.c"
+			options : { all-of : ["ixl", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/ixl_pf_main.c"
+			options : { all-of : ["ixl", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/ixl_pf_qmgr.c"
+			options : { all-of : ["ixl", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/ixl_pf_iov.c"
+			options : { all-of : ["ixl", "pci", "pci_iov"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/ixl_pf_i2c.c"
+			options : { all-of : ["ixl", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/if_iavf.c"
+			options : { all-of : ["iavf", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/iavf_vc.c"
+			options : { all-of : ["iavf", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/ixl_txrx.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_osdep.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_lan_hmc.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_hmc.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_common.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_nvm.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_adminq.c"
+			options : {any-of : [{ all-of : ["ixl", "pci"]}, { all-of : ["iavf", "pci"]}]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/ixl/i40e_dcb.c"
+			options : { all-of : ["ixl", "pci"]}
+			compile-with : "${NORMAL_C} -I$S/dev/ixl"
+		},
+		{
+			path : "dev/fdc/fdc.c"
+			options : "fdc"
+		},
+		{
+			path : "dev/fdc/fdc_acpi.c"
+			options : "fdc"
+		},
+		{
+			path : "dev/fdc/fdc_isa.c"
+			options : { all-of : ["fdc", "isa"]}
+		},
+		{
+			path : "dev/fdc/fdc_pccard.c"
+			options : { all-of : ["fdc", "pccard"]}
+		},
+		{
+			path : "dev/gpio/bytgpio.c"
+			options : "bytgpio"
+		},
+		{
+			path : "dev/gpio/chvgpio.c"
+			options : "chvgpio"
+		},
+		{
+			path : "dev/hpt27xx/hpt27xx_os_bsd.c"
+			options : "hpt27xx"
+		},
+		{
+			path : "dev/hpt27xx/hpt27xx_osm_bsd.c"
+			options : "hpt27xx"
+		},
+		{
+			path : "dev/hpt27xx/hpt27xx_config.c"
+			options : "hpt27xx"
+		},
+		{
+			path : "dev/hptmv/entry.c"
+			options : "hptmv"
+		},
+		{
+			path : "dev/hptmv/mv.c"
+			options : "hptmv"
+		},
+		{
+			path : "dev/hptmv/gui_lib.c"
+			options : "hptmv"
+		},
+		{
+			path : "dev/hptmv/hptproc.c"
+			options : "hptmv"
+		},
+		{
+			path : "dev/hptmv/ioctl.c"
+			options : "hptmv"
+		},
+		{
+			path : "dev/hptnr/hptnr_os_bsd.c"
+			options : "hptnr"
+		},
+		{
+			path : "dev/hptnr/hptnr_osm_bsd.c"
+			options : "hptnr"
+		},
+		{
+			path : "dev/hptnr/hptnr_config.c"
+			options : "hptnr"
+		},
+		{
+			path : "dev/hptrr/hptrr_os_bsd.c"
+			options : "hptrr"
+		},
+		{
+			path : "dev/hptrr/hptrr_osm_bsd.c"
+			options : "hptrr"
+		},
+		{
+			path : "dev/hptrr/hptrr_config.c"
+			options : "hptrr"
+		},
+		{
+			path : "dev/hwpmc/hwpmc_amd.c"
+			options : "hwpmc"
+		},
+		{
+			path : "dev/hwpmc/hwpmc_intel.c"
+			options : "hwpmc"
+		},
+		{
+			path : "dev/hwpmc/hwpmc_core.c"
+			options : "hwpmc"
+		},
+		{
+			path : "dev/hwpmc/hwpmc_uncore.c"
+			options : "hwpmc"
+		},
+		{
+			path : "dev/hwpmc/hwpmc_tsc.c"
+			options : "hwpmc"
+		},
+		{
+			path : "dev/hwpmc/hwpmc_x86.c"
+			options : "hwpmc"
+		},
+		{
+			path : "dev/hyperv/input/hv_kbd.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/input/hv_kbdc.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/pcib/vmbus_pcib.c"
+			options : { all-of : ["hyperv", "pci"]}
+		},
+		{
+			path : "dev/hyperv/netvsc/hn_nvs.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/netvsc/hn_rndis.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/netvsc/if_hn.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/storvsc/hv_storvsc_drv_freebsd.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/utilities/hv_kvp.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/utilities/hv_snapshot.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/utilities/vmbus_heartbeat.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/utilities/vmbus_ic.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/utilities/vmbus_shutdown.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/utilities/vmbus_timesync.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/hyperv.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/hyperv_busdma.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus.c"
+			options : { all-of : ["hyperv", "pci"]}
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus_br.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus_chan.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus_et.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus_if.m"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus_res.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/vmbus_xact.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/amd64/hyperv_machdep.c"
+			options : "hyperv"
+		},
+		{
+			path : "dev/hyperv/vmbus/amd64/vmbus_vector.S"
+			options : "hyperv"
+		},
+		{
+			path : "dev/nctgpio/nctgpio.c"
+			options : "nctgpio"
+		},
+		{
+			path : "dev/nfe/if_nfe.c"
+			options : { all-of : ["nfe", "pci"]}
+		},
+		{
+			path : "dev/ntb/if_ntb/if_ntb.c"
+			options : "if_ntb"
+		},
+		{
+			path : "dev/ntb/ntb_transport.c"
+			options : {any-of : ["ntb_transport", "if_ntb"]}
+		},
+		{
+			path : "dev/ntb/ntb.c"
+			options : {any-of : ["ntb", "ntb_transport", "if_ntb", "ntb_hw_amd", "ntb_hw_intel", "ntb_hw_plx", "ntb_hw"]}
+		},
+		{
+			path : "dev/ntb/ntb_if.m"
+			options : {any-of : ["ntb", "ntb_transport", "if_ntb", "ntb_hw_amd", "ntb_hw_intel", "ntb_hw_plx", "ntb_hw"]}
+		},
+		{
+			path : "dev/ntb/ntb_hw/ntb_hw_amd.c"
+			options : {any-of : ["ntb_hw_amd", "ntb_hw"]}
+		},
+		{
+			path : "dev/ntb/ntb_hw/ntb_hw_intel.c"
+			options : {any-of : ["ntb_hw_intel", "ntb_hw"]}
+		},
+		{
+			path : "dev/ntb/ntb_hw/ntb_hw_plx.c"
+			options : {any-of : ["ntb_hw_plx", "ntb_hw"]}
+		},
+		{
+			path : "dev/nvd/nvd.c"
+			options : { all-of : ["nvd", "nvme"]}
+		},
+		{
+			path : "dev/nvme/nvme.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_ctrlr.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_ctrlr_cmd.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_ns.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_ns_cmd.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_qpair.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_sim.c"
+			options : { all-of : ["nvme", "scbus"]}
+		},
+		{
+			path : "dev/nvme/nvme_sysctl.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_test.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvme/nvme_util.c"
+			options : "nvme"
+		},
+		{
+			path : "dev/nvram/nvram.c"
+			options : { all-of : ["nvram", "isa"]}
+		},
+		{
+			path : "dev/random/ivy.c"
+			options : { all-of : ["rdrand_rng", "!random_loadable"]}
+		},
+		{
+			path : "dev/random/nehemiah.c"
+			options : { all-of : ["padlock_rng", "!random_loadable"]}
+		},
+		{
+			path : "dev/qlxge/qls_dbg.c"
+			options : { all-of : ["qlxge", "pci"]}
+		},
+		{
+			path : "dev/qlxge/qls_dump.c"
+			options : { all-of : ["qlxge", "pci"]}
+		},
+		{
+			path : "dev/qlxge/qls_hw.c"
+			options : { all-of : ["qlxge", "pci"]}
+		},
+		{
+			path : "dev/qlxge/qls_ioctl.c"
+			options : { all-of : ["qlxge", "pci"]}
+		},
+		{
+			path : "dev/qlxge/qls_isr.c"
+			options : { all-of : ["qlxge", "pci"]}
+		},
+		{
+			path : "dev/qlxge/qls_os.c"
+			options : { all-of : ["qlxge", "pci"]}
+		},
+		{
+			path : "dev/qlxgb/qla_dbg.c"
+			options : { all-of : ["qlxgb", "pci"]}
+		},
+		{
+			path : "dev/qlxgb/qla_hw.c"
+			options : { all-of : ["qlxgb", "pci"]}
+		},
+		{
+			path : "dev/qlxgb/qla_ioctl.c"
+			options : { all-of : ["qlxgb", "pci"]}
+		},
+		{
+			path : "dev/qlxgb/qla_isr.c"
+			options : { all-of : ["qlxgb", "pci"]}
+		},
+		{
+			path : "dev/qlxgb/qla_misc.c"
+			options : { all-of : ["qlxgb", "pci"]}
+		},
+		{
+			path : "dev/qlxgb/qla_os.c"
+			options : { all-of : ["qlxgb", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_dbg.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_hw.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_ioctl.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_isr.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_misc.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_os.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_reset.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_fw.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_boot.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlxgbe/ql_minidump.c"
+			options : { all-of : ["qlxgbe", "pci"]}
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_cxt.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_dbg_fw_funcs.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_dcbx.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_dev.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_hw.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_init_fw_funcs.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_init_ops.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_int.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_l2.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_mcp.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_sp_commands.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/ecore_spq.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/qlnx_ioctl.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/qlnx/qlnxe/qlnx_os.c"
+			options : { all-of : ["qlnxe", "pci"]}
+			compile-with : "${LINUXKPI_C}"
+		},
+		{
+			path : "dev/sfxge/common/ef10_ev.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_filter.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_image.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_intr.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_mac.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_mcdi.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_nic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_nvram.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_phy.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_rx.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_tx.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/ef10_vpd.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_bootcfg.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_crc32.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_ev.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_filter.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_hash.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_intr.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_lic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_mac.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_mcdi.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_mon.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_nic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_nvram.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_phy.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_port.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_rx.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_sram.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_tunnel.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_tx.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/efx_vpd.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/hunt_nic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/mcdi_mon.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/medford_nic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/medford2_nic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_mac.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_mcdi.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_nic.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_nvram.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_phy.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_sram.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/common/siena_vpd.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_dma.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_ev.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_intr.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_mcdi.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_nvram.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_port.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_rx.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sfxge/sfxge_tx.c"
+			options : { all-of : ["sfxge", "pci"]}
+		},
+		{
+			path : "dev/sio/sio.c"
+			options : "sio"
+		},
+		{
+			path : "dev/sio/sio_isa.c"
+			options : { all-of : ["sio", "isa"]}
+		},
+		{
+			path : "dev/sio/sio_pccard.c"
+			options : { all-of : ["sio", "pccard"]}
+		},
+		{
+			path : "dev/sio/sio_pci.c"
+			options : { all-of : ["sio", "pci"]}
+		},
+		{
+			path : "dev/sio/sio_puc.c"
+			options : { all-of : ["sio", "puc"]}
+		},
+		{
+			path : "dev/smartpqi/smartpqi_cam.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_cmd.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_discovery.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_event.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_helper.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_init.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_intr.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_ioctl.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_main.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_mem.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_misc.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_queue.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_request.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_response.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_sis.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/smartpqi/smartpqi_tag.c"
+			options : "smartpqi"
+		},
+		{
+			path : "dev/speaker/spkr.c"
+			options : "speaker"
+		},
+		{
+			path : "dev/superio/superio.c"
+			options : { all-of : ["superio", "isa"]}
+		},
+		{
+			path : "dev/syscons/apm/apm_saver.c"
+			options : { all-of : ["apm_saver", "apm"]}
+		},
+		{
+			path : "dev/syscons/scvesactl.c"
+			options : { all-of : ["sc", "vga", "vesa"]}
+		},
+		{
+			path : "dev/syscons/scvgarndr.c"
+			options : { all-of : ["sc", "vga"]}
+		},
+		{
+			path : "dev/tpm/tpm.c"
+			options : "tpm"
+		},
+		{
+			path : "dev/tpm/tpm20.c"
+			options : "tpm"
+		},
+		{
+			path : "dev/tpm/tpm_crb.c"
+			options : { all-of : ["tpm", "acpi"]}
+		},
+		{
+			path : "dev/tpm/tpm_tis.c"
+			options : { all-of : ["tpm", "acpi"]}
+		},
+		{
+			path : "dev/tpm/tpm_acpi.c"
+			options : { all-of : ["tpm", "acpi"]}
+		},
+		{
+			path : "dev/tpm/tpm_isa.c"
+			options : { all-of : ["tpm", "isa"]}
+		},
+		{
+			path : "dev/uart/uart_cpu_x86.c"
+			options : "uart"
+		},
+		{
+			path : "dev/viawd/viawd.c"
+			options : "viawd"
+		},
+		{
+			path : "dev/vmware/vmxnet3/if_vmx.c"
+			options : "vmx"
+		},
+		{
+			path : "dev/vmware/vmci/vmci.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_datagram.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_doorbell.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_driver.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_event.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_hashtable.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_kernel_if.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_qpair.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_queue_pair.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/vmware/vmci/vmci_resource.c"
+			options : "vmci"
+		},
+		{
+			path : "dev/wbwd/wbwd.c"
+			options : "wbwd"
+		},
+		{
+			path : "dev/xen/pci/xen_acpi_pci.c"
+			options : "xenhvm"
+		},
+		{
+			path : "dev/xen/pci/xen_pci.c"
+			options : "xenhvm"
+		},
+		{
+			path : "dev/isci/isci.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_controller.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_domain.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_interrupt.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_io_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_logger.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_oem_parameters.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_sysctl.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_task_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/isci_timer.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_abort_task_set.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_atapi.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_inquiry.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_log_sense.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_lun_reset.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_mode_pages.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_mode_select.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_mode_sense.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_mode_sense_10.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_mode_sense_6.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_move.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_passthrough.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_read.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_read_buffer.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_read_capacity.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_reassign_blocks.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_report_luns.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_request_sense.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_start_stop_unit.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_synchronize_cache.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_test_unit_ready.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_unmap.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_util.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_verify.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_write.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_write_and_verify.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_write_buffer.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sati_write_long.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_abstract_list.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_controller.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_domain.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_iterator.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_library.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_logger.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_memory_descriptor_list.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_memory_descriptor_list_decorator.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_object.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_observer.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_phy.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_port.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_state_machine.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_state_machine_logger.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_state_machine_observer.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_base_subject.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/sci_util.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_controller.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_library.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_pci.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_phy.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_port.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_port_configuration_agent.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_remote_node_context.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_remote_node_table.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_sgpio.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_smp_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_smp_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_ssp_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_stp_packet_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_stp_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_stp_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scic_sds_unsolicited_frame_control.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_controller.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_controller_state_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_controller_states.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_domain.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_domain_state_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_domain_states.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_high_priority_request_queue.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_internal_io_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_io_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_io_request_state_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_io_request_states.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_library.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device_ready_substate_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device_ready_substates.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device_starting_substate_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device_starting_substates.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device_state_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_remote_device_states.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_smp_activity_clear_affiliation.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_smp_io_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_smp_phy.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_smp_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_stp_io_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_stp_remote_device.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_stp_task_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_task_request.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_task_request_state_handlers.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_task_request_states.c"
+			options : "isci"
+		},
+		{
+			path : "dev/isci/scil/scif_sas_timer.c"
+			options : "isci"
+		},
+		{
+			path : "isa/syscons_isa.c"
+			options : "sc"
+		},
+		{
+			path : "isa/vga_isa.c"
+			options : "vga"
+		},
+		{
+			path : "kern/kern_clocksource.c"
+		},
+		{
+			path : "kern/imgact_aout.c"
+			options : "compat_aout"
+		},
+		{
+			path : "kern/link_elf_obj.c"
+		},
+		{
+			path : "libkern/x86/crc32_sse42.c"
+		},
+		{
+			path : "amd64/ia32/ia32_reg.c"
+			options : "compat_freebsd32"
+		},
+		{
+			path : "amd64/ia32/ia32_signal.c"
+			options : "compat_freebsd32"
+		},
+		{
+			path : "amd64/ia32/ia32_sigtramp.S"
+			options : "compat_freebsd32"
+		},
+		{
+			path : "amd64/ia32/ia32_syscall.c"
+			options : "compat_freebsd32"
+		},
+		{
+			path : "amd64/ia32/ia32_misc.c"
+			options : "compat_freebsd32"
+		},
+		{
+			path : "compat/ia32/ia32_sysvec.c"
+			options : "compat_freebsd32"
+		},
+		{
+			path : "compat/linprocfs/linprocfs.c"
+			options : "linprocfs"
+		},
+		{
+			path : "compat/linsysfs/linsysfs.c"
+			options : "linsysfs"
+		},
+		{
+			path : "amd64/linux32/linux32_dummy.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "amd64/linux32/linux32_machdep.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "amd64/linux32/linux32_support.s"
+			options : "compat_linux32"
+			dependency : "linux32_assym.h"
+		},
+		{
+			path : "amd64/linux32/linux32_sysent.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "amd64/linux32/linux32_sysvec.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_emul.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_errno.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_file.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_fork.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_futex.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_getcwd.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_ioctl.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_ipc.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_mib.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_misc.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_mmap.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_signal.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_socket.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_stats.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_sysctl.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_time.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_timer.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_uid16.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_util.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_vdso.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_common.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux_event.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "compat/linux/linux.c"
+			options : "compat_linux32"
+		},
+		{
+			path : "dev/amr/amr_linux.c"
+			options : { all-of : ["compat_linux32", "amr"]}
+		},
+		{
+			path : "dev/mfi/mfi_linux.c"
+			options : { all-of : ["compat_linux32", "mfi"]}
+		},
+		{
+			path : "compat/ndis/kern_ndis.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/kern_windrv.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/subr_hal.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/subr_ndis.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/subr_ntoskrnl.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/subr_pe.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/subr_usbd.c"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/ndis/winx64_wrap.S"
+			options : { all-of : ["ndisapi", "pci"]}
+		},
+		{
+			path : "compat/x86bios/x86bios.c"
+			options : {any-of : ["x86bios", "dpms", "pci", "vesa"]}
+		},
+		{
+			path : "contrib/x86emu/x86emu.c"
+			options : {any-of : ["x86bios", "dpms", "pci", "vesa"]}
+		},
+		{
+			path : "dev/bvm/bvm_console.c"
+			options : "bvmconsole"
+		},
+		{
+			path : "dev/bvm/bvm_dbg.c"
+			options : "bvmdebug"
+		},
+		{
+			path : "x86/acpica/OsdEnvironment.c"
+			options : "acpi"
+		},
+		{
+			path : "x86/acpica/acpi_apm.c"
+			options : "acpi"
+		},
+		{
+			path : "x86/acpica/acpi_wakeup.c"
+			options : "acpi"
+		},
+		{
+			path : "x86/acpica/madt.c"
+			options : "acpi"
+		},
+		{
+			path : "x86/acpica/srat.c"
+			options : "acpi"
+		},
+		{
+			path : "x86/bios/smbios.c"
+			options : "smbios"
+		},
+		{
+			path : "x86/bios/vpd.c"
+			options : "vpd"
+		},
+		{
+			path : "x86/cpufreq/powernow.c"
+			options : "cpufreq"
+		},
+		{
+			path : "x86/cpufreq/est.c"
+			options : "cpufreq"
+		},
+		{
+			path : "x86/cpufreq/hwpstate.c"
+			options : "cpufreq"
+		},
+		{
+			path : "x86/cpufreq/p4tcc.c"
+			options : "cpufreq"
+		},
+		{
+			path : "x86/iommu/busdma_dmar.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_ctx.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_drv.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_fault.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_gas.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_idpgtbl.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_intrmap.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_qi.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_quirks.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/iommu/intel_utils.c"
+			options : { all-of : ["acpi", "acpi_dmar", "pci"]}
+		},
+		{
+			path : "x86/isa/atpic.c"
+			options : { all-of : ["atpic", "isa"]}
+		},
+		{
+			path : "x86/isa/atrtc.c"
+		},
+		{
+			path : "x86/isa/clock.c"
+		},
+		{
+			path : "x86/isa/elcr.c"
+			options : {any-of : [{ all-of : ["atpic", "isa"]}, "mptable"]}
+		},
+		{
+			path : "x86/isa/isa.c"
+		},
+		{
+			path : "x86/isa/isa_dma.c"
+		},
+		{
+			path : "x86/isa/nmi.c"
+		},
+		{
+			path : "x86/isa/orm.c"
+			options : "isa"
+		},
+		{
+			path : "x86/pci/pci_bus.c"
+			options : "pci"
+		},
+		{
+			path : "x86/pci/pci_early_quirks.c"
+			options : "pci"
+		},
+		{
+			path : "x86/pci/qpi.c"
+			options : "pci"
+		},
+		{
+			path : "x86/x86/autoconf.c"
+		},
+		{
+			path : "x86/x86/bus_machdep.c"
+		},
+		{
+			path : "x86/x86/busdma_bounce.c"
+		},
+		{
+			path : "x86/x86/busdma_machdep.c"
+		},
+		{
+			path : "x86/x86/cpu_machdep.c"
+		},
+		{
+			path : "x86/x86/dump_machdep.c"
+		},
+		{
+			path : "x86/x86/fdt_machdep.c"
+			options : "fdt"
+		},
+		{
+			path : "x86/x86/identcpu.c"
+		},
+		{
+			path : "x86/x86/intr_machdep.c"
+		},
+		{
+			path : "x86/x86/io_apic.c"
+		},
+		{
+			path : "x86/x86/legacy.c"
+		},
+		{
+			path : "x86/x86/local_apic.c"
+		},
+		{
+			path : "x86/x86/mca.c"
+		},
+		{
+			path : "x86/x86/x86_mem.c"
+			options : "mem"
+		},
+		{
+			path : "x86/x86/mptable.c"
+			options : "mptable"
+		},
+		{
+			path : "x86/x86/mptable_pci.c"
+			options : { all-of : ["mptable", "pci"]}
+		},
+		{
+			path : "x86/x86/mp_x86.c"
+			options : "smp"
+		},
+		{
+			path : "x86/x86/mp_watchdog.c"
+			options : { all-of : ["mp_watchdog", "smp"]}
+		},
+		{
+			path : "x86/x86/msi.c"
+			options : "pci"
+		},
+		{
+			path : "x86/x86/nexus.c"
+		},
+		{
+			path : "x86/x86/pvclock.c"
+		},
+		{
+			path : "x86/x86/stack_machdep.c"
+			options : {any-of : ["ddb", "stack"]}
+		},
+		{
+			path : "x86/x86/tsc.c"
+		},
+		{
+			path : "x86/x86/ucode.c"
+		},
+		{
+			path : "x86/x86/delay.c"
+		},
+		{
+			path : "x86/xen/hvm.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/xen_intr.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/pv.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/pvcpu_enum.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/xen_apic.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/xenpv.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/xen_nexus.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/xen_msi.c"
+			options : "xenhvm"
+		},
+		{
+			path : "x86/xen/xen_pci_bus.c"
+			options : "xenhvm"
+		},
+	]
+}
