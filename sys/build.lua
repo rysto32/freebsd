@@ -59,7 +59,7 @@ function GetMakeVars(parentConfig)
 		AWK = "/usr/bin/awk",
 		CC = parentConfig.CC,
 		CFLAGS = cflags,
-		NORMAL_C = parentConfig.CC .. " " .. cflags .. "-c",
+		NORMAL_C = parentConfig.CC .. " " .. cflags .. " -c",
 		NM = "/usr/bin/nm",
 		NMFLAGS = '',
 
