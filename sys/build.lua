@@ -60,10 +60,15 @@ function GetMakeVars(parentConfig)
 		CC = parentConfig.CC,
 		CFLAGS = cflags,
 		NORMAL_C = parentConfig.CC .. " " .. cflags .. "-c",
+		NM = "/usr/bin/nm",
+		NMFLAGS = '',
+
+		-- XXX I don't see that these two are set anywhere?
 		FEEDER_EQ_PRESETS = "",
 		FEEDER_RATE_PRESETS = "",
-		NM = "/usr/bin/nm",
-		NMFLAGS = ''
+
+		-- XXX setable in kernconf?
+		KBDMUX_DFLT_KEYMAP = "it.iso",
 	}
 end
 
