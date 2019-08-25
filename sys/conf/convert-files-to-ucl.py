@@ -55,14 +55,18 @@ class Lexer:
 	def next_string_state(self):
 		while self.file:
 			ch = self.file.read(1)
-			self.current_word += ch
 
 			if not ch:
 				break
 			elif ch == self.close_str:
+				self.current_word += ch
 				self.finish_word()
 				self.state = BEGIN_STATE
 				return self.next_words()
+			elif ch == '\t' or ch == '\n' or ch == '\\':
+				self.current_word += ' '
+			else:
+				self.current_word += ch
 		self.state = DONE_STATE
 		return self.flush_words()
 

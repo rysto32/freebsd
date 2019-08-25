@@ -1,6 +1,54 @@
 {
 	kern-src = [
 		{
+			path : "offset.inc",
+			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genoffset.sh -o ${.TARGET} genoffset.o",
+			no-implicit-rule : true,
+			dependency : "$S/kern/genoffset.sh genoffset.o"
+			before-depend : true,
+			clean : "offset.inc"
+		},
+		{
+			path : "genoffset.o",
+			compile-with : "${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/kern/genoffset.c",
+			no-implicit-rule : true,
+			dependency : "$S/kern/genoffset.c"
+			before-depend : true,
+			clean : ""
+		},
+		{
+			path : "genoffset_test.o",
+			compile-with : "${CC} -c ${CFLAGS:N-flto:N-fno-common} -DOFFSET_TEST $S/kern/genoffset.c -o ${.TARGET}",
+			no-implicit-rule : true,
+			dependency : "$S/kern/genoffset.c offset.inc"
+			before-depend : true,
+			clean : ""
+		},
+		{
+			path : "assym.inc",
+			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh -o ${.TARGET} genassym.o",
+			no-implicit-rule : true,
+			dependency : "$S/kern/genassym.sh genassym.o genoffset_test.o"
+			before-depend : true,
+			clean : ""
+		},
+		{
+			path : "genassym.o",
+			compile-with : "${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/$M/$M/genassym.c",
+			no-implicit-rule : true,
+			dependency : "$S/$M/$M/genassym.c  offset.inc",
+			before-depend : true,
+			clean : ""
+		},
+		/*{
+			path : "",
+			compile-with : "",
+			no-implicit-rule : true,
+			dependency : ""
+			before-depend : true,
+			clean : ""
+		},*/
+		{
 			path : "acpi_quirks.h"
 			options : "acpi"
 			no-obj : true
@@ -93,7 +141,7 @@
 			path : "kbdmuxmap.h"
 			options : "kbdmux_dflt_keymap"
 			no-obj : true
-			compile-with : "kbdcontrol -P ${SRCDIR}/vt/keymaps -P ${SRCDIR}/syscons/keymaps -L ${KBDMUX_DFLT_KEYMAP} | sed -e 's/^static keymap_t.* = /static keymap_t key_map = /' -e 's/^static accentmap_t.* = /static accentmap_t accent_map = /' > kbdmuxmap.h"
+			compile-with : "kbdcontrol -P ${S:S/sys$/share/}/vt/keymaps -P ${S:S/sys$/share/}/syscons/keymaps -L ${KBDMUX_DFLT_KEYMAP} | sed -e 's/^static keymap_t.* = /static keymap_t key_map = /' -e 's/^static accentmap_t.* = /static accentmap_t accent_map = /' > kbdmuxmap.h"
 			no-implicit-rule : true
 			before-depend : true
 			clean : "kbdmuxmap.h"
@@ -6677,86 +6725,72 @@
 		{
 			path : "dev/liquidio/base/cn23xx_pf_device.c"
 			options : "lio"
-			compile-with : "${NORMAL_C}				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}       -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_console.c"
 			options : "lio"
-			compile-with : "${NORMAL_C}				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}       -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_ctrl.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_device.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_droq.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_mem_ops.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_request_manager.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/base/lio_response_manager.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/lio_core.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/lio_ioctl.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/lio_main.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/lio_rss.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/lio_rxtx.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "dev/liquidio/lio_sysctl.c"
 			options : "lio"
-			compile-with : "${NORMAL_C} 				\
-	-I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
+			compile-with : "${NORMAL_C}        -I$S/dev/liquidio -I$S/dev/liquidio/base -DSMP"
 		},
 		{
 			path : "lio.c"
