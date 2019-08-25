@@ -77,13 +77,13 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 	vars = GetMakeVars(parentConfig)
 
 	for _, f in ipairs(files) do
-		print("path: " .. f.path)
+		--print("path: " .. f.path)
 		if not f['before-depend'] then
 			goto continue
 		end
 
 		if not FileSelected(f, options) then
-			print(f.path .. ' is not enabled')
+			--print(f.path .. ' is not enabled')
 			goto continue
 		end
 
@@ -118,13 +118,13 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 	vars = GetMakeVars(parentConfig)
 
 	for _, f in ipairs(files) do
-		print("path: " .. f.path)
+		--print("path: " .. f.path)
 		if not not f['before-depend'] then
 			goto continue
 		end
 
 		if not FileSelected(f, options) then
-			print(f.path .. ' is not enabled')
+			--print(f.path .. ' is not enabled')
 			goto continue
 		end
 
