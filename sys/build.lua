@@ -100,7 +100,9 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 			"/usr/bin",
 			"/usr/lib",
 			"/usr/local",
-			"/usr/local"
+			"/usr/share",
+			parentConfig.objdir,
+			parentConfig.sysdir
 		)
 
 		factory.define_command(path, deplist, arglist, { workdir = parentConfig.objdir })
@@ -151,7 +153,9 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 			"/bin",
 			"/lib",
 			"/usr/bin",
-			"/usr/lib"
+			"/usr/lib",
+			"/usr/share",
+			"opt_global.h"
 		)
 
 		factory.define_command(target, deplist, arglist, { workdir = parentConfig.objdir })
