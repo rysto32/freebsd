@@ -164,39 +164,42 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 	end
 end
 
---[[
-function DefineGenassym(parentConf)
-	genasym_sh = factory.build_path(parentConf.sysdir, 'kern/genassym.sh'),
-	factory.define_command(
-		'assym.inc',
-		{
-			genasym_sh,
-			'genassym.o',
-			'genoffset_test.o'
-	        },
-		{ 'env', 'NM=nm', 'NMFLAGS=', 'sh', genasym_sh, '-o', 'assym.inc', 'genassym.o'},
-		{ workdir = parentConf.objdir }
-	)
-
-	genoffset_sh = factory.build_path(parentConf.sysdir, 'kern/genoffset.sh'),
-	factory.define_command(
-		'offset.inc',
-		{
-			genoffset_sh,
-			'genoffset.o',
-		},
-		{ 'env', 'NM=nm', 'NMFLAGS=', 'sh', genoffset_sh, '-o', 'offset.inc', 'genoffset.o' },
-		{ workdir = parentConf.objdir }
-	)
-
-	--factory.build_path(parentConf.sysdir, parentConf.machine, parentConf.machine,
+function ProcessOptionFile(options, definedOptions, headerSet)
+	for _, def in ipairs(options) do
+		definedOptions[def.option] = true
+		local header
+		if def.header then
+			header = def.header
+		else
+			header = 'opt_' .. def.option:lower() .. '.h'
+		end
+		headerSet[header] = true
+	end
 end
-]]--
+
+function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
+	local headerSet = {}
+
+	ProcessOptionFile(kernOpt, definedOptions, headerSet)
+	ProcessOptionFile(archOpt, definedOptions, headerSet)
+
+	local headers = {'opt_global.h'}
+	for file,_ in pairs(headerSet) do
+		table.insert(headers, factory.build_path(parentConfig.objdir, file))
+	end
+
+	local inputs = { parentConfig.optfile, parentConfig.archoptfile, 'sys/amd64/conf'}
+	local arglist = { 'mkoptions', '-o', parentConfig.objdir, '-f', parentConfig.conffile, '-O', parentConfig.optfile, '-O', parentConfig.archoptfile}
+	factory.define_command(headers, inputs, arglist, {})
+end
 
 definitions = {
 	{
-		name = { "kern-src", "kern-arch-src", "kernconf" },
-		process = function(parentConf, kernFiles, archFiles, kernConf)
+		name = { "kern-src", "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
+		process = function(parentConf, kernFiles, archFiles, kernOpt, archOpt, kernConf)
+			definedOptions = {}
+			ProcessOptionDefs(parentConf, kernOpt, archOpt, definedOptions)
+
 			options = {}
 			makeoptions = {}
 			for _, opt in ipairs(kernConf.options) do
@@ -232,13 +235,20 @@ coptflags = {'-O2', '-g', '-pipe', '-fno-strict-aliasing'}
 includes = {'-nostdinc', '-I.', '-I' .. sysdir, '-I' .. sysdir .. '/contrib/ck/include' }
 defines = {'-D_KERNEL', '-DHAVE_KERNEL_OPTION_HEADERS', '-include', 'opt_global.h'}
 
+objdir = "/home/rstone/obj/freebsd-factory/sys"
+
+factory.define_command(objdir, {}, {'mkdir', '-p', objdir}, {})
+
 topConfig = {
 	CC = "/usr/local/bin/clang80",
 	cflags = factory.flat_list(coptflags, includes, defines),
 	machine = "amd64",
 	srcdir = srcdir,
 	sysdir = sysdir,
-	objdir = "/home/rstone/obj/freebsd-factory/sys",
+	objdir = objdir,
+	optfile = 'sys/conf/options.ucl',
+	archoptfile = 'sys/conf/options.amd64.ucl',
+	conffile = 'sys/amd64/conf/GENERIC.ucl'
 }
 
-factory.include_config({'sys/conf/files.ucl', 'sys/conf/files.amd64.ucl', 'sys/amd64/conf/GENERIC.ucl'}, topConfig)
+factory.include_config({'sys/conf/files.ucl', 'sys/conf/files.amd64.ucl', topConfig.optfile, topConfig.archoptfile, topConfig.conffile}, topConfig)
