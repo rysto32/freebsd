@@ -54,12 +54,18 @@ function GetMakeVars(parentConfig)
 	cflags = ListToStr(parentConfig.cflags)
 	return {
 		S = parentConfig.sysdir,
+		SYSDIR = parentConfig.sysdir,
 		M = parentConfig.machine,
 		SRCDIR = parentConfig.srcdir,
 		AWK = "/usr/bin/awk",
 		CC = parentConfig.CC,
+		ASM_CFLAGS = '-x assembler-with-cpp -DLOCORE ${CFLAGS}', -- XXX ${ASM_CFLAGS.${.IMPSRC:T}}
 		CFLAGS = cflags,
-		NORMAL_C = parentConfig.CC .. " " .. cflags .. " -c ${.IMPSRC}",
+		CCACHE_BIN = '',
+		WERROR = '', -- XXX
+		PROF = '', -- XXX
+		NORMAL_C= '${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}',
+		NORMAL_S= '${CC} -c ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}', -- XXX ${CC:N${CCACHE_BIN}}
 		NM = "/usr/bin/nm",
 		NMFLAGS = '',
 
@@ -105,6 +111,8 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 		print("ret=" .. factory.pretty_print_str(ret))
 		print("dep=" .. factory.pretty_print_str(dependency))
 
+		tmpdirs = factory.listify(parentConfig.tmpdirs)
+
 		print("Before Depend Path: " .. f.path)
 		local arglist
 		local compile_with = f['compile-with']
@@ -123,9 +131,9 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 				arglist = { vars.AWK, '-f', awk, input, '-h'}
 				factory.list_concat(dependency, {awk, input})
 				before_depend = true
-				local targetFile = factory.replace_ext(factory.basename(f.path), 'm', 'h')
+				target = factory.replace_ext(factory.basename(f.path), 'm', 'h')
 
-				target = {targetFile, targetFile .. ".tmp"}
+				table.insert(tmpdirs, target .. ".tmp")
 			else
 				print("Unrecognized file extension: " .. f.path)
 				os.exit(1)
@@ -145,7 +153,9 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 			parentConfig.machineLinks
 		)
 
-		factory.define_command(target, deplist, arglist, { workdir = parentConfig.objdir })
+		local buildopt = { workdir = parentConfig.objdir, tmpdirs = parentConfig.tmpdir }
+
+		factory.define_command(target, deplist, arglist, buildopt)
 
 		if before_depend then
 			factory.list_concat(beforedeps, factory.listify(target))
@@ -171,16 +181,24 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 		end
 
 		local dependency = factory.split(factory.evaluate_vars(f['dependency'], vars)) or {}
+		local ext = factory.file_ext(f.path)
 
 		local target
 		local input
-		if f['no-obj'] then
+		if f['no-obj'] and ext ~= 'S' then
 			target = f.path
-			--input = factory.replace_ext(path, 'o', 'c')
 			input = dependency[1]
 		else
-			target = factory.basename(factory.replace_ext(f.path, 'c', 'o'))
-			input = factory.build_path(parentConfig.sysdir, f.path)
+			if ext == 'S' then
+				input = factory.build_path(parentConfig.sysdir, f.path)
+				target = factory.basename(factory.replace_ext(f.path, 'S', 'o'))
+			elseif ext == 'c' then
+				target = factory.basename(factory.replace_ext(f.path, 'c', 'o'))
+				input = factory.build_path(parentConfig.sysdir, f.path)
+			else
+				print("Don't know how to build " .. f.path)
+				os.exit(1)
+			end
 		end
 
 		vars['.TARGET'] = target
@@ -189,7 +207,13 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 
 		local argshell = f['compile-with']
 		if not argshell then
-			argshell = "${NORMAL_C}"
+			if ext == 'c' then
+				argshell = "${NORMAL_C}"
+			elseif ext == 'S' then
+				argshell = '${NORMAL_S}'
+			else
+				print("Don't know how to build " .. f.path)
+			end
 		end
 
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
@@ -208,7 +232,9 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 			parentConfig.machineLinks
 		)
 
-		factory.define_command(target, deplist, arglist, { workdir = parentConfig.objdir })
+		local buildopt = { workdir = parentConfig.objdir, tmpdirs = parentConfig.tmpdir }
+
+		factory.define_command(target, deplist, arglist, buildopt)
 
 		::continue::
 	end
@@ -263,8 +289,8 @@ end
 
 definitions = {
 	{
-		name = { "kern-src", "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
-		process = function(parentConf, kernFiles, archFiles, kernOpt, archOpt, kernConf)
+		name = { "kern-src", 'kern-implicit-src', "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
+		process = function(parentConf, kernFiles, implicitFiles, archFiles, kernOpt, archOpt, kernConf)
 			definedOptions = {}
 			ProcessOptionDefs(parentConf, kernOpt, archOpt, definedOptions)
 			AddMachineLinks(parentConf)
@@ -286,9 +312,11 @@ definitions = {
 			--DefineGenassym(parentConf)
 			beforedeps = {}
 			ProcessBeforeDepend(parentConf, kernFiles, options, beforedeps)
+			ProcessBeforeDepend(parentConf, implicitFiles, options, beforedeps)
 			ProcessBeforeDepend(parentConf, archFiles, options, beforedeps)
 
 			ProcessFiles(parentConf, kernFiles, options, beforedeps)
+			ProcessFiles(parentConf, implicitFiles, options, beforedeps)
 			ProcessFiles(parentConf, archFiles, options, beforedeps)
 		end
 	}
@@ -303,6 +331,8 @@ sysdir = factory.build_path(srcdir, 'sys')
 coptflags = {'-O2', '-g', '-pipe', '-fno-strict-aliasing'}
 includes = {'-nostdinc', '-I.', '-I' .. sysdir, '-I' .. sysdir .. '/contrib/ck/include' }
 defines = {'-D_KERNEL', '-DHAVE_KERNEL_OPTION_HEADERS', '-include', 'opt_global.h'}
+arch_cflags = {'-mno-aes', '-mno-avx', '-mcmodel=kernel', '-mno-red-zone',
+	'-mno-mmx', '-mno-sse', '-msoft-float', '-fno-asynchronous-unwind-tables'}
 
 objdir = "/home/rstone/obj/freebsd-factory/sys"
 
@@ -317,7 +347,8 @@ topConfig = {
 	objdir = objdir,
 	optfile = 'sys/conf/options.ucl',
 	archoptfile = 'sys/conf/options.amd64.ucl',
-	conffile = 'sys/amd64/conf/GENERIC.ucl'
+	conffile = 'sys/amd64/conf/GENERIC.ucl',
+	tmpdir = '/tmp'
 }
 
-factory.include_config({'sys/conf/files.ucl', 'sys/conf/files.amd64.ucl', topConfig.optfile, topConfig.archoptfile, topConfig.conffile}, topConfig)
+factory.include_config({'sys/conf/files.ucl', 'sys/conf/files.implicit.ucl', 'sys/conf/files.amd64.ucl', topConfig.optfile, topConfig.archoptfile, topConfig.conffile}, topConfig)
