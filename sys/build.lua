@@ -111,7 +111,7 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 		print("ret=" .. factory.pretty_print_str(ret))
 		print("dep=" .. factory.pretty_print_str(dependency))
 
-		tmpdirs = factory.listify(parentConfig.tmpdirs)
+		tmpdirs = factory.listify(parentConfig.tmpdir)
 
 		print("Before Depend Path: " .. f.path)
 		local arglist
@@ -153,7 +153,7 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 			parentConfig.machineLinks
 		)
 
-		local buildopt = { workdir = parentConfig.objdir, tmpdirs = parentConfig.tmpdir }
+		local buildopt = { workdir = parentConfig.objdir, tmpdirs = tmpdirs }
 
 		factory.define_command(target, deplist, arglist, buildopt)
 
@@ -216,6 +216,10 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 			end
 		end
 
+		tmpdirs = factory.listify(parentConfig.tmpdir)
+		table.insert(tmpdirs, factory.build_path(parentConfig.home, '.termcap.db'))
+		table.insert(tmpdirs, factory.build_path(parentConfig.home, '.termcap'))
+
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
 		local deplist = factory.flat_list(
 			beforedeps,
@@ -229,10 +233,11 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 			"opt_global.h",
 			parentConfig.objdir,
 			parentConfig.sysdir,
-			parentConfig.machineLinks
+			parentConfig.machineLinks,
+			'/etc'
 		)
 
-		local buildopt = { workdir = parentConfig.objdir, tmpdirs = parentConfig.tmpdir }
+		local buildopt = { workdir = parentConfig.objdir, tmpdirs = tmpdirs }
 
 		factory.define_command(target, deplist, arglist, buildopt)
 
@@ -348,7 +353,8 @@ topConfig = {
 	optfile = 'sys/conf/options.ucl',
 	archoptfile = 'sys/conf/options.amd64.ucl',
 	conffile = 'sys/amd64/conf/GENERIC.ucl',
-	tmpdir = '/tmp'
+	tmpdir = '/tmp',
+	home = os.getenv('HOME')
 }
 
 factory.include_config({'sys/conf/files.ucl', 'sys/conf/files.implicit.ucl', 'sys/conf/files.amd64.ucl', topConfig.optfile, topConfig.archoptfile, topConfig.conffile}, topConfig)
