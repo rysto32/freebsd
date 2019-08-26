@@ -339,13 +339,21 @@ defines = {'-D_KERNEL', '-DHAVE_KERNEL_OPTION_HEADERS', '-include', 'opt_global.
 arch_cflags = {'-mno-aes', '-mno-avx', '-mcmodel=kernel', '-mno-red-zone',
 	'-mno-mmx', '-mno-sse', '-msoft-float', '-fno-asynchronous-unwind-tables'}
 
+warnflags = {'-Wall', '-Wredundant-decls', '-Wnested-externs', '-Wstrict-prototypes',
+		'-Wmissing-prototypes', '-Wpointer-arith', '-Wcast-qual',
+		'-Wundef', '-Wno-pointer-sign', '-D__printf__=__freebsd_kprintf__',
+		'-Wmissing-include-dirs', '-fdiagnostics-show-option',
+		'-Wno-unknown-pragmas'}
+
+miscflags = { '-ffreestanding', '-fwrapv', '-fstack-protector', '-mretpoline', '-gdwarf-2', '-std=iso9899:1999'}
+
 objdir = "/home/rstone/obj/freebsd-factory/sys"
 
 factory.define_command(objdir, {}, {'mkdir', '-p', objdir}, {})
 
 topConfig = {
 	CC = "/usr/local/bin/clang80",
-	cflags = factory.flat_list(coptflags, includes, defines),
+	cflags = factory.flat_list(coptflags, includes, defines, arch_cflags, warnflags, miscflags),
 	machine = "amd64",
 	srcdir = srcdir,
 	sysdir = sysdir,
