@@ -59,7 +59,7 @@ function GetMakeVars(parentConfig)
 		AWK = "/usr/bin/awk",
 		CC = parentConfig.CC,
 		CFLAGS = cflags,
-		NORMAL_C = parentConfig.CC .. " " .. cflags .. " -c",
+		NORMAL_C = parentConfig.CC .. " " .. cflags .. " -c ${.IMPSRC}",
 		NM = "/usr/bin/nm",
 		NMFLAGS = '',
 
@@ -72,13 +72,24 @@ function GetMakeVars(parentConfig)
 	}
 end
 
+function IsBeforeDepend(fileDef)
+	if fileDef['no-implicit-rule'] then
+		return true
+	end
+
+	local ext = factory.file_ext(fileDef.path)
+
+	return ext == 'm'
+end
+
 function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 
-	vars = GetMakeVars(parentConfig)
+	local vars = GetMakeVars(parentConfig)
+	local f
 
 	for _, f in ipairs(files) do
 		--print("path: " .. f.path)
-		if not f['before-depend'] then
+		if not IsBeforeDepend(f) then
 			goto continue
 		end
 
@@ -87,14 +98,42 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 			goto continue
 		end
 
-		path = f.path
+		local ret = factory.split(factory.evaluate_vars(f['dependency'], vars))
+		local dependency = ret or {}
+		local before_depend = f['before-depend']
 
-		vars['.TARGET'] = path
-		vars['.IMPSRC'] = factory.replace_ext(path, 'o', 'c')
+		print("ret=" .. factory.pretty_print_str(ret))
+		print("dep=" .. factory.pretty_print_str(dependency))
 
-		arglist = factory.shell_split(factory.evaluate_vars(f['compile-with'], vars))
-		deplist = factory.flat_list(
-			factory.split(factory.evaluate_vars(f['dependency'], vars)),
+		print("Before Depend Path: " .. f.path)
+		local arglist
+		local compile_with = f['compile-with']
+		if compile_with then
+			target = f.path
+
+			vars['.TARGET'] = f.path
+			vars['.IMPSRC'] = dependency[1]
+			arglist = factory.shell_split(factory.evaluate_vars(compile_with, vars))
+		else
+			local ext = factory.file_ext(f.path)
+
+			if ext == 'm' then
+				local awk = factory.build_path(parentConfig.sysdir, 'tools/makeobjops.awk')
+				local input = factory.build_path(parentConfig.sysdir, f.path)
+				arglist = { vars.AWK, '-f', awk, input, '-h'}
+				factory.list_concat(dependency, {awk, input})
+				before_depend = true
+				local targetFile = factory.replace_ext(factory.basename(f.path), 'm', 'h')
+
+				target = {targetFile, targetFile .. ".tmp"}
+			else
+				print("Unrecognized file extension: " .. f.path)
+				os.exit(1)
+			end
+		end
+
+		local deplist = factory.flat_list(
+			dependency,
 			"/bin",
 			"/lib",
 			"/usr/bin",
@@ -102,13 +141,14 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 			"/usr/local",
 			"/usr/share",
 			parentConfig.objdir,
-			parentConfig.sysdir
+			parentConfig.sysdir,
+			parentConfig.machineLinks
 		)
 
-		factory.define_command(path, deplist, arglist, { workdir = parentConfig.objdir })
+		factory.define_command(target, deplist, arglist, { workdir = parentConfig.objdir })
 
-		if f['before-depend'] then
-			table.insert(beforedeps, path)
+		if before_depend then
+			factory.list_concat(beforedeps, factory.listify(target))
 		end
 
 		::continue::
@@ -117,11 +157,11 @@ end
 
 function ProcessFiles(parentConfig, files, beforedeps, options)
 
-	vars = GetMakeVars(parentConfig)
+	local vars = GetMakeVars(parentConfig)
 
 	for _, f in ipairs(files) do
 		--print("path: " .. f.path)
-		if not not f['before-depend'] then
+		if IsBeforeDepend(f) then
 			goto continue
 		end
 
@@ -130,32 +170,42 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 			goto continue
 		end
 
+		local dependency = factory.split(factory.evaluate_vars(f['dependency'], vars)) or {}
+
+		local target
+		local input
 		if f['no-obj'] then
 			target = f.path
-			input = factory.replace_ext(path, 'o', 'c')
+			--input = factory.replace_ext(path, 'o', 'c')
+			input = dependency[1]
 		else
-			target = factory.replace_ext(path, 'c', 'o')
+			target = factory.basename(factory.replace_ext(f.path, 'c', 'o'))
 			input = factory.build_path(parentConfig.sysdir, f.path)
 		end
 
 		vars['.TARGET'] = target
 		vars['.IMPSRC'] = input
+		print(target .. ': .IMPSRC=' .. (input or 'nil'))
 
-		argshell = f['compile-with']
+		local argshell = f['compile-with']
 		if not argshell then
 			argshell = "${NORMAL_C}"
 		end
 
-		arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
-		deplist = factory.flat_list(
+		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
+		local deplist = factory.flat_list(
 			beforedeps,
-			factory.split(factory.evaluate_vars(f['dependency'], vars)),
+			dependency,
 			"/bin",
 			"/lib",
 			"/usr/bin",
 			"/usr/lib",
+			"/usr/local",
 			"/usr/share",
-			"opt_global.h"
+			"opt_global.h",
+			parentConfig.objdir,
+			parentConfig.sysdir,
+			parentConfig.machineLinks
 		)
 
 		factory.define_command(target, deplist, arglist, { workdir = parentConfig.objdir })
@@ -193,12 +243,31 @@ function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
 	factory.define_command(headers, inputs, arglist, {})
 end
 
+function DefineMachineLink(parentConfig, name, source)
+	local target = factory.build_path(parentConfig.objdir, name)
+	local arglist = {'ln', '-fs', source, target}
+
+	factory.define_command(target, {source}, arglist, {})
+
+	table.insert(parentConfig.machineLinks, target)
+end
+
+function AddMachineLinks(parentConfig)
+	parentConfig.machineLinks = {}
+
+	DefineMachineLink(parentConfig, 'machine', factory.build_path(parentConfig.sysdir, parentConfig.machine, 'include'))
+	if parentConfig.machine == 'i386' or parentConfig.machine == 'amd64' then
+		DefineMachineLink(parentConfig, 'x86', factory.build_path(parentConfig.sysdir, 'x86/include'))
+	end
+end
+
 definitions = {
 	{
 		name = { "kern-src", "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
 		process = function(parentConf, kernFiles, archFiles, kernOpt, archOpt, kernConf)
 			definedOptions = {}
 			ProcessOptionDefs(parentConf, kernOpt, archOpt, definedOptions)
+			AddMachineLinks(parentConf)
 
 			options = {}
 			makeoptions = {}
@@ -212,7 +281,7 @@ definitions = {
 				end
 			end
 			ident = kernConf.ident
-			makeoptions = factory.array_concat(makeoptions, kernConf.makeoptions)
+			makeoptions = factory.list_concat(makeoptions, kernConf.makeoptions)
 
 			--DefineGenassym(parentConf)
 			beforedeps = {}
