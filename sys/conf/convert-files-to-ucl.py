@@ -94,10 +94,11 @@ def HandleArg(keys, name, words, pos):
 	return pos + 1
 
 def StringPrinter(name, value):
+	escaped = value.replace(';', '\\;')
 	if value.startswith("'") or value.startswith('"'):
-		print('\t\t\t{} : {}'.format(name, value))
+		print('\t\t\t{} : {}'.format(name, escaped))
 	else:
-		print('\t\t\t{} : "{}"'.format(name, value))
+		print('\t\t\t{} : "{}"'.format(name, escaped))
 
 def FlagPrinter(name, value):
 	print('\t\t\t{} : {}'.format(name, 'true' if value else 'false'))

@@ -1,54 +1,6 @@
 {
 	kern-src = [
 		{
-			path : "offset.inc",
-			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genoffset.sh -o ${.TARGET} genoffset.o",
-			no-implicit-rule : true,
-			dependency : "$S/kern/genoffset.sh genoffset.o"
-			before-depend : true,
-			clean : "offset.inc"
-		},
-		{
-			path : "genoffset.o",
-			compile-with : "${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/kern/genoffset.c",
-			no-implicit-rule : true,
-			dependency : "$S/kern/genoffset.c"
-			before-depend : true,
-			clean : ""
-		},
-		{
-			path : "genoffset_test.o",
-			compile-with : "${CC} -c ${CFLAGS:N-flto:N-fno-common} -DOFFSET_TEST $S/kern/genoffset.c -o ${.TARGET}",
-			no-implicit-rule : true,
-			dependency : "$S/kern/genoffset.c offset.inc"
-			before-depend : true,
-			clean : ""
-		},
-		{
-			path : "assym.inc",
-			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh -o ${.TARGET} genassym.o",
-			no-implicit-rule : true,
-			dependency : "$S/kern/genassym.sh genassym.o genoffset_test.o"
-			before-depend : true,
-			clean : ""
-		},
-		{
-			path : "genassym.o",
-			compile-with : "${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/$M/$M/genassym.c",
-			no-implicit-rule : true,
-			dependency : "$S/$M/$M/genassym.c  offset.inc",
-			before-depend : true,
-			clean : ""
-		},
-		/*{
-			path : "",
-			compile-with : "",
-			no-implicit-rule : true,
-			dependency : ""
-			before-depend : true,
-			clean : ""
-		},*/
-		{
 			path : "acpi_quirks.h"
 			options : "acpi"
 			no-obj : true

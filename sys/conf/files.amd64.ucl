@@ -81,7 +81,7 @@
 		{
 			path : "ia32_assym.h"
 			no-obj : true
-			compile-with : "/usr/bin/env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh -o ${.TARGET} ia32_genassym.o"
+			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh ia32_genassym.o > ${.TARGET}"
 			no-implicit-rule : true
 			dependency : "$S/kern/genassym.sh ia32_genassym.o"
 			before-depend : true
@@ -91,7 +91,7 @@
 			path : "font.h"
 			options : "sc_dflt_font"
 			no-obj : true
-			compile-with : "uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x16.fnt && file2c 'static u_char dflt_font_16[16*256] = {' '};' < ${SC_DFLT_FONT}-8x16 > font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x14.fnt && file2c 'static u_char dflt_font_14[14*256] = {' '};' < ${SC_DFLT_FONT}-8x14 >> font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x8.fnt && file2c 'static u_char dflt_font_8[8*256] = {' '};' < ${SC_DFLT_FONT}-8x8 >> font.h"
+			compile-with : "uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x16.fnt && file2c 'static u_char dflt_font_16[16*256] = {' '}\;' < ${SC_DFLT_FONT}-8x16 > font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x14.fnt && file2c 'static u_char dflt_font_14[14*256] = {' '}\;' < ${SC_DFLT_FONT}-8x14 >> font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x8.fnt && file2c 'static u_char dflt_font_8[8*256] = {' '}\;' < ${SC_DFLT_FONT}-8x8 >> font.h"
 			no-implicit-rule : true
 			before-depend : true
 			clean : "font.h ${SC_DFLT_FONT}-8x14 ${SC_DFLT_FONT}-8x16 ${SC_DFLT_FONT}-8x8"
@@ -170,7 +170,7 @@
 			path : "acpi_wakecode.h"
 			options : "acpi"
 			no-obj : true
-			compile-with : "file2c -sx 'static char wakecode[] = {' '};' < acpi_wakecode.bin > ${.TARGET}"
+			compile-with : "file2c -sx 'static char wakecode[] = {' '}\;' < acpi_wakecode.bin > ${.TARGET}"
 			no-implicit-rule : true
 			dependency : "acpi_wakecode.bin"
 			before-depend : true
@@ -180,7 +180,7 @@
 			path : "acpi_wakedata.h"
 			options : "acpi"
 			no-obj : true
-			compile-with : '${NM} -n --defined-only acpi_wakecode.o | while read offset dummy what\; do echo "#define $${what} 0x$${offset}"; done > ${.TARGET}'
+			compile-with : '${NM} -n --defined-only acpi_wakecode.o | while read offset dummy what\; do echo "#define $${what} 0x$${offset}"\; done > ${.TARGET}'
 			no-implicit-rule : true
 			dependency : "acpi_wakecode.o"
 			before-depend : true
@@ -245,6 +245,7 @@
 		},
 		{
 			path : "amd64/amd64/locore.S"
+			no-obj : true
 		},
 		{
 			path : "amd64/amd64/xen-locore.S"
