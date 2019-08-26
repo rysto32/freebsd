@@ -47,7 +47,7 @@
 			path : "linux32_assym.h"
 			options : "compat_linux32"
 			no-obj : true
-			compile-with : "sh $S/kern/genassym.sh linux32_genassym.o > ${.TARGET}"
+			compile-with : "sh $S/kern/genassym.sh -o ${.TARGET} linux32_genassym.o"
 			no-implicit-rule : true
 			dependency : "$S/kern/genassym.sh linux32_genassym.o"
 			before-depend : true
@@ -81,7 +81,7 @@
 		{
 			path : "ia32_assym.h"
 			no-obj : true
-			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh ia32_genassym.o > ${.TARGET}"
+			compile-with : "env NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh -o ${.TARGET} ia32_genassym.o"
 			no-implicit-rule : true
 			dependency : "$S/kern/genassym.sh ia32_genassym.o"
 			before-depend : true
