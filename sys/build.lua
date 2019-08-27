@@ -103,7 +103,7 @@ function GetMakeVars(parentConfig)
 	}
 end
 
-function IsBeforeDepend(fileDef)
+function HasBeforeDependDefinition(fileDef)
 	if fileDef['no-implicit-rule'] then
 		return true
 	end
@@ -111,6 +111,10 @@ function IsBeforeDepend(fileDef)
 	local ext = factory.file_ext(fileDef.path)
 
 	return ext == 'm'
+end
+
+function HasNormalDefinition(fileDef)
+	return not fileDef['no-implicit-rule']
 end
 
 function ProcessRedirect(arglist)
@@ -143,7 +147,7 @@ function ProcessBeforeDepend(parentConfig, files, options, beforedeps)
 
 	for _, f in ipairs(files) do
 		--print("path: " .. f.path)
-		if not IsBeforeDepend(f) then
+		if not HasBeforeDependDefinition(f) then
 			goto continue
 		end
 
@@ -187,6 +191,7 @@ function ProcessBeforeDepend(parentConfig, files, options, beforedeps)
 
 		local deplist = factory.flat_list(
 			dependency,
+			input,
 			"/bin",
 			"/lib",
 			"/usr/bin",
@@ -218,7 +223,7 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 
 	for _, f in ipairs(files) do
 		--print("path: " .. f.path)
-		if IsBeforeDepend(f) then
+		if not HasNormalDefinition(f) then
 			goto continue
 		end
 
@@ -242,6 +247,24 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 			elseif ext == 'c' then
 				target = factory.basename(factory.replace_ext(f.path, 'c', 'o'))
 				input = factory.build_path(parentConfig.sysdir, f.path)
+			elseif ext == 'm' then
+				local base = factory.basename(f.path)
+				target = factory.replace_ext(base, 'm', 'o')
+				input = factory.replace_ext(base, 'm', 'c')
+				local mfile = factory.build_path(parentConfig.sysdir, f.path)
+				ext = 'c'
+
+				local makeobjops = factory.build_path(parentConfig.sysdir, 'tools/makeobjops.awk')
+				local deplist = {
+					mfile,
+					makeobjops,
+					'/usr/bin',
+					'/bin'
+				}
+
+				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
+				local buildopts = {workdir = parentConfig.objdir, tmpdirs = input .. '.tmp'}
+				factory.define_command(input, deplist, arglist, buildopts)
 			else
 				print("Don't know how to build " .. f.path)
 				os.exit(1)
@@ -271,6 +294,7 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 		local deplist = factory.flat_list(
 			beforedeps,
 			dependency,
+			input,
 			"/bin",
 			"/lib",
 			"/usr/bin",
@@ -279,7 +303,7 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 			"/usr/share",
 			"opt_global.h",
 			parentConfig.objdir,
-			factory.build_path(parentConfig.sysdir, sys),
+			parentConfig.sysdir,
 			parentConfig.machineLinks,
 			'/etc'
 		)

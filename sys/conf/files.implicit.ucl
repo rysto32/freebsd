@@ -40,7 +40,12 @@
 			compile-with : "${AWK} -f ${SYSDIR}/tools/vnode_if.awk ${SYSDIR}/kern/vnode_if.src -c",
 			no-implicit-rule : true,
 			dependency : "${SYSDIR}/tools/vnode_if.awk ${SYSDIR}/kern/vnode_if.src"
-			before-depend : true,
+		},
+		{
+			path : "vnode_if.o",
+			compile-with : "${NORMAL_C}",
+			dependency : "vnode_if.c",
+			no-obj : true
 		},
 		{
 			path : "vnode_if.h",
