@@ -92,6 +92,8 @@ function GetMakeVars(parentConfig)
 		ZLIB_CFLAGS= '-DZ_SOLO',
 		ZLIB_C= '${CC} -c ${ZLIB_CFLAGS} ${CFLAGS} ${.IMPSRC}',
 
+		ZSTD_C= '${CC} -c -DZSTD_HEAPMODE=1 -I$S/contrib/zstd/lib/freebsd ${CFLAGS} -I$S/contrib/zstd/lib -I$S/contrib/zstd/lib/common ${WERROR} -Wno-inline -Wno-missing-prototypes ${PROF} -U__BMI__ ${.IMPSRC}',
+
 		-- XXX I don't see that these two are set anywhere?
 		FEEDER_EQ_PRESETS = "",
 		FEEDER_RATE_PRESETS = "",
