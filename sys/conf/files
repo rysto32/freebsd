@@ -3101,7 +3101,7 @@ dev/spibus/spibus_if.m		optional spibus
 dev/ste/if_ste.c		optional ste pci
 dev/stge/if_stge.c		optional stge
 dev/sym/sym_hipd.c		optional sym				\
-	dependency	"$S/dev/sym/sym_{conf,defs}.h"
+	dependency	"$S/dev/sym/sym_conf.h $S/dev/sym/sym_defs.h"
 dev/syscons/blank/blank_saver.c	optional blank_saver
 dev/syscons/daemon/daemon_saver.c optional daemon_saver
 dev/syscons/dragon/dragon_saver.c optional dragon_saver

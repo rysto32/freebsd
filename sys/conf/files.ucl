@@ -9240,7 +9240,7 @@
 		{
 			path : "dev/sym/sym_hipd.c"
 			options : "sym"
-			dependency : "$S/dev/sym/sym_{conf,defs}.h"
+			dependency : "$S/dev/sym/sym_conf.h $S/dev/sym/sym_defs.h"
 		},
 		{
 			path : "dev/syscons/blank/blank_saver.c"
