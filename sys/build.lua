@@ -1,12 +1,12 @@
 
-function EvaluateOptionExpr(expr, options)
+function DoEvaluateOptionExpr(expr, options)
 	-- No options => Always enabled
 	if expr == nil then
 		return true
 	end
 
 	if type(expr) == 'string' then
-		return options[expr]
+		return not not options[expr]
 	end
 
 	if (expr['all-of']) then
@@ -30,6 +30,12 @@ function EvaluateOptionExpr(expr, options)
 	end
 end
 
+function EvaluateOptionExpr(expr, options)
+	local ret = DoEvaluateOptionExpr(expr, options)
+	--print('Evaluate ' .. factory.pretty_print_str(expr) .. ' = ' .. tostring(ret))
+	return ret
+end
+
 function FileSelected(fileEntry, options)
 
 	return EvaluateOptionExpr(fileEntry.options, options)
@@ -51,7 +57,7 @@ function ListToStr(list)
 end
 
 function GetMakeVars(parentConfig)
-	cflags = ListToStr(parentConfig.cflags)
+	cflags = ListToStr(factory.flat_list(parentConfig.cflags, parentConfig.debugPrefixMap))
 	return {
 		S = parentConfig.sysdir,
 		SYSDIR = parentConfig.sysdir,
@@ -63,11 +69,24 @@ function GetMakeVars(parentConfig)
 		CFLAGS = cflags,
 		CCACHE_BIN = '',
 		WERROR = '', -- XXX
+		OBJCOPY = 'objcopy',
 		PROF = '', -- XXX
 		NORMAL_C= '${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}',
 		NORMAL_S= '${CC} -c ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}', -- XXX ${CC:N${CCACHE_BIN}}
 		NM = "/usr/bin/nm",
 		NMFLAGS = '',
+
+		NO_WCONSTANT_CONVERSION=	'-Wno-error-constant-conversion',
+		NO_WSHIFT_COUNT_NEGATIVE=	'-Wno-shift-count-negative',
+		NO_WSHIFT_COUNT_OVERFLOW=	'-Wno-shift-count-overflow',
+		NO_WSELF_ASSIGN=		'-Wno-self-assign',
+		NO_WUNNEEDED_INTERNAL_DECL=	'-Wno-error-unneeded-internal-declaration',
+		NO_WSOMETIMES_UNINITIALIZED=	'-Wno-error-sometimes-uninitialized',
+		NO_WCAST_QUAL=			'-Wno-error-cast-qual',
+		NO_WTAUTOLOGICAL_POINTER_COMPARE= '-Wno-tautological-pointer-compare',
+
+		ZLIB_CFLAGS= '-DZ_SOLO',
+		ZLIB_C= '${CC} -c ${ZLIB_CFLAGS} ${CFLAGS} ${.IMPSRC}',
 
 		-- XXX I don't see that these two are set anywhere?
 		FEEDER_EQ_PRESETS = "",
@@ -88,7 +107,30 @@ function IsBeforeDepend(fileDef)
 	return ext == 'm'
 end
 
-function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
+function ProcessRedirect(arglist)
+	local i = 1
+	local options = {}
+
+	while i <= #arglist do
+		if arglist[i] == '<' or arglist[i] == '>' then
+			if arglist[i] == '<' then
+				options.stdin = arglist[i + 1]
+			else
+				options.stdout = arglist[i + 1]
+			end
+			table.remove(arglist, i)
+			table.remove(arglist, i)
+			goto continue
+		end
+
+		i = i + 1
+		::continue::
+	end
+
+	return options
+end
+
+function ProcessBeforeDepend(parentConfig, files, options, beforedeps)
 
 	local vars = GetMakeVars(parentConfig)
 	local f
@@ -108,12 +150,9 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 		local dependency = ret or {}
 		local before_depend = f['before-depend']
 
-		print("ret=" .. factory.pretty_print_str(ret))
-		print("dep=" .. factory.pretty_print_str(dependency))
-
 		tmpdirs = factory.listify(parentConfig.tmpdir)
 
-		print("Before Depend Path: " .. f.path)
+		--print("Before Depend Path: " .. f.path)
 		local arglist
 		local compile_with = f['compile-with']
 		if compile_with then
@@ -149,11 +188,13 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 			"/usr/local",
 			"/usr/share",
 			parentConfig.objdir,
-			parentConfig.sysdir,
+			factory.build_path(parentConfig.sysdir, sys),
 			parentConfig.machineLinks
 		)
 
-		local buildopt = { workdir = parentConfig.objdir, tmpdirs = tmpdirs }
+		local buildopt = ProcessRedirect(arglist)
+		buildopt.workdir = parentConfig.objdir
+		buildopt.tmpdirs = tmpdirs
 
 		factory.define_command(target, deplist, arglist, buildopt)
 
@@ -165,7 +206,7 @@ function ProcessBeforeDepend(parentConfig, files, beforedeps, options)
 	end
 end
 
-function ProcessFiles(parentConfig, files, beforedeps, options)
+function ProcessFiles(parentConfig, files, options, beforedeps)
 
 	local vars = GetMakeVars(parentConfig)
 
@@ -203,7 +244,7 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 
 		vars['.TARGET'] = target
 		vars['.IMPSRC'] = input
-		print(target .. ': .IMPSRC=' .. (input or 'nil'))
+		--print(target .. ': .IMPSRC=' .. (input or 'nil'))
 
 		local argshell = f['compile-with']
 		if not argshell then
@@ -232,12 +273,14 @@ function ProcessFiles(parentConfig, files, beforedeps, options)
 			"/usr/share",
 			"opt_global.h",
 			parentConfig.objdir,
-			parentConfig.sysdir,
+			factory.build_path(parentConfig.sysdir, sys),
 			parentConfig.machineLinks,
 			'/etc'
 		)
 
-		local buildopt = { workdir = parentConfig.objdir, tmpdirs = tmpdirs }
+		local buildopt = ProcessRedirect(arglist)
+		buildopt.workdir = parentConfig.objdir
+		buildopt.tmpdirs = tmpdirs
 
 		factory.define_command(target, deplist, arglist, buildopt)
 
@@ -264,7 +307,7 @@ function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
 	ProcessOptionFile(kernOpt, definedOptions, headerSet)
 	ProcessOptionFile(archOpt, definedOptions, headerSet)
 
-	local headers = {'opt_global.h'}
+	local headers = {factory.build_path(parentConfig.objdir, 'opt_global.h')}
 	for file,_ in pairs(headerSet) do
 		table.insert(headers, factory.build_path(parentConfig.objdir, file))
 	end
@@ -281,10 +324,12 @@ function DefineMachineLink(parentConfig, name, source)
 	factory.define_command(target, {source}, arglist, {})
 
 	table.insert(parentConfig.machineLinks, target)
+	table.insert(parentConfig.debugPrefixMap, '-fdebug-prefix-map=./' .. name .. '=' .. source)
 end
 
 function AddMachineLinks(parentConfig)
 	parentConfig.machineLinks = {}
+	parentConfig.debugPrefixMap = {}
 
 	DefineMachineLink(parentConfig, 'machine', factory.build_path(parentConfig.sysdir, parentConfig.machine, 'include'))
 	if parentConfig.machine == 'i386' or parentConfig.machine == 'amd64' then
@@ -345,9 +390,10 @@ warnflags = {'-Wall', '-Wredundant-decls', '-Wnested-externs', '-Wstrict-prototy
 		'-Wmissing-include-dirs', '-fdiagnostics-show-option',
 		'-Wno-unknown-pragmas'}
 
-miscflags = { '-ffreestanding', '-fwrapv', '-fstack-protector', '-mretpoline', '-gdwarf-2', '-std=iso9899:1999'}
+miscflags = { '-ffreestanding', '-fwrapv', '-fstack-protector', '-gdwarf-2', '-std=iso9899:1999',
+		'-fno-omit-frame-pointer', '-mno-omit-leaf-frame-pointer'}
 
-objdir = "/home/rstone/obj/freebsd-factory/sys"
+objdir = "/usr/obj/srcpool/src/rstone/freebsd-factory/amd64.amd64/sys/GENERIC/"
 
 factory.define_command(objdir, {}, {'mkdir', '-p', objdir}, {})
 
