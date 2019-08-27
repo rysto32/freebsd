@@ -180,9 +180,9 @@
 			path : "acpi_wakedata.h"
 			options : "acpi"
 			no-obj : true
-			compile-with : '${NM} -n --defined-only acpi_wakecode.o | while read offset dummy what\; do echo "#define $${what} 0x$${offset}"\; done > ${.TARGET}'
+			compile-with : "env NM=${NM} sh $S/conf/genacpiwakedata.sh -o acpi_wakedata.h -i acpi_wakecode.o"
 			no-implicit-rule : true
-			dependency : "acpi_wakecode.o"
+			dependency : "$S/conf/genacpiwakedata.sh acpi_wakecode.o"
 			before-depend : true
 			clean : "acpi_wakedata.h"
 		},

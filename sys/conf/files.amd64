@@ -120,8 +120,8 @@ acpi_wakecode.h			optional	acpi			\
 	no-obj no-implicit-rule	before-depend				\
 	clean		"acpi_wakecode.h"
 acpi_wakedata.h			optional	acpi			\
-	dependency	"acpi_wakecode.o"				\
-	compile-with	'${NM} -n --defined-only acpi_wakecode.o | while read offset dummy what; do echo "#define	$${what}	0x$${offset}"; done > ${.TARGET}' \
+	dependency	"$S/conf/genacpiwakedata.sh acpi_wakecode.o"				\
+	compile-with	"env NM=${NM} sh $S/conf/genacpiwakedata.sh -o acpi_wakedata.h -i acpi_wakecode.o" \
 	no-obj no-implicit-rule	before-depend				\
 	clean		"acpi_wakedata.h"
 #
