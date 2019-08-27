@@ -6,7 +6,11 @@ function DoEvaluateOptionExpr(expr, options)
 	end
 
 	if type(expr) == 'string' then
-		return not not options[expr]
+		if expr:sub(1, 1) == '!' then
+			return not options[expr:sub(2, #expr)]
+		else
+			return not not options[expr]
+		end
 	end
 
 	if (expr['all-of']) then
