@@ -355,10 +355,10 @@ definitions = {
 			makeoptions = {}
 			for _, opt in ipairs(kernConf.options) do
 				if (type(opt) == 'string') then
-					options[opt] = true
+					options[opt:lower()] = true
 				else
 					for optname, value in pairs(opt) do
-						options[optname] = value
+						options[optname:lower()] = value
 					end
 				end
 			end
