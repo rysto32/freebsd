@@ -7,9 +7,9 @@ function DoEvaluateOptionExpr(expr, options)
 
 	if type(expr) == 'string' then
 		if expr:sub(1, 1) == '!' then
-			return not options[expr:sub(2, #expr)]
+			return not options[expr:sub(2, #expr):lower()]
 		else
-			return not not options[expr]
+			return not not options[expr:lower()]
 		end
 	end
 
