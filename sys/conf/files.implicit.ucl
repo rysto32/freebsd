@@ -68,6 +68,15 @@
 			dependency : "${SYSDIR}/tools/vnode_if.awk ${SYSDIR}/kern/vnode_if.src"
 			before-depend : true,
 		},
+		{
+			path : "config.o",
+		},
+		{
+			path : "env.o",
+		},
+		{
+			path : "hints.o",
+		},
 		/*{
 			path : "",
 			compile-with : "",

@@ -337,7 +337,12 @@ function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
 	ProcessOptionFile(kernOpt, definedOptions, headerSet)
 	ProcessOptionFile(archOpt, definedOptions, headerSet)
 
-	local headers = {factory.build_path(parentConfig.objdir, 'opt_global.h')}
+	local headers = {
+		factory.build_path(parentConfig.objdir, 'opt_global.h'),
+		factory.build_path(parentConfig.objdir, 'config.c'),
+		factory.build_path(parentConfig.objdir, 'env.c'),
+		factory.build_path(parentConfig.objdir, 'hints.c'),
+	}
 	for file,_ in pairs(headerSet) do
 		table.insert(headers, factory.build_path(parentConfig.objdir, file))
 	end
