@@ -140,7 +140,7 @@ function ProcessRedirect(arglist)
 	return options
 end
 
-function ProcessBeforeDepend(parentConfig, files, options, beforedeps)
+function ProcessBeforeDepend(parentConfig, files, options, lists)
 
 	local vars = GetMakeVars(parentConfig)
 	local f
@@ -191,7 +191,6 @@ function ProcessBeforeDepend(parentConfig, files, options, beforedeps)
 
 		local deplist = factory.flat_list(
 			dependency,
-			input,
 			"/bin",
 			"/lib",
 			"/usr/bin",
@@ -210,14 +209,18 @@ function ProcessBeforeDepend(parentConfig, files, options, beforedeps)
 		factory.define_command(target, deplist, arglist, buildopt)
 
 		if before_depend then
-			factory.list_concat(beforedeps, factory.listify(target))
+			factory.list_concat(lists.beforedeps, factory.listify(target))
+		end
+
+		if not f['no-obj'] then
+			table.insert(lists.objs, target)
 		end
 
 		::continue::
 	end
 end
 
-function ProcessFiles(parentConfig, files, options, beforedeps)
+function ProcessFiles(parentConfig, files, options, lists)
 
 	local vars = GetMakeVars(parentConfig)
 
@@ -265,6 +268,9 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
 				local buildopts = {workdir = parentConfig.objdir, tmpdirs = input .. '.tmp'}
 				factory.define_command(input, deplist, arglist, buildopts)
+			elseif ext == 'o' then
+				target = f.path
+				input = factory.replace_ext(f.path, 'o', 'c')
 			else
 				print("Don't know how to build " .. f.path)
 				os.exit(1)
@@ -277,7 +283,7 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 
 		local argshell = f['compile-with']
 		if not argshell then
-			if ext == 'c' then
+			if ext == 'c' or ext == 'o' then
 				argshell = "${NORMAL_C}"
 			elseif ext == 'S' then
 				argshell = '${NORMAL_S}'
@@ -292,7 +298,7 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
 		local deplist = factory.flat_list(
-			beforedeps,
+			lists.beforedeps,
 			dependency,
 			input,
 			"/bin",
@@ -313,6 +319,10 @@ function ProcessFiles(parentConfig, files, options, beforedeps)
 		buildopt.tmpdirs = tmpdirs
 
 		factory.define_command(target, deplist, arglist, buildopt)
+
+		if not f['no-obj'] then
+			table.insert(lists.objs, target)
+		end
 
 		::continue::
 	end
@@ -372,6 +382,49 @@ function AddMachineLinks(parentConfig)
 	end
 end
 
+function DefineVers(parentConf, objs)
+	local newvers = factory.build_path(parentConf.sysdir, 'conf/newvers.sh')
+	-- XXX version!
+	local arglist = {
+		'env', 'SYSDIR=' .. parentConf.sysdir, "sh", newvers,
+		    parentConf.reproFlag, '-I', parentConf.kernIdent, "-C",
+		    "clang version 8.0.1 (tags/RELEASE_801/final)"
+	}
+
+	local inputs = {
+		'/bin',
+		'/usr/bin',
+		'/usr/local/bin',
+		'/usr/local/libexec',
+		'/etc',
+		'/usr/share',
+		'/lib',
+		'/usr/lib',
+		'/usr/local/lib',
+
+		parentConf.srcdir,
+
+		-- XXX
+		'/srcpool/repo/rstone/freebsd',
+		'/home/rstone/.gitconfig',
+		newvers,
+	}
+
+	local o
+	for _, o in ipairs(objs) do
+		if o ~= 'vers.o' then
+			table.insert(inputs, o)
+		end
+	end
+
+	local buildopts = {
+		workdir = parentConf.objdir,
+		tmpdirs = {'/tmp', '/dev/null'},
+	}
+
+	factory.define_command({'vers.c', 'version'}, inputs, arglist, buildopts)
+end
+
 definitions = {
 	{
 		name = { "kern-src", 'kern-implicit-src', "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
@@ -394,22 +447,26 @@ definitions = {
 			ident = kernConf.ident
 			makeoptions = factory.list_concat(makeoptions, kernConf.makeoptions)
 
-			--DefineGenassym(parentConf)
-			beforedeps = {}
-			ProcessBeforeDepend(parentConf, kernFiles, options, beforedeps)
-			ProcessBeforeDepend(parentConf, implicitFiles, options, beforedeps)
-			ProcessBeforeDepend(parentConf, archFiles, options, beforedeps)
+			lists = {
+				beforedeps = {},
+				objs = {},
+			}
+			ProcessBeforeDepend(parentConf, kernFiles, options, lists)
+			ProcessBeforeDepend(parentConf, implicitFiles, options, lists)
+			ProcessBeforeDepend(parentConf, archFiles, options, lists)
 
-			ProcessFiles(parentConf, kernFiles, options, beforedeps)
-			ProcessFiles(parentConf, implicitFiles, options, beforedeps)
-			ProcessFiles(parentConf, archFiles, options, beforedeps)
+			ProcessFiles(parentConf, kernFiles, options, lists)
+			ProcessFiles(parentConf, implicitFiles, options, lists)
+			ProcessFiles(parentConf, archFiles, options, lists)
+
+			DefineVers(parentConf, lists.objs)
 		end
 	}
 }
 
 factory.add_definitions(definitions)
 
-srcdir = "/home/rstone/git/freebsd-factory"
+srcdir = factory.realpath("/home/rstone/git/freebsd-factory")
 sysdir = factory.build_path(srcdir, 'sys')
 
 -- XXX this is massively cut down from the logic in kern.pre.mk
@@ -432,6 +489,9 @@ objdir = "/usr/obj/srcpool/src/rstone/freebsd-factory/amd64.amd64/sys/GENERIC/"
 
 factory.define_command(objdir, {}, {'mkdir', '-p', objdir}, {})
 
+kernIdent = "GENERIC"
+machine = 'amd64'
+
 topConfig = {
 	CC = "/usr/local/bin/clang80",
 	cflags = factory.flat_list(coptflags, includes, defines, arch_cflags, warnflags, miscflags),
@@ -441,9 +501,11 @@ topConfig = {
 	objdir = objdir,
 	optfile = 'sys/conf/options.ucl',
 	archoptfile = 'sys/conf/options.amd64.ucl',
-	conffile = 'sys/amd64/conf/GENERIC.ucl',
+	kernIdent = kernIdent,
+	conffile = 'sys/' .. machine .. '/conf/' .. kernIdent .. '.ucl',
 	tmpdir = '/tmp',
-	home = os.getenv('HOME')
+	home = os.getenv('HOME'),
+	reproFlag = '-R',
 }
 
 factory.include_config({'sys/conf/files.ucl', 'sys/conf/files.implicit.ucl', 'sys/conf/files.amd64.ucl', topConfig.optfile, topConfig.archoptfile, topConfig.conffile}, topConfig)

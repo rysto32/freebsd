@@ -71,7 +71,7 @@ else
 fi
 # look for copyright template
 b=share/examples/etc/bsd-style-copyright
-for bsd_copyright in $b ../$b ../../$b ../../../$b /usr/src/$b /usr/$b
+for bsd_copyright in ${SYSDIR}/../$b $b ../$b ../../$b ../../../$b /usr/src/$b /usr/$b
 do
 	if [ -r "$bsd_copyright" ]; then
 		COPYRIGHT=$(sed \

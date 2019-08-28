@@ -43,9 +43,6 @@
 		},
 		{
 			path : "vnode_if.o",
-			compile-with : "${NORMAL_C}",
-			dependency : "vnode_if.c",
-			no-obj : true
 		},
 		{
 			path : "vnode_if.h",
@@ -76,6 +73,9 @@
 		},
 		{
 			path : "hints.o",
+		},
+		{
+			path : "vers.o",
 		},
 		/*{
 			path : "",
