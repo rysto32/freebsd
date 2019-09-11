@@ -995,7 +995,8 @@
 518	AUE_PDFORK	NOPROTO	{ int pdfork(int *fdp, int flags); }
 519	AUE_PDKILL	NOPROTO	{ int pdkill(int fd, int signum); }
 520	AUE_PDGETPID	NOPROTO	{ int pdgetpid(int fd, pid_t *pidp); }
-521	AUE_PDWAIT	UNIMPL	pdwait4
+521	AUE_PDWAIT	NOPROTO { int pdwait4(int fd, int *status, \
+				    int options, struct rusage *rusage); }
 522	AUE_SELECT	STD	{ int freebsd32_pselect(int nd, fd_set *in, \
 				    fd_set *ou, fd_set *ex, \
 				    const struct timespec32 *ts, \

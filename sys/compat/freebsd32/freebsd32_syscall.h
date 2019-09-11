@@ -443,6 +443,7 @@
 #define	FREEBSD32_SYS_pdfork	518
 #define	FREEBSD32_SYS_pdkill	519
 #define	FREEBSD32_SYS_pdgetpid	520
+#define	FREEBSD32_SYS_pdwait4	521
 #define	FREEBSD32_SYS_freebsd32_pselect	522
 #define	FREEBSD32_SYS_getloginclass	523
 #define	FREEBSD32_SYS_setloginclass	524

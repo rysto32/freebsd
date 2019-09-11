@@ -1556,6 +1556,12 @@ struct pdgetpid_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char pidp_l_[PADL_(pid_t *)]; pid_t * pidp; char pidp_r_[PADR_(pid_t *)];
 };
+struct pdwait4_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char status_l_[PADL_(int *)]; int * status; char status_r_[PADR_(int *)];
+	char options_l_[PADL_(int)]; int options; char options_r_[PADR_(int)];
+	char rusage_l_[PADL_(struct rusage *)]; struct rusage * rusage; char rusage_r_[PADR_(struct rusage *)];
+};
 struct pselect_args {
 	char nd_l_[PADL_(int)]; int nd; char nd_r_[PADR_(int)];
 	char in_l_[PADL_(fd_set *)]; fd_set * in; char in_r_[PADR_(fd_set *)];
@@ -2152,6 +2158,7 @@ int	sys_cap_getmode(struct thread *, struct cap_getmode_args *);
 int	sys_pdfork(struct thread *, struct pdfork_args *);
 int	sys_pdkill(struct thread *, struct pdkill_args *);
 int	sys_pdgetpid(struct thread *, struct pdgetpid_args *);
+int	sys_pdwait4(struct thread *, struct pdwait4_args *);
 int	sys_pselect(struct thread *, struct pselect_args *);
 int	sys_getloginclass(struct thread *, struct getloginclass_args *);
 int	sys_setloginclass(struct thread *, struct setloginclass_args *);
@@ -3061,6 +3068,7 @@ int	freebsd11_mknodat(struct thread *, struct freebsd11_mknodat_args *);
 #define	SYS_AUE_pdfork	AUE_PDFORK
 #define	SYS_AUE_pdkill	AUE_PDKILL
 #define	SYS_AUE_pdgetpid	AUE_PDGETPID
+#define	SYS_AUE_pdwait4	AUE_PDWAIT
 #define	SYS_AUE_pselect	AUE_SELECT
 #define	SYS_AUE_getloginclass	AUE_GETLOGINCLASS
 #define	SYS_AUE_setloginclass	AUE_SETLOGINCLASS
