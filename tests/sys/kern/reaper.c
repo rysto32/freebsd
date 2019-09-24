@@ -29,11 +29,14 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/procctl.h>
 #include <sys/procdesc.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 
 #include <atf-c.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 static void
@@ -775,6 +778,137 @@ ATF_TC_BODY(reaper_pdfork, tc)
 	ATF_CHECK(st.rs_descendants == 1);
 }
 
+static inline uint64_t
+ru_get_microsec(struct rusage *ru)
+{
+
+	return ((ru->ru_utime.tv_sec + ru->ru_stime.tv_sec) * 1000000ULL +
+	    (ru->ru_utime.tv_usec + ru->ru_stime.tv_usec));
+}
+
+ATF_TC_WITHOUT_HEAD(reaper_pdwait4_exit);
+ATF_TC_BODY(reaper_pdwait4_exit, tc)
+{
+	int pd[3];
+	int fd[2];
+	pid_t pid[3];
+	pid_t wait_pid;
+	char ch;
+	int status, error;
+	uint64_t microsecs;
+	ssize_t bytes;
+	struct rusage ru;
+	const uint64_t spin_len = 500;
+
+	error = pipe(fd);
+	ATF_REQUIRE(error == 0);
+
+	pid[0] = pdfork(&pd[0], 0);
+	ATF_REQUIRE(pid >= 0);
+	if (pid[0] == 0) {
+		_exit(0);
+	}
+
+	/* In parent. */
+
+	pid[1] = pdfork(&pd[1], 0);
+	ATF_REQUIRE(pid >= 0);
+	if (pid[1] == 0) {
+		/* Block until parent unblocks us with a write. */
+		bytes = read(fd[1], &ch, 1);
+		ATF_REQUIRE_EQ(bytes,1);
+		_exit(1);
+	}
+
+	/* In parent. */
+
+	pid[2] = pdfork(&pd[2], 0);
+	ATF_REQUIRE(pid >= 0);
+	if (pid[2] == 0) {
+
+		/* Spin for a little while so that we consume CPU cycles. */
+		do {
+			error = getrusage(RUSAGE_SELF, &ru);
+			ATF_REQUIRE_EQ(error, 0);
+
+			microsecs = ru_get_microsec(&ru);
+		} while (microsecs < spin_len);
+
+		_exit(127);
+	}
+
+	/* In parent. */
+
+	wait_pid = pdwait4(pd[0], &status, WEXITED, NULL);
+	ATF_REQUIRE_EQ(wait_pid, pid[0]);
+	ATF_REQUIRE_MSG(WIFEXITED(status), "status=%x", status);
+	ATF_CHECK_EQ_MSG(WEXITSTATUS(status), 0, "code=%d", WEXITSTATUS(status));
+
+	wait_pid = pdwait4(pd[1], &status, WEXITED | WNOHANG, NULL);
+	ATF_REQUIRE_EQ_MSG(wait_pid, 0, "wait_pid=%d", wait_pid);
+
+	ch = 0;
+	bytes = write(fd[0], &ch, 1);
+	ATF_REQUIRE_EQ(bytes,1);
+
+	wait_pid = pdwait4(pd[1], &status, WEXITED, NULL);
+	ATF_REQUIRE_EQ(wait_pid, pid[1]);
+	ATF_REQUIRE_MSG(WIFEXITED(status), "status=%x", status);
+	ATF_CHECK_EQ_MSG(WEXITSTATUS(status), 1, "code=%d", WEXITSTATUS(status));
+
+	wait_pid = pdwait4(pd[2], &status, WEXITED, &ru);
+	ATF_REQUIRE_EQ(wait_pid, pid[2]);
+	ATF_REQUIRE_MSG(WIFEXITED(status), "status=%x", status);
+	ATF_CHECK_EQ_MSG(WEXITSTATUS(status), 127, "code=%d", WEXITSTATUS(status));
+
+	microsecs = ru_get_microsec(&ru);
+	ATF_REQUIRE_MSG(microsecs >= spin_len, "usecs=%jd", (uintmax_t)microsecs);
+}
+
+ATF_TC_WITHOUT_HEAD(reaper_pdwait4_signal);
+ATF_TC_BODY(reaper_pdwait4_signal, tc)
+{
+	int pd[2];
+	pid_t pid[2];
+	pid_t wait_pid;
+	int status, error;
+	struct rlimit rlim;
+
+	pid[0] = pdfork(&pd[0], 0);
+	ATF_REQUIRE(pid >= 0);
+	if (pid[0] == 0) {
+		raise(SIGKILL);
+		atf_tc_fail("raise(SIGKILL) failed");
+	}
+
+	/* In parent. */
+
+	pid[1] = pdfork(&pd[1], 0);
+	ATF_REQUIRE(pid >= 0);
+	if (pid[1] == 0) {
+		/* Ensure that we don't create a core file. */
+		rlim.rlim_cur = 0;
+		rlim.rlim_max = 0;
+		error = setrlimit(RLIMIT_CORE, &rlim);
+		ATF_REQUIRE_EQ(error, 0);
+
+		raise(SIGSEGV);
+		atf_tc_fail("raise(SIGSEGV) failed");
+	}
+
+	/* In parent. */
+
+	wait_pid = pdwait4(pd[0], &status, WEXITED, NULL);
+	ATF_REQUIRE_EQ(wait_pid, pid[0]);
+	ATF_REQUIRE_MSG(WIFSIGNALED(status), "status=%x", status);
+	ATF_REQUIRE_EQ(WTERMSIG(status), SIGKILL);
+
+	wait_pid = pdwait4(pd[1], &status, WEXITED, NULL);
+	ATF_REQUIRE_EQ(wait_pid, pid[1]);
+	ATF_REQUIRE_MSG(WIFSIGNALED(status), "status=%x", status);
+	ATF_REQUIRE_EQ(WTERMSIG(status), SIGSEGV);
+}
+
 ATF_TP_ADD_TCS(tp)
 {
 
@@ -790,5 +924,7 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, reaper_kill_normal);
 	ATF_TP_ADD_TC(tp, reaper_kill_subtree);
 	ATF_TP_ADD_TC(tp, reaper_pdfork);
+	ATF_TP_ADD_TC(tp, reaper_pdwait4_exit);
+	ATF_TP_ADD_TC(tp, reaper_pdwait4_signal);
 	return (atf_no_error());
 }
