@@ -32,13 +32,14 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd October 14, 2018
+.Dd September 24, 2019
 .Dt PDFORK 2
 .Os
 .Sh NAME
 .Nm pdfork ,
 .Nm pdgetpid ,
-.Nm pdkill
+.Nm pdkill ,
+.Nm pdwait4
 .Nd System calls to manage process descriptors
 .Sh LIBRARY
 .Lb libc
@@ -50,6 +51,8 @@
 .Fn pdgetpid "int fd" "pid_t *pidp"
 .Ft int
 .Fn pdkill "int fd" "int signum"
+.Ft int
+.Fn pdwait4 "int fd" "int *status" "int options" "struct rusage *rusage"
 .Sh DESCRIPTION
 Process descriptors are special file descriptors that represent processes,
 and are created using
@@ -92,6 +95,11 @@ is functionally identical to
 except that it accepts a process descriptor,
 .Fa fd ,
 rather than a PID.
+.Pp
+.Fn pdwait4
+behaves identically to
+.Xr wait4 2 ,
+but operates with respect to a process descriptor argument rather than a PID.
 .Pp
 The following system calls also have effects specific to process descriptors:
 .Pp
@@ -138,6 +146,9 @@ does.
 and
 .Fn pdkill
 return 0 on success and -1 on failure.
+.Pp
+.Fn pdwait4
+returns a PID on success and -1 on failure.
 .Sh ERRORS
 These functions may return the same error numbers as their PID-based equivalents
 (e.g.
@@ -174,6 +185,10 @@ and
 .Fn pdkill
 system calls first appeared in
 .Fx 9.0 .
+The
+.Fn pdwait4
+system call first appeared in
+.Fx 13.0 .
 .Pp
 Support for process descriptors mode was developed as part of the
 .Tn TrustedBSD

@@ -28,7 +28,7 @@
 .\"     @(#)wait.2	8.2 (Berkeley) 4/19/94
 .\" $FreeBSD$
 .\"
-.Dd August 11, 2019
+.Dd September 24, 2019
 .Dt WAIT 2
 .Os
 .Sh NAME
@@ -612,6 +612,9 @@ The
 family of functions will not return a child process created with
 .Xr pdfork 2
 unless specifically directed to do so by specifying its process ID.
+Specific processes can still be waited on by specifying the process ID
+or descriptor (see
+.Xr pdwait 4 ) .
 .Sh ERRORS
 The
 .Fn wait
