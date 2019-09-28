@@ -1,4 +1,12 @@
 
+os_files = {
+	'/usr/share/nls',
+	'/usr/share/locale',
+	'/var/run/ld-elf.so.hints',
+	'/etc/libmap.conf',
+	'/libexec'
+}
+
 function DoEvaluateOptionExpr(expr, options)
 	-- No options => Always enabled
 	if expr == nil then
@@ -196,10 +204,10 @@ function ProcessBeforeDepend(parentConfig, files, options, lists)
 			"/usr/bin",
 			"/usr/lib",
 			"/usr/local",
-			"/usr/share",
 			parentConfig.objdir,
 			factory.build_path(parentConfig.sysdir, sys),
-			parentConfig.machineLinks
+			parentConfig.machineLinks,
+			os_files
 		)
 
 		local buildopt = ProcessRedirect(arglist)
@@ -258,12 +266,13 @@ function ProcessFiles(parentConfig, files, options, lists)
 				ext = 'c'
 
 				local makeobjops = factory.build_path(parentConfig.sysdir, 'tools/makeobjops.awk')
-				local deplist = {
+				local deplist = factory.flat_list(
 					mfile,
 					makeobjops,
 					'/usr/bin',
-					'/bin'
-				}
+					'/bin',
+					os_files
+				)
 
 				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
 				local buildopts = {workdir = parentConfig.objdir, tmpdirs = input .. '.tmp'}
@@ -311,7 +320,8 @@ function ProcessFiles(parentConfig, files, options, lists)
 			parentConfig.objdir,
 			parentConfig.sysdir,
 			parentConfig.machineLinks,
-			'/etc'
+			'/etc',
+			os_files
 		)
 
 		local buildopt = ProcessRedirect(arglist)
@@ -391,7 +401,7 @@ function DefineVers(parentConf, objs)
 		    "clang version 8.0.1 (tags/RELEASE_801/final)"
 	}
 
-	local inputs = {
+	local inputs = factory.flat_list(
 		'/bin',
 		'/usr/bin',
 		'/usr/local/bin',
@@ -403,12 +413,13 @@ function DefineVers(parentConf, objs)
 		'/usr/local/lib',
 
 		parentConf.srcdir,
+		newvers,
+		os_files,
 
 		-- XXX
-		'/srcpool/repo/rstone/freebsd',
-		'/home/rstone/.gitconfig',
-		newvers,
-	}
+		factory.realpath('/home/rstone/repos'),
+		'/home/rstone/.gitconfig'
+	)
 
 	local o
 	for _, o in ipairs(objs) do
