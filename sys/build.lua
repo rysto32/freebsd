@@ -213,6 +213,7 @@ function ProcessBeforeDepend(parentConfig, files, options, lists)
 		local buildopt = ProcessRedirect(arglist)
 		buildopt.workdir = parentConfig.objdir
 		buildopt.tmpdirs = tmpdirs
+		buildopt.statdirs = {'/'}
 
 		factory.define_command(target, deplist, arglist, buildopt)
 
@@ -271,6 +272,7 @@ function ProcessFiles(parentConfig, files, options, lists)
 					makeobjops,
 					'/usr/bin',
 					'/bin',
+					'/lib',
 					os_files
 				)
 
@@ -327,6 +329,7 @@ function ProcessFiles(parentConfig, files, options, lists)
 		local buildopt = ProcessRedirect(arglist)
 		buildopt.workdir = parentConfig.objdir
 		buildopt.tmpdirs = tmpdirs
+		buildopt.statdirs = {"/"}
 
 		factory.define_command(target, deplist, arglist, buildopt)
 
@@ -367,16 +370,29 @@ function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
 		table.insert(headers, factory.build_path(parentConfig.objdir, file))
 	end
 
-	local inputs = { parentConfig.optfile, parentConfig.archoptfile, 'sys/amd64/conf'}
-	local arglist = { 'mkoptions', '-o', parentConfig.objdir, '-f', parentConfig.conffile, '-O', parentConfig.optfile, '-O', parentConfig.archoptfile}
-	factory.define_command(headers, inputs, arglist, {})
+	local optfile = factory.build_path(parentConfig.srcdir, parentConfig.optfile)
+	local archoptfile = factory.build_path(parentConfig.srcdir, parentConfig.archoptfile)
+	local conffile = factory.build_path(parentConfig.srcdir, parentConfig.conffile)
+	local confdir = factory.build_path(parentConfig.sysdir, parentConfig.machine, 'conf')
+
+	local inputs = factory.flat_list(
+		optfile,
+		archoptfile,
+		confdir,
+		'/lib',
+		'/usr/lib',
+		'/usr/local/lib',
+		os_files
+	)
+	local arglist = { 'mkoptions', '-o', parentConfig.objdir, '-f', conffile, '-O', optfile, '-O', archoptfile}
+	factory.define_command(headers, inputs, arglist, { statdirs = "/"})
 end
 
 function DefineMachineLink(parentConfig, name, source)
 	local target = factory.build_path(parentConfig.objdir, name)
 	local arglist = {'ln', '-fs', source, target}
 
-	factory.define_command(target, {source}, arglist, {})
+	factory.define_command(target, {source, "/lib", "/bin"}, arglist, {})
 
 	table.insert(parentConfig.machineLinks, target)
 	table.insert(parentConfig.debugPrefixMap, '-fdebug-prefix-map=./' .. name .. '=' .. source)
@@ -422,15 +438,18 @@ function DefineVers(parentConf, objs)
 	)
 
 	local o
+	local otherObjs = {}
 	for _, o in ipairs(objs) do
 		if o ~= 'vers.o' then
-			table.insert(inputs, o)
+			table.insert(otherObjs, o)
 		end
 	end
 
 	local buildopts = {
 		workdir = parentConf.objdir,
 		tmpdirs = {'/tmp', '/dev/null'},
+		order_deps = otherObjs,
+		statdirs = { parentConf.objdir }
 	}
 
 	factory.define_command({'vers.c', 'version'}, inputs, arglist, buildopts)
@@ -477,7 +496,7 @@ definitions = {
 
 factory.add_definitions(definitions)
 
-srcdir = factory.realpath("/home/rstone/git/freebsd-factory")
+srcdir = factory.realpath("/home/rstone/repos/bsd-worktree/factory-build")
 sysdir = factory.build_path(srcdir, 'sys')
 
 -- XXX this is massively cut down from the logic in kern.pre.mk
@@ -496,7 +515,8 @@ warnflags = {'-Wall', '-Wredundant-decls', '-Wnested-externs', '-Wstrict-prototy
 miscflags = { '-ffreestanding', '-fwrapv', '-fstack-protector', '-gdwarf-2', '-std=iso9899:1999',
 		'-fno-omit-frame-pointer', '-mno-omit-leaf-frame-pointer'}
 
-objdir = "/usr/obj/srcpool/src/rstone/freebsd-factory/amd64.amd64/sys/GENERIC/"
+--objdir = "/usr/obj/srcpool/src/rstone/freebsd-factory/amd64.amd64/sys/GENERIC/"
+objdir = "/tmp/obj/sys"
 
 factory.define_command(objdir, {}, {'mkdir', '-p', objdir}, {})
 
@@ -504,7 +524,7 @@ kernIdent = "GENERIC"
 machine = 'amd64'
 
 topConfig = {
-	CC = "/usr/local/bin/clang80",
+	CC = "/usr/bin/cc",
 	cflags = factory.flat_list(coptflags, includes, defines, arch_cflags, warnflags, miscflags),
 	machine = "amd64",
 	srcdir = srcdir,
