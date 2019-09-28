@@ -206,14 +206,14 @@ function ProcessBeforeDepend(conf, files, options, lists)
 			"/usr/bin",
 			"/usr/lib",
 			"/usr/local",
-			conf.objdir,
+			conf.objectsDir,
 			factory.build_path(conf.sysdir, sys),
 			conf.machineLinks,
 			os_files
 		)
 
 		local buildopt = ProcessRedirect(arglist)
-		buildopt.workdir = conf.objdir
+		buildopt.workdir = conf.objectsDir
 		buildopt.tmpdirs = tmpdirs
 		buildopt.statdirs = {'/'}
 
@@ -280,7 +280,7 @@ function ProcessFiles(conf, files, options, lists)
 				)
 
 				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
-				local buildopts = {workdir = conf.objdir, tmpdirs = input .. '.tmp'}
+				local buildopts = {workdir = conf.objectsDir, tmpdirs = input .. '.tmp'}
 				factory.define_command(input, deplist, arglist, buildopts)
 			elseif ext == 'o' or ext == 'pico' then
 				target = f.path
@@ -329,7 +329,7 @@ function ProcessFiles(conf, files, options, lists)
 			"/usr/local",
 			"/usr/share",
 			"opt_global.h",
-			conf.objdir,
+			conf.objectsDir,
 			conf.sysdir,
 			conf.machineLinks,
 			'/etc',
@@ -337,7 +337,7 @@ function ProcessFiles(conf, files, options, lists)
 		)
 
 		local buildopt = ProcessRedirect(arglist)
-		buildopt.workdir = conf.objdir
+		buildopt.workdir = conf.objectsDir
 		buildopt.tmpdirs = tmpdirs
 		buildopt.statdirs = {"/"}
 
@@ -371,13 +371,13 @@ function ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
 	ProcessOptionFile(archOpt, definedOptions, headerSet)
 
 	local headers = {
-		factory.build_path(conf.objdir, 'opt_global.h'),
-		factory.build_path(conf.objdir, 'config.c'),
-		factory.build_path(conf.objdir, 'env.c'),
-		factory.build_path(conf.objdir, 'hints.c'),
+		factory.build_path(conf.objectsDir, 'opt_global.h'),
+		factory.build_path(conf.objectsDir, 'config.c'),
+		factory.build_path(conf.objectsDir, 'env.c'),
+		factory.build_path(conf.objectsDir, 'hints.c'),
 	}
 	for file,_ in pairs(headerSet) do
-		table.insert(headers, factory.build_path(conf.objdir, file))
+		table.insert(headers, factory.build_path(conf.objectsDir, file))
 	end
 
 	local optfile = factory.build_path(conf.srcdir, conf.optfile)
@@ -394,12 +394,12 @@ function ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
 		'/usr/local/lib',
 		os_files
 	)
-	local arglist = { 'mkoptions', '-o', conf.objdir, '-f', conffile, '-O', optfile, '-O', archoptfile}
+	local arglist = { 'mkoptions', '-o', conf.objectsDir, '-f', conffile, '-O', optfile, '-O', archoptfile}
 	factory.define_command(headers, inputs, arglist, { statdirs = "/"})
 end
 
 function DefineMachineLink(conf, name, source)
-	local target = factory.build_path(conf.objdir, name)
+	local target = factory.build_path(conf.objectsDir, name)
 	local arglist = {'ln', '-fs', source, target}
 
 	factory.define_command(target, {source, "/lib", "/bin"}, arglist, {})
@@ -456,10 +456,10 @@ function DefineVers(conf, objs)
 	end
 
 	local buildopts = {
-		workdir = conf.objdir,
+		workdir = conf.objectsDir,
 		tmpdirs = {'/tmp', '/dev/null'},
 		order_deps = otherObjs,
-		statdirs = { conf.objdir }
+		statdirs = { conf.objectsDir }
 	}
 
 	factory.define_command({'vers.c', 'version'}, inputs, arglist, buildopts)
@@ -469,6 +469,15 @@ definitions = {
 	{
 		name = { "kern-src", 'kern-implicit-src', "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
 		process = function(conf, kernFiles, implicitFiles, archFiles, kernOpt, archOpt, kernConf)
+
+			conf.objectsDir = factory.build_path(conf.objdir, "objects")
+			conf.kernelDir = factory.build_path(conf.objdir, "kernel")
+
+			factory.define_mkdir(
+				conf.objectsDir,
+				conf.kernelDir
+			)
+
 			definedOptions = {}
 			ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
 			AddMachineLinks(conf)
