@@ -102,6 +102,8 @@ function GetMakeVars(conf)
 
 		ZSTD_C= '${CC} -c -DZSTD_HEAPMODE=1 -I$S/contrib/zstd/lib/freebsd ${CFLAGS} -I$S/contrib/zstd/lib -I$S/contrib/zstd/lib/common ${WERROR} -Wno-inline -Wno-missing-prototypes ${PROF} -U__BMI__ ${.IMPSRC}',
 
+		HACK_EXTRA_FLAGS = "-shared",
+
 		-- XXX I don't see that these two are set anywhere?
 		FEEDER_EQ_PRESETS = "",
 		FEEDER_RATE_PRESETS = "",
@@ -249,6 +251,7 @@ function ProcessFiles(conf, files, options, lists)
 
 		local target
 		local input
+		local tmpdir
 		if f['no-obj'] and ext ~= 'S' then
 			target = f.path
 			input = dependency[1]
@@ -279,9 +282,13 @@ function ProcessFiles(conf, files, options, lists)
 				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
 				local buildopts = {workdir = conf.objdir, tmpdirs = input .. '.tmp'}
 				factory.define_command(input, deplist, arglist, buildopts)
-			elseif ext == 'o' then
+			elseif ext == 'o' or ext == 'pico' then
 				target = f.path
 				input = factory.replace_ext(f.path, 'o', 'c')
+
+				if ext == 'pico' then
+					tmpdir = conf.objectsDir
+				end
 			else
 				print("Don't know how to build " .. f.path)
 				os.exit(1)
@@ -306,6 +313,9 @@ function ProcessFiles(conf, files, options, lists)
 		tmpdirs = factory.listify(conf.tmpdir)
 		table.insert(tmpdirs, factory.build_path(conf.home, '.termcap.db'))
 		table.insert(tmpdirs, factory.build_path(conf.home, '.termcap'))
+		if tmpdir then
+			table.insert(tmpdirs, tmpdir)
+		end
 
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
 		local deplist = factory.flat_list(
