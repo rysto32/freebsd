@@ -147,20 +147,17 @@ shift $((OPTIND - 1))
 #
 findvcs()
 {
-	local savedir
+	local checkdir
 
-	savedir=$(pwd)
-	cd ${SYSDIR}/..
-	while [ $(pwd) != "/" ]; do
-		if [ -e "./$1" ]; then
-			VCSTOP=$(pwd)
+	checkdir=$(dirname $SYSDIR)
+	while [ $checkdir != "/" ]; do
+		if [ -e "$checkdir/$1" ]; then
+			VCSTOP=checkdir
 			VCSDIR=${VCSTOP}"/$1"
-			cd ${savedir}
 			return 0
 		fi
-		cd ..
+		checkdir=$(dirname $checkdir)
 	done
-	cd ${savedir}
 	return 1
 }
 
