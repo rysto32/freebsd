@@ -68,15 +68,15 @@ function ListToStr(list)
 	return output
 end
 
-function GetMakeVars(parentConfig)
-	cflags = ListToStr(factory.flat_list(parentConfig.cflags, parentConfig.debugPrefixMap))
+function GetMakeVars(conf)
+	cflags = ListToStr(factory.flat_list(conf.cflags, conf.debugPrefixMap))
 	return {
-		S = parentConfig.sysdir,
-		SYSDIR = parentConfig.sysdir,
-		M = parentConfig.machine,
-		SRCDIR = parentConfig.srcdir,
+		S = conf.sysdir,
+		SYSDIR = conf.sysdir,
+		M = conf.machine,
+		SRCDIR = conf.srcdir,
 		AWK = "/usr/bin/awk",
-		CC = parentConfig.CC,
+		CC = conf.CC,
 		ASM_CFLAGS = '-x assembler-with-cpp -DLOCORE ${CFLAGS}', -- XXX ${ASM_CFLAGS.${.IMPSRC:T}}
 		CFLAGS = cflags,
 		CCACHE_BIN = '',
@@ -148,9 +148,9 @@ function ProcessRedirect(arglist)
 	return options
 end
 
-function ProcessBeforeDepend(parentConfig, files, options, lists)
+function ProcessBeforeDepend(conf, files, options, lists)
 
-	local vars = GetMakeVars(parentConfig)
+	local vars = GetMakeVars(conf)
 	local f
 
 	for _, f in ipairs(files) do
@@ -168,7 +168,7 @@ function ProcessBeforeDepend(parentConfig, files, options, lists)
 		local dependency = ret or {}
 		local before_depend = f['before-depend']
 
-		tmpdirs = factory.listify(parentConfig.tmpdir)
+		tmpdirs = factory.listify(conf.tmpdir)
 
 		--print("Before Depend Path: " .. f.path)
 		local arglist
@@ -183,8 +183,8 @@ function ProcessBeforeDepend(parentConfig, files, options, lists)
 			local ext = factory.file_ext(f.path)
 
 			if ext == 'm' then
-				local awk = factory.build_path(parentConfig.sysdir, 'tools/makeobjops.awk')
-				local input = factory.build_path(parentConfig.sysdir, f.path)
+				local awk = factory.build_path(conf.sysdir, 'tools/makeobjops.awk')
+				local input = factory.build_path(conf.sysdir, f.path)
 				arglist = { vars.AWK, '-f', awk, input, '-h'}
 				factory.list_concat(dependency, {awk, input})
 				before_depend = true
@@ -204,14 +204,14 @@ function ProcessBeforeDepend(parentConfig, files, options, lists)
 			"/usr/bin",
 			"/usr/lib",
 			"/usr/local",
-			parentConfig.objdir,
-			factory.build_path(parentConfig.sysdir, sys),
-			parentConfig.machineLinks,
+			conf.objdir,
+			factory.build_path(conf.sysdir, sys),
+			conf.machineLinks,
 			os_files
 		)
 
 		local buildopt = ProcessRedirect(arglist)
-		buildopt.workdir = parentConfig.objdir
+		buildopt.workdir = conf.objdir
 		buildopt.tmpdirs = tmpdirs
 		buildopt.statdirs = {'/'}
 
@@ -229,9 +229,9 @@ function ProcessBeforeDepend(parentConfig, files, options, lists)
 	end
 end
 
-function ProcessFiles(parentConfig, files, options, lists)
+function ProcessFiles(conf, files, options, lists)
 
-	local vars = GetMakeVars(parentConfig)
+	local vars = GetMakeVars(conf)
 
 	for _, f in ipairs(files) do
 		--print("path: " .. f.path)
@@ -254,19 +254,19 @@ function ProcessFiles(parentConfig, files, options, lists)
 			input = dependency[1]
 		else
 			if ext == 'S' then
-				input = factory.build_path(parentConfig.sysdir, f.path)
+				input = factory.build_path(conf.sysdir, f.path)
 				target = factory.basename(factory.replace_ext(f.path, 'S', 'o'))
 			elseif ext == 'c' then
 				target = factory.basename(factory.replace_ext(f.path, 'c', 'o'))
-				input = factory.build_path(parentConfig.sysdir, f.path)
+				input = factory.build_path(conf.sysdir, f.path)
 			elseif ext == 'm' then
 				local base = factory.basename(f.path)
 				target = factory.replace_ext(base, 'm', 'o')
 				input = factory.replace_ext(base, 'm', 'c')
-				local mfile = factory.build_path(parentConfig.sysdir, f.path)
+				local mfile = factory.build_path(conf.sysdir, f.path)
 				ext = 'c'
 
-				local makeobjops = factory.build_path(parentConfig.sysdir, 'tools/makeobjops.awk')
+				local makeobjops = factory.build_path(conf.sysdir, 'tools/makeobjops.awk')
 				local deplist = factory.flat_list(
 					mfile,
 					makeobjops,
@@ -277,7 +277,7 @@ function ProcessFiles(parentConfig, files, options, lists)
 				)
 
 				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
-				local buildopts = {workdir = parentConfig.objdir, tmpdirs = input .. '.tmp'}
+				local buildopts = {workdir = conf.objdir, tmpdirs = input .. '.tmp'}
 				factory.define_command(input, deplist, arglist, buildopts)
 			elseif ext == 'o' then
 				target = f.path
@@ -303,9 +303,9 @@ function ProcessFiles(parentConfig, files, options, lists)
 			end
 		end
 
-		tmpdirs = factory.listify(parentConfig.tmpdir)
-		table.insert(tmpdirs, factory.build_path(parentConfig.home, '.termcap.db'))
-		table.insert(tmpdirs, factory.build_path(parentConfig.home, '.termcap'))
+		tmpdirs = factory.listify(conf.tmpdir)
+		table.insert(tmpdirs, factory.build_path(conf.home, '.termcap.db'))
+		table.insert(tmpdirs, factory.build_path(conf.home, '.termcap'))
 
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
 		local deplist = factory.flat_list(
@@ -319,15 +319,15 @@ function ProcessFiles(parentConfig, files, options, lists)
 			"/usr/local",
 			"/usr/share",
 			"opt_global.h",
-			parentConfig.objdir,
-			parentConfig.sysdir,
-			parentConfig.machineLinks,
+			conf.objdir,
+			conf.sysdir,
+			conf.machineLinks,
 			'/etc',
 			os_files
 		)
 
 		local buildopt = ProcessRedirect(arglist)
-		buildopt.workdir = parentConfig.objdir
+		buildopt.workdir = conf.objdir
 		buildopt.tmpdirs = tmpdirs
 		buildopt.statdirs = {"/"}
 
@@ -354,26 +354,26 @@ function ProcessOptionFile(options, definedOptions, headerSet)
 	end
 end
 
-function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
+function ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
 	local headerSet = {}
 
 	ProcessOptionFile(kernOpt, definedOptions, headerSet)
 	ProcessOptionFile(archOpt, definedOptions, headerSet)
 
 	local headers = {
-		factory.build_path(parentConfig.objdir, 'opt_global.h'),
-		factory.build_path(parentConfig.objdir, 'config.c'),
-		factory.build_path(parentConfig.objdir, 'env.c'),
-		factory.build_path(parentConfig.objdir, 'hints.c'),
+		factory.build_path(conf.objdir, 'opt_global.h'),
+		factory.build_path(conf.objdir, 'config.c'),
+		factory.build_path(conf.objdir, 'env.c'),
+		factory.build_path(conf.objdir, 'hints.c'),
 	}
 	for file,_ in pairs(headerSet) do
-		table.insert(headers, factory.build_path(parentConfig.objdir, file))
+		table.insert(headers, factory.build_path(conf.objdir, file))
 	end
 
-	local optfile = factory.build_path(parentConfig.srcdir, parentConfig.optfile)
-	local archoptfile = factory.build_path(parentConfig.srcdir, parentConfig.archoptfile)
-	local conffile = factory.build_path(parentConfig.srcdir, parentConfig.conffile)
-	local confdir = factory.build_path(parentConfig.sysdir, parentConfig.machine, 'conf')
+	local optfile = factory.build_path(conf.srcdir, conf.optfile)
+	local archoptfile = factory.build_path(conf.srcdir, conf.archoptfile)
+	local conffile = factory.build_path(conf.srcdir, conf.conffile)
+	local confdir = factory.build_path(conf.sysdir, conf.machine, 'conf')
 
 	local inputs = factory.flat_list(
 		optfile,
@@ -384,36 +384,36 @@ function ProcessOptionDefs(parentConfig, kernOpt, archOpt, definedOptions)
 		'/usr/local/lib',
 		os_files
 	)
-	local arglist = { 'mkoptions', '-o', parentConfig.objdir, '-f', conffile, '-O', optfile, '-O', archoptfile}
+	local arglist = { 'mkoptions', '-o', conf.objdir, '-f', conffile, '-O', optfile, '-O', archoptfile}
 	factory.define_command(headers, inputs, arglist, { statdirs = "/"})
 end
 
-function DefineMachineLink(parentConfig, name, source)
-	local target = factory.build_path(parentConfig.objdir, name)
+function DefineMachineLink(conf, name, source)
+	local target = factory.build_path(conf.objdir, name)
 	local arglist = {'ln', '-fs', source, target}
 
 	factory.define_command(target, {source, "/lib", "/bin"}, arglist, {})
 
-	table.insert(parentConfig.machineLinks, target)
-	table.insert(parentConfig.debugPrefixMap, '-fdebug-prefix-map=./' .. name .. '=' .. source)
+	table.insert(conf.machineLinks, target)
+	table.insert(conf.debugPrefixMap, '-fdebug-prefix-map=./' .. name .. '=' .. source)
 end
 
-function AddMachineLinks(parentConfig)
-	parentConfig.machineLinks = {}
-	parentConfig.debugPrefixMap = {}
+function AddMachineLinks(conf)
+	conf.machineLinks = {}
+	conf.debugPrefixMap = {}
 
-	DefineMachineLink(parentConfig, 'machine', factory.build_path(parentConfig.sysdir, parentConfig.machine, 'include'))
-	if parentConfig.machine == 'i386' or parentConfig.machine == 'amd64' then
-		DefineMachineLink(parentConfig, 'x86', factory.build_path(parentConfig.sysdir, 'x86/include'))
+	DefineMachineLink(conf, 'machine', factory.build_path(conf.sysdir, conf.machine, 'include'))
+	if conf.machine == 'i386' or conf.machine == 'amd64' then
+		DefineMachineLink(conf, 'x86', factory.build_path(conf.sysdir, 'x86/include'))
 	end
 end
 
-function DefineVers(parentConf, objs)
-	local newvers = factory.build_path(parentConf.sysdir, 'conf/newvers.sh')
+function DefineVers(conf, objs)
+	local newvers = factory.build_path(conf.sysdir, 'conf/newvers.sh')
 	-- XXX version!
 	local arglist = {
-		'env', 'SYSDIR=' .. parentConf.sysdir, "sh", newvers,
-		    parentConf.reproFlag, '-I', parentConf.kernIdent, "-C",
+		'env', 'SYSDIR=' .. conf.sysdir, "sh", newvers,
+		    conf.reproFlag, '-I', conf.kernIdent, "-C",
 		    "clang version 8.0.1 (tags/RELEASE_801/final)"
 	}
 
@@ -428,7 +428,7 @@ function DefineVers(parentConf, objs)
 		'/usr/lib',
 		'/usr/local/lib',
 
-		parentConf.srcdir,
+		conf.srcdir,
 		newvers,
 		os_files,
 
@@ -446,10 +446,10 @@ function DefineVers(parentConf, objs)
 	end
 
 	local buildopts = {
-		workdir = parentConf.objdir,
+		workdir = conf.objdir,
 		tmpdirs = {'/tmp', '/dev/null'},
 		order_deps = otherObjs,
-		statdirs = { parentConf.objdir }
+		statdirs = { conf.objdir }
 	}
 
 	factory.define_command({'vers.c', 'version'}, inputs, arglist, buildopts)
@@ -458,10 +458,10 @@ end
 definitions = {
 	{
 		name = { "kern-src", 'kern-implicit-src', "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
-		process = function(parentConf, kernFiles, implicitFiles, archFiles, kernOpt, archOpt, kernConf)
+		process = function(conf, kernFiles, implicitFiles, archFiles, kernOpt, archOpt, kernConf)
 			definedOptions = {}
-			ProcessOptionDefs(parentConf, kernOpt, archOpt, definedOptions)
-			AddMachineLinks(parentConf)
+			ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
+			AddMachineLinks(conf)
 
 			options = {}
 			makeoptions = {}
@@ -481,15 +481,15 @@ definitions = {
 				beforedeps = {},
 				objs = {},
 			}
-			ProcessBeforeDepend(parentConf, kernFiles, options, lists)
-			ProcessBeforeDepend(parentConf, implicitFiles, options, lists)
-			ProcessBeforeDepend(parentConf, archFiles, options, lists)
+			ProcessBeforeDepend(conf, kernFiles, options, lists)
+			ProcessBeforeDepend(conf, implicitFiles, options, lists)
+			ProcessBeforeDepend(conf, archFiles, options, lists)
 
-			ProcessFiles(parentConf, kernFiles, options, lists)
-			ProcessFiles(parentConf, implicitFiles, options, lists)
-			ProcessFiles(parentConf, archFiles, options, lists)
+			ProcessFiles(conf, kernFiles, options, lists)
+			ProcessFiles(conf, implicitFiles, options, lists)
+			ProcessFiles(conf, archFiles, options, lists)
 
-			DefineVers(parentConf, lists.objs)
+			DefineVers(conf, lists.objs)
 		end
 	}
 }
