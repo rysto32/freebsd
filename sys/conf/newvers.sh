@@ -100,11 +100,18 @@ COPYRIGHT="$COPYRIGHT
 # future value of modified.
 include_metadata=yes
 modified=no
-while getopts crRvV: opt; do
+while getopts C:cI:rRvV: opt; do
 	case "$opt" in
 	c)
 		echo "$COPYRIGHT"
 		exit 0
+		;;
+	C)
+		compiler_v=$OPTARG
+		;;
+
+	I)
+		i=$OPTARG
 		;;
 	r)
 		include_metadata=no
@@ -203,8 +210,8 @@ if [ -n "$SOURCE_DATE_EPOCH" ]; then
 else
 	t=$(date)
 fi
-i=$(${MAKE:-make} -V KERN_IDENT)
-compiler_v=$($(${MAKE:-make} -V CC) -v 2>&1 | grep -w 'version')
+[ -z "$i" ] && i=$(${MAKE:-make} -V KERN_IDENT)
+[ -z "$compiler_v" ] && compiler_v=$($(${MAKE:-make} -V CC) -v 2>&1 | grep -w 'version')
 
 for dir in /usr/bin /usr/local/bin; do
 	if [ ! -z "${svnversion}" ] ; then
