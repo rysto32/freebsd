@@ -100,7 +100,7 @@ COPYRIGHT="$COPYRIGHT
 # future value of modified.
 include_metadata=yes
 modified=no
-while getopts C:cI:rRvV: opt; do
+while getopts C:cD:I:rRvV: opt; do
 	case "$opt" in
 	c)
 		echo "$COPYRIGHT"
@@ -109,7 +109,9 @@ while getopts C:cI:rRvV: opt; do
 	C)
 		compiler_v=$OPTARG
 		;;
-
+	D)
+		d=$OPTARG
+		;;
 	I)
 		i=$OPTARG
 		;;
@@ -197,7 +199,7 @@ fi
 touch version
 v=$(cat version)
 u=${USER:-root}
-d=$(pwd)
+[ -z "$d" ] && d=$(pwd)
 h=${HOSTNAME:-$(hostname)}
 if [ -n "$SOURCE_DATE_EPOCH" ]; then
 	if ! t=$(date -r $SOURCE_DATE_EPOCH 2>/dev/null); then
@@ -348,6 +350,8 @@ EOF
 vers_content_old=$(cat vers.c 2>/dev/null || true)
 if [ "$vers_content_new" != "$vers_content_old" ]; then
 	echo "$vers_content_new" > vers.c
+else
+	touch vers.c
 fi
 
 echo $((v + 1)) > version

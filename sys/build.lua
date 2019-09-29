@@ -81,7 +81,8 @@ function GetMakeVars(conf)
 		CFLAGS = cflags,
 		CCACHE_BIN = '',
 		WERROR = '', -- XXX
-		OBJCOPY = 'objcopy',
+		LD = '/usr/bin/ld',
+		OBJCOPY = '/usr/bin/objcopy',
 		PROF = '', -- XXX
 		NORMAL_C= '${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}',
 		NORMAL_S= '${CC} -c ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}', -- XXX ${CC:N${CCACHE_BIN}}
@@ -103,6 +104,12 @@ function GetMakeVars(conf)
 		ZSTD_C= '${CC} -c -DZSTD_HEAPMODE=1 -I$S/contrib/zstd/lib/freebsd ${CFLAGS} -I$S/contrib/zstd/lib -I$S/contrib/zstd/lib/common ${WERROR} -Wno-inline -Wno-missing-prototypes ${PROF} -U__BMI__ ${.IMPSRC}',
 
 		HACK_EXTRA_FLAGS = "-shared",
+
+		LD_EMULATION='elf_x86_64_fbsd', -- XXX
+		LDSCRIPT_NAME='ldscript.$M',
+		LDSCRIPT='$S/conf/${LDSCRIPT_NAME}',
+		_LDFLAGS='', -- apparently unused
+		SYSTEM_LD = "${LD} -m ${LD_EMULATION} -Bdynamic -T ${LDSCRIPT} ${_LDFLAGS} --no-warn-mismatch --warn-common --export-dynamic	--dynamic-linker /red/herring -o ${.TARGET} -X",
 
 		-- XXX I don't see that these two are set anywhere?
 		FEEDER_EQ_PRESETS = "",
@@ -175,6 +182,7 @@ function ProcessBeforeDepend(conf, files, options, lists)
 		--print("Before Depend Path: " .. f.path)
 		local arglist
 		local compile_with = f['compile-with']
+		local has_obj = not f['no-obj']
 		if compile_with then
 			target = f.path
 
@@ -193,6 +201,7 @@ function ProcessBeforeDepend(conf, files, options, lists)
 				target = factory.replace_ext(factory.basename(f.path), 'm', 'h')
 
 				table.insert(tmpdirs, target .. ".tmp")
+				has_obj = false
 			else
 				print("Unrecognized file extension: " .. f.path)
 				os.exit(1)
@@ -223,7 +232,7 @@ function ProcessBeforeDepend(conf, files, options, lists)
 			factory.list_concat(lists.beforedeps, factory.listify(target))
 		end
 
-		if not f['no-obj'] then
+		if has_obj then
 			table.insert(lists.objs, target)
 		end
 
@@ -424,7 +433,8 @@ function DefineVers(conf, objs)
 	local arglist = {
 		'env', 'SYSDIR=' .. conf.sysdir, "sh", newvers,
 		    conf.reproFlag, '-I', conf.kernIdent, "-C",
-		    "clang version 8.0.1 (tags/RELEASE_801/final)"
+		    "clang version 8.0.1 (tags/RELEASE_801/final)",
+		    "-D", conf.sysdir
 	}
 
 	local inputs = factory.flat_list(
@@ -465,6 +475,56 @@ function DefineVers(conf, objs)
 	factory.define_command({'vers.c', 'version'}, inputs, arglist, buildopts)
 end
 
+function DefineKernelLink(conf, objs)
+
+	local fullkernel = factory.build_path(conf.kernelDir, 'kernel.full')
+	local vars = GetMakeVars(conf)
+	vars['.TARGET'] = fullkernel
+
+	local arglist = factory.shell_split(factory.evaluate_vars('${SYSTEM_LD}', vars))
+	factory.list_concat(arglist, objs)
+
+	local inputs = factory.flat_list(
+		conf.objectsDir,
+		'/bin',
+		'/usr/bin',
+		'/lib',
+		'/usr/lib',
+		factory.evaluate_vars("${LDSCRIPT}", vars),
+		os_files)
+
+	local buildopts = {
+		workdir = conf.objectsDir,
+		tmpdirs = conf.kernelDir,
+		statdirs = { '/' }
+	}
+
+	factory.define_command(fullkernel, inputs, arglist, buildopts)
+
+
+	local kernel_debug = 'kernel.debug'
+	inputs = factory.flat_list(
+		fullkernel,
+
+		'/bin',
+		'/usr/bin',
+		'/lib',
+		'/usr/lib',
+		os_files
+	)
+	arglist = {vars.OBJCOPY, '--only-keep-debug', fullkernel, kernel_debug}
+	buildopts = {
+		workdir = conf.kernelDir,
+	}
+	factory.define_command(kernel_debug, inputs, arglist, buildopts)
+
+	local kernel = 'kernel'
+	table.insert(inputs, kernel_debug)
+	arglist = {vars.OBJCOPY, '--strip-debug', '--add-gnu-debuglink='..kernel_debug, fullkernel, kernel}
+	factory.define_command(kernel, inputs, arglist, buildopts)
+
+end
+
 definitions = {
 	{
 		name = { "kern-src", 'kern-implicit-src', "kern-arch-src", "kern-options", "kern-arch-options", "kernconf" },
@@ -494,21 +554,29 @@ definitions = {
 				end
 			end
 			ident = kernConf.ident
-			makeoptions = factory.list_concat(makeoptions, kernConf.makeoptions)
+			factory.list_concat(makeoptions, kernConf.makeoptions)
 
 			lists = {
 				beforedeps = {},
 				objs = {},
 			}
+
+			-- XXX For some bizare reason, this is listed as no-obj
+			-- in files.amd64, so it as to be added to our list
+			-- of objects manually
+			table.insert(lists.objs, 'locore.o')
+
 			ProcessBeforeDepend(conf, kernFiles, options, lists)
-			ProcessBeforeDepend(conf, implicitFiles, options, lists)
 			ProcessBeforeDepend(conf, archFiles, options, lists)
+			ProcessBeforeDepend(conf, implicitFiles, options, lists)
 
 			ProcessFiles(conf, kernFiles, options, lists)
-			ProcessFiles(conf, implicitFiles, options, lists)
 			ProcessFiles(conf, archFiles, options, lists)
+			ProcessFiles(conf, implicitFiles, options, lists)
 
 			DefineVers(conf, lists.objs)
+
+			DefineKernelLink(conf, lists.objs)
 		end
 	}
 }
