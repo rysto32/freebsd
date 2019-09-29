@@ -2541,7 +2541,6 @@
 		},
 		{
 			path : "crypto/chacha20/chacha.c"
-			options : {any-of : ["crypto", "ipsec", "ipsec_support"]}
 		},
 		{
 			path : "crypto/chacha20/chacha-sw.c"
@@ -5581,10 +5580,6 @@
 		{
 			path : "dev/iicbus/ds3231.c"
 			options : "ds3231"
-		},
-		{
-			path : "dev/iicbus/rtc8583.c"
-			options : "rtc8583"
 		},
 		{
 			path : "dev/iicbus/syr827.c"
@@ -9474,11 +9469,7 @@
 		},
 		{
 			path : "dev/uart/uart_dev_sab82532.c"
-			options : { all-of : ["uart", "uart_sab82532"]}
-		},
-		{
-			path : "dev/uart/uart_dev_sab82532.c"
-			options : { all-of : ["uart", "scc"]}
+			options : {any-of : [{ all-of : ["uart", "uart_sab82532"]}, { all-of : ["uart", "scc"]}]}
 		},
 		{
 			path : "dev/uart/uart_dev_snps.c"
@@ -9486,11 +9477,7 @@
 		},
 		{
 			path : "dev/uart/uart_dev_z8530.c"
-			options : { all-of : ["uart", "uart_z8530"]}
-		},
-		{
-			path : "dev/uart/uart_dev_z8530.c"
-			options : { all-of : ["uart", "scc"]}
+			options : {any-of : [{ all-of : ["uart", "uart_z8530"]}, { all-of : ["uart", "scc"]}]}
 		},
 		{
 			path : "dev/uart/uart_if.m"
@@ -12054,9 +12041,6 @@
 		},
 		{
 			path : "libkern/arc4random.c"
-		},
-		{
-			path : "crypto/chacha20/chacha.c"
 		},
 		{
 			path : "libkern/asprintf.c"
