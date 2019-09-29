@@ -984,50 +984,6 @@
 			options : {any-of : ["ntb_hw_plx", "ntb_hw"]}
 		},
 		{
-			path : "dev/nvd/nvd.c"
-			options : { all-of : ["nvd", "nvme"]}
-		},
-		{
-			path : "dev/nvme/nvme.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_ctrlr.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_ctrlr_cmd.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_ns.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_ns_cmd.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_qpair.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_sim.c"
-			options : { all-of : ["nvme", "scbus"]}
-		},
-		{
-			path : "dev/nvme/nvme_sysctl.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_test.c"
-			options : "nvme"
-		},
-		{
-			path : "dev/nvme/nvme_util.c"
-			options : "nvme"
-		},
-		{
 			path : "dev/nvram/nvram.c"
 			options : { all-of : ["nvram", "isa"]}
 		},
