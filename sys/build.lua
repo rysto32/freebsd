@@ -214,15 +214,15 @@ function ProcessBeforeDepend(conf, files, options, lists)
 			"/lib",
 			"/usr/bin",
 			"/usr/lib",
-			"/usr/local",
-			conf.objectsDir,
-			factory.build_path(conf.sysdir, sys),
+			"/usr/local/lib",
+			"/usr/local/bin",
+			factory.build_path(conf.sysdir, 'sys'),
 			conf.machineLinks,
 			os_files
 		)
 
 		local buildopt = ProcessRedirect(arglist)
-		buildopt.workdir = conf.objectsDir
+		buildopt.workdir = conf.beforeDepsDir
 		buildopt.tmpdirs = tmpdirs
 		buildopt.statdirs = {'/'}
 
@@ -289,7 +289,7 @@ function ProcessFiles(conf, files, options, lists)
 				)
 
 				local arglist = {'awk', '-f', makeobjops, mfile, '-c'}
-				local buildopts = {workdir = conf.objectsDir, tmpdirs = input .. '.tmp'}
+				local buildopts = {workdir = conf.beforeDepsDir, tmpdirs = input .. '.tmp'}
 				factory.define_command(input, deplist, arglist, buildopts)
 			elseif ext == 'o' or ext == 'pico' then
 				target = f.path
@@ -328,17 +328,16 @@ function ProcessFiles(conf, files, options, lists)
 
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
 		local deplist = factory.flat_list(
-			lists.beforedeps,
 			dependency,
 			input,
 			"/bin",
 			"/lib",
 			"/usr/bin",
 			"/usr/lib",
-			"/usr/local",
-			"/usr/share",
+			"/usr/local/lib",
+			"/usr/local/bin",
 			"opt_global.h",
-			conf.objectsDir,
+			conf.beforeDepsDir,
 			conf.sysdir,
 			conf.machineLinks,
 			'/etc',
@@ -448,12 +447,12 @@ function DefineVers(conf, objs)
 		'/usr/lib',
 		'/usr/local/lib',
 
-		conf.srcdir,
+		factory.make_path(conf.srcdir, '.git'),
 		newvers,
 		os_files,
 
 		-- XXX
-		factory.realpath('/home/rstone/repos'),
+		factory.realpath('/home/rstone/repos/freebsd/.git'),
 		'/home/rstone/.gitconfig'
 	)
 
@@ -532,10 +531,12 @@ definitions = {
 
 			conf.objectsDir = factory.build_path(conf.objdir, "objects")
 			conf.kernelDir = factory.build_path(conf.objdir, "kernel")
+			conf.beforeDepsDir = factory.build_path(conf.objdir, "beforeDeps")
 
 			factory.define_mkdir(
 				conf.objectsDir,
-				conf.kernelDir
+				conf.kernelDir,
+				conf.beforeDepsDir
 			)
 
 			definedOptions = {}
