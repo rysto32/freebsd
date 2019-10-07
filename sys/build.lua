@@ -109,6 +109,7 @@ function GetMakeVars(conf)
 		LDSCRIPT_NAME='ldscript.$M',
 		LDSCRIPT='$S/conf/${LDSCRIPT_NAME}',
 		_LDFLAGS='', -- apparently unused
+		LDFLAGS='--build-id=sha1 -z max-page-size=2097152 -z notext -z ifunc-noplt',
 		SYSTEM_LD = "${LD} -m ${LD_EMULATION} -Bdynamic -T ${LDSCRIPT} ${_LDFLAGS} --no-warn-mismatch --warn-common --export-dynamic	--dynamic-linker /red/herring -o ${.TARGET} -X",
 
 		-- XXX I don't see that these two are set anywhere?
@@ -490,6 +491,7 @@ function DefineKernelLink(conf, objs)
 		'/lib',
 		'/usr/lib',
 		factory.evaluate_vars("${LDSCRIPT}", vars),
+		factory.build_path(conf.objectsDir, 'vers.o'),
 		os_files)
 
 	local buildopts = {
@@ -588,8 +590,8 @@ srcdir = factory.realpath("/home/rstone/repos/bsd-worktree/factory-build")
 sysdir = factory.build_path(srcdir, 'sys')
 
 -- XXX this is massively cut down from the logic in kern.pre.mk
-coptflags = {'-O2', '-g', '-pipe', '-fno-strict-aliasing'}
-includes = {'-nostdinc', '-I.', '-I' .. sysdir, '-I' .. sysdir .. '/contrib/ck/include' }
+coptflags = {'-O2', '-pipe', '-fno-strict-aliasing', '-g' }
+includes = {'-nostdinc', '-I.', '-I' .. sysdir, '-I' .. sysdir .. '/contrib/ck/include', '-I' .. sysdir .. '/contrib/libfdt' }
 defines = {'-D_KERNEL', '-DHAVE_KERNEL_OPTION_HEADERS', '-include', 'opt_global.h'}
 arch_cflags = {'-mno-aes', '-mno-avx', '-mcmodel=kernel', '-mno-red-zone',
 	'-mno-mmx', '-mno-sse', '-msoft-float', '-fno-asynchronous-unwind-tables'}
@@ -612,7 +614,7 @@ kernIdent = "GENERIC"
 machine = 'amd64'
 
 topConfig = {
-	CC = "/usr/bin/cc",
+	CC = "/usr/bin/cc -target x86_64-unknown-freebsd13.0 --sysroot=/tmp/make-obj/repos/users/rstone/bsd-worktree/factory-build/amd64.amd64/tmp -B/tmp/make-obj/repos/users/rstone/bsd-worktree/factory-build/amd64.amd64/tmp/usr/bin",
 	cflags = factory.flat_list(coptflags, includes, defines, arch_cflags, warnflags, miscflags),
 	machine = "amd64",
 	srcdir = srcdir,
