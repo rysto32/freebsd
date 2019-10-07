@@ -217,8 +217,9 @@ function ProcessBeforeDepend(conf, files, options, lists)
 			"/usr/lib",
 			"/usr/local/lib",
 			"/usr/local/bin",
-			factory.build_path(conf.sysdir, 'sys'),
+			conf.sysdir,
 			conf.machineLinks,
+			factory.build_path(conf.beforeDepsDir, 'opt_global.h'),
 			os_files
 		)
 
@@ -380,13 +381,13 @@ function ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
 	ProcessOptionFile(archOpt, definedOptions, headerSet)
 
 	local headers = {
-		factory.build_path(conf.objectsDir, 'opt_global.h'),
-		factory.build_path(conf.objectsDir, 'config.c'),
-		factory.build_path(conf.objectsDir, 'env.c'),
-		factory.build_path(conf.objectsDir, 'hints.c'),
+		factory.build_path(conf.beforeDepsDir, 'opt_global.h'),
+		factory.build_path(conf.beforeDepsDir, 'config.c'),
+		factory.build_path(conf.beforeDepsDir, 'env.c'),
+		factory.build_path(conf.beforeDepsDir, 'hints.c'),
 	}
 	for file,_ in pairs(headerSet) do
-		table.insert(headers, factory.build_path(conf.objectsDir, file))
+		table.insert(headers, factory.build_path(conf.beforeDepsDir, file))
 	end
 
 	local optfile = factory.build_path(conf.srcdir, conf.optfile)
@@ -403,12 +404,12 @@ function ProcessOptionDefs(conf, kernOpt, archOpt, definedOptions)
 		'/usr/local/lib',
 		os_files
 	)
-	local arglist = { 'mkoptions', '-o', conf.objectsDir, '-f', conffile, '-O', optfile, '-O', archoptfile}
+	local arglist = { 'mkoptions', '-o', conf.beforeDepsDir, '-f', conffile, '-O', optfile, '-O', archoptfile}
 	factory.define_command(headers, inputs, arglist, { statdirs = "/"})
 end
 
 function DefineMachineLink(conf, name, source)
-	local target = factory.build_path(conf.objectsDir, name)
+	local target = factory.build_path(conf.beforeDepsDir, name)
 	local arglist = {'ln', '-fs', source, target}
 
 	factory.define_command(target, {source, "/lib", "/bin"}, arglist, {})
@@ -448,7 +449,8 @@ function DefineVers(conf, objs)
 		'/usr/lib',
 		'/usr/local/lib',
 
-		factory.make_path(conf.srcdir, '.git'),
+		factory.build_path(conf.srcdir, '.git'),
+		conf.sysdir,
 		newvers,
 		os_files,
 
@@ -461,7 +463,7 @@ function DefineVers(conf, objs)
 	local otherObjs = {}
 	for _, o in ipairs(objs) do
 		if o ~= 'vers.o' then
-			table.insert(otherObjs, o)
+			table.insert(otherObjs, factory.build_path(conf.objectsDir, o))
 		end
 	end
 
@@ -533,7 +535,6 @@ definitions = {
 
 			conf.objectsDir = factory.build_path(conf.objdir, "objects")
 			conf.kernelDir = factory.build_path(conf.objdir, "kernel")
-			conf.beforeDepsDir = factory.build_path(conf.objdir, "beforeDeps")
 
 			factory.define_mkdir(
 				conf.objectsDir,
@@ -589,9 +590,13 @@ factory.add_definitions(definitions)
 srcdir = factory.realpath("/home/rstone/repos/bsd-worktree/factory-build")
 sysdir = factory.build_path(srcdir, 'sys')
 
+--objdir = "/usr/obj/srcpool/src/rstone/freebsd-factory/amd64.amd64/sys/GENERIC/"
+objdir = "/tmp/obj/sys"
+beforeDepsDir = factory.build_path(objdir, "beforeDeps")
+
 -- XXX this is massively cut down from the logic in kern.pre.mk
 coptflags = {'-O2', '-pipe', '-fno-strict-aliasing', '-g' }
-includes = {'-nostdinc', '-I.', '-I' .. sysdir, '-I' .. sysdir .. '/contrib/ck/include', '-I' .. sysdir .. '/contrib/libfdt' }
+includes = {'-nostdinc', '-I' .. sysdir, '-I' .. sysdir .. '/contrib/ck/include', '-I' .. sysdir .. '/contrib/libfdt', '-I',  beforeDepsDir}
 defines = {'-D_KERNEL', '-DHAVE_KERNEL_OPTION_HEADERS', '-include', 'opt_global.h'}
 arch_cflags = {'-mno-aes', '-mno-avx', '-mcmodel=kernel', '-mno-red-zone',
 	'-mno-mmx', '-mno-sse', '-msoft-float', '-fno-asynchronous-unwind-tables'}
@@ -605,9 +610,6 @@ warnflags = {'-Wall', '-Wredundant-decls', '-Wnested-externs', '-Wstrict-prototy
 miscflags = { '-ffreestanding', '-fwrapv', '-fstack-protector', '-gdwarf-2', '-std=iso9899:1999',
 		'-fno-omit-frame-pointer', '-mno-omit-leaf-frame-pointer'}
 
---objdir = "/usr/obj/srcpool/src/rstone/freebsd-factory/amd64.amd64/sys/GENERIC/"
-objdir = "/tmp/obj/sys"
-
 factory.define_command(objdir, {}, {'mkdir', '-p', objdir}, {})
 
 kernIdent = "GENERIC"
@@ -620,6 +622,7 @@ topConfig = {
 	srcdir = srcdir,
 	sysdir = sysdir,
 	objdir = objdir,
+	beforeDepsDir = beforeDepsDir,
 	optfile = 'sys/conf/options.ucl',
 	archoptfile = 'sys/conf/options.amd64.ucl',
 	kernIdent = kernIdent,
