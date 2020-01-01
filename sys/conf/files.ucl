@@ -67,7 +67,6 @@
 			compile-with : "${AWK} -f $S/tools/sound/snd_fxdiv_gen.awk -- > snd_fxdiv_gen.h"
 			no-implicit-rule : true
 			dependency : "$S/tools/sound/snd_fxdiv_gen.awk"
-			before-depend : true
 			clean : "snd_fxdiv_gen.h"
 		},
 		{

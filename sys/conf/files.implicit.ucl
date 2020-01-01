@@ -44,6 +44,7 @@
 			path : "vnode_if.c",
 			compile-with : "${AWK} -f ${SYSDIR}/tools/vnode_if.awk ${SYSDIR}/kern/vnode_if.src -c",
 			no-implicit-rule : true,
+			before-depend : true,
 			dependency : "${SYSDIR}/tools/vnode_if.awk ${SYSDIR}/kern/vnode_if.src",
 			no-obj : true,
 		},

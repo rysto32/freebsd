@@ -122,7 +122,7 @@ function GetMakeVars(conf)
 end
 
 function HasBeforeDependDefinition(fileDef)
-	if fileDef['no-implicit-rule'] then
+	if fileDef['before-depend'] then
 		return true
 	end
 
@@ -132,7 +132,7 @@ function HasBeforeDependDefinition(fileDef)
 end
 
 function HasNormalDefinition(fileDef)
-	return not fileDef['no-implicit-rule']
+	return not fileDef['before-depend']
 end
 
 function ProcessRedirect(arglist)
@@ -276,7 +276,7 @@ function ProcessFiles(conf, files, options, lists)
 			elseif ext == 'm' then
 				local base = factory.basename(f.path)
 				target = factory.replace_ext(base, 'm', 'o')
-				input = factory.replace_ext(base, 'm', 'c')
+				input = factory.build_path(conf.beforeDepsDir, factory.replace_ext(base, 'm', 'c'))
 				local mfile = factory.build_path(conf.sysdir, f.path)
 				ext = 'c'
 
@@ -295,7 +295,7 @@ function ProcessFiles(conf, files, options, lists)
 				factory.define_command(input, deplist, arglist, buildopts)
 			elseif ext == 'o' or ext == 'pico' then
 				target = f.path
-				input = factory.replace_ext(f.path, 'o', 'c')
+				input = dependency[1] or factory.build_path(conf.beforeDepsDir, factory.replace_ext(f.path, 'o', 'c'))
 
 				if ext == 'pico' then
 					tmpdir = conf.objectsDir
@@ -338,7 +338,7 @@ function ProcessFiles(conf, files, options, lists)
 			"/usr/lib",
 			"/usr/local/lib",
 			"/usr/local/bin",
-			"opt_global.h",
+			factory.build_path(conf.beforeDepsDir, 'opt_global.h'),
 			conf.beforeDepsDir,
 			conf.sysdir,
 			conf.machineLinks,
@@ -468,7 +468,7 @@ function DefineVers(conf, objs)
 	end
 
 	local buildopts = {
-		workdir = conf.objectsDir,
+		workdir = conf.beforeDepsDir,
 		tmpdirs = {'/tmp', '/dev/null'},
 		order_deps = otherObjs,
 		statdirs = { conf.objectsDir }
