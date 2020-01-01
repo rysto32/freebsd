@@ -518,6 +518,7 @@ function DefineKernelLink(conf, objs)
 	arglist = {vars.OBJCOPY, '--only-keep-debug', fullkernel, kernel_debug}
 	buildopts = {
 		workdir = conf.kernelDir,
+		targets = 'buildkernel'
 	}
 	factory.define_command(kernel_debug, inputs, arglist, buildopts)
 
