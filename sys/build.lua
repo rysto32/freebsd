@@ -121,8 +121,15 @@ function GetMakeVars(conf)
 	}
 end
 
+function IsLocore(path)
+	local base = factory.basename(path)
+	
+	return base == 'locore.S' or base == 'locore.s'
+end
+
 function HasBeforeDependDefinition(fileDef)
-	if fileDef['before-depend'] then
+	-- locore.o is special because it must be first in the link line
+	if fileDef['no-obj'] and not IsLocore(fileDef.path) then
 		return true
 	end
 
@@ -132,7 +139,7 @@ function HasBeforeDependDefinition(fileDef)
 end
 
 function HasNormalDefinition(fileDef)
-	return not fileDef['before-depend']
+	return not fileDef['no-obj'] or IsLocore(fileDef.path)
 end
 
 function ProcessRedirect(arglist)
@@ -204,7 +211,7 @@ function ProcessBeforeDepend(conf, files, options, lists)
 				table.insert(tmpdirs, target .. ".tmp")
 				has_obj = false
 			else
-				print("Unrecognized file extension: " .. f.path)
+				print("Unrecognized file extension in " .. f.path)
 				os.exit(1)
 			end
 		end
@@ -295,7 +302,13 @@ function ProcessFiles(conf, files, options, lists)
 				factory.define_command(input, deplist, arglist, buildopts)
 			elseif ext == 'o' or ext == 'pico' then
 				target = f.path
-				input = dependency[1] or factory.build_path(conf.beforeDepsDir, factory.replace_ext(f.path, 'o', 'c'))
+				local srcFileDir
+				if f['object-src'] then
+					srcFileDir = conf.objectsDir
+				else
+					srcFileDir = conf.beforeDepsDir
+				end
+				input = dependency[1] or factory.build_path(srcFileDir, factory.replace_ext(f.path, 'o', 'c'))
 
 				if ext == 'pico' then
 					tmpdir = conf.objectsDir
@@ -331,7 +344,6 @@ function ProcessFiles(conf, files, options, lists)
 		local arglist = factory.shell_split(factory.evaluate_vars(argshell, vars))
 		local deplist = factory.flat_list(
 			dependency,
-			input,
 			"/bin",
 			"/lib",
 			"/usr/bin",
@@ -343,7 +355,8 @@ function ProcessFiles(conf, files, options, lists)
 			conf.sysdir,
 			conf.machineLinks,
 			'/etc',
-			os_files
+			os_files,
+			input -- may be nil so must be last
 		)
 
 		local buildopt = ProcessRedirect(arglist)
@@ -468,7 +481,7 @@ function DefineVers(conf, objs)
 	end
 
 	local buildopts = {
-		workdir = conf.beforeDepsDir,
+		workdir = conf.objectsDir,
 		tmpdirs = {'/tmp', '/dev/null'},
 		order_deps = otherObjs,
 		statdirs = { conf.objectsDir }
@@ -538,6 +551,7 @@ definitions = {
 			conf.kernelDir = factory.build_path(conf.objdir, "kernel")
 
 			factory.define_mkdir(
+				conf.objdir,
 				conf.objectsDir,
 				conf.kernelDir,
 				conf.beforeDepsDir

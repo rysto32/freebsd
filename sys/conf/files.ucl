@@ -9098,7 +9098,6 @@
 		{
 			path : "dev/sound/pcm/buffer.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/channel.c"
@@ -9123,7 +9122,6 @@
 		{
 			path : "dev/sound/pcm/feeder_eq.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/feeder_if.m"
@@ -9132,27 +9130,22 @@
 		{
 			path : "dev/sound/pcm/feeder_format.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/feeder_matrix.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/feeder_mixer.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/feeder_rate.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/feeder_volume.c"
 			options : "sound"
-			dependency : "snd_fxdiv_gen.h"
 		},
 		{
 			path : "dev/sound/pcm/mixer.c"
