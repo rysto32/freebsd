@@ -39,6 +39,8 @@
 #include <sys/xdp.h>
 #include <sys/ebpf_probe.h>
 #include <gbpf_driver.h>
+#include <errno.h>
+#include <string.h>
 
 struct my_data {
 	int mymap;
@@ -100,7 +102,8 @@ main(int argc, char **argv)
 	error = gbpf_walk_elf(&walker, driver, argv[1]);
 	assert(error == 0);
 
-	gbpf_attach_probe(driver, data.myprog, "ebpf", "xdp", "", "xdp_rx", "vtnet0", 0);
+	error = gbpf_attach_probe(driver, data.myprog, "ebpf", "xdp", "", "vtnet0", "rx", 0);
+	fprintf(stderr, "err=%d errno=%s\n", error, strerror(errno));
 
 	ebpf_dev_driver_destroy(devDriver);
 
