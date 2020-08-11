@@ -29,13 +29,14 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <gbpf.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/ebpf.h>
 #include <sys/ebpf_param.h>
-
+#include <errno.h>
 #include <sys/xdp.h>
 #include <sys/ebpf_probe.h>
 #include <gbpf_driver.h>
@@ -97,10 +98,12 @@ main(int argc, char **argv)
 		.data = &data
 	};
 
-	error = gbpf_walk_elf(&walker, driver, argv[1]);
+	error = gbpf_walk_elf(&walker, driver, argv[1]);	
 	assert(error == 0);
 
-	gbpf_attach_probe(driver, data.myprog, "ebpf", "xdp", "", "xdp_rx", "vtnet0", 0);
+	error = gbpf_attach_probe(driver, data.myprog, "ebpf", "xdp", "", "em0", "rx", 0);
+
+	fprintf(stderr, "err=%d errno=%s\n", error, strerror(errno));
 
 	ebpf_dev_driver_destroy(devDriver);
 

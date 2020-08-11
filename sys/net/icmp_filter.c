@@ -46,9 +46,6 @@
 static int parse_ipv4(void *data, uint64_t nh_off, void *data_end)
 {
 	struct ip *iph = data + nh_off;
-
-	if(iph + 1 > data_end)
-		return 0;
 	return iph->ip_p;
 }
 
@@ -58,7 +55,6 @@ int icmp_filter(void *data, uint64_t len)
 	struct ether_header *eth = data;
 	uint64_t nh_off;
 	uint32_t ip = 0;
-	short ether_type;
 
 	nh_off = sizeof(*eth);
 	
