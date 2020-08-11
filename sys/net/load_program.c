@@ -40,6 +40,8 @@
 #include <sys/xdp.h>
 #include <sys/ebpf_probe.h>
 #include <gbpf_driver.h>
+#include <errno.h>
+#include <string.h>
 
 struct my_data {
 	int mymap;
