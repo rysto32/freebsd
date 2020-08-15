@@ -37,7 +37,7 @@
 #include <sys/malloc.h>
 #include <sys/sx.h>
 #include <sys/syscall.h>
-
+#include <sys/xdp.h>
 #include <machine/atomic.h>
 
 struct ebpf_proc_probe {
@@ -340,9 +340,7 @@ done:
 }
 
 int
-ebpf_syscall_probe_fire(struct ebpf_probe *probe, uintptr_t arg0,
-    uintptr_t arg1, uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
-    uintptr_t arg5)
+ebpf_syscall_probe_fire(struct ebpf_probe *probe, uintptr_t arg0, struct xdp_buff *xdp)
 {
 	struct proc *proc;
 	struct ebpf_proc_probe lookup, *pp;
@@ -355,8 +353,7 @@ ebpf_syscall_probe_fire(struct ebpf_probe *probe, uintptr_t arg0,
 	lookup.probe_id = probe->id;
 	pp = RB_FIND(ebpf_proc_probe_tree, &proc->p_ebpf_probes, &lookup);
 	if (pp != NULL) {
-		ret = ebpf_probe_fire(probe, pp->module_state, arg0,
-		    arg1, arg2, arg3, arg4, arg5);
+		ret = ebpf_probe_fire(probe, pp->module_state, xdp);
 	}
 
 	sx_sunlock(&proc->p_ebpf_lock);
@@ -365,10 +362,9 @@ ebpf_syscall_probe_fire(struct ebpf_probe *probe, uintptr_t arg0,
 }
 
 int
-ebpf_probe_fire(struct ebpf_probe *probe, void *module_state, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3, uintptr_t arg4, uintptr_t arg5)
+ebpf_probe_fire(struct ebpf_probe *probe, void *module_state, struct xdp_buff *xdp)
 {
-	return (ebpf_module_callbacks->fire(probe, module_state, arg0,
-		    arg1, arg2, arg3, arg4, arg5));
+	return (ebpf_module_callbacks->fire(probe, module_state, (uintptr_t) xdp, 0, 0, 0, 0, 0));
 }
 
 static int

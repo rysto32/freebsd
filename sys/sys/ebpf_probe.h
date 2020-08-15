@@ -65,6 +65,12 @@ struct ebpf_probe
 	void *ebpf_head;
 };
 
+struct xdp_buff
+{
+	void *data;
+	void *data_end;
+};
+
 typedef int ebpf_fire_t(struct ebpf_probe *, void *, uintptr_t , uintptr_t,
     uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
@@ -95,10 +101,9 @@ void ebpf_module_deregister(void);
 void ebpf_clone_proc_probes(struct proc *parent, struct proc *newproc);
 void ebpf_free_proc_probes(struct proc *p);
 
-int ebpf_syscall_probe_fire(struct ebpf_probe *, uintptr_t arg0, uintptr_t arg1,    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4, uintptr_t arg5);
+int ebpf_syscall_probe_fire(struct ebpf_probe *, uintptr_t arg0, struct xdp_buff *);
 
-int ebpf_probe_fire(struct ebpf_probe *, void *, uintptr_t arg0, uintptr_t arg1,
-    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4, uintptr_t arg5);
+int ebpf_probe_fire(struct ebpf_probe *, void *, struct xdp_buff *);
 
 #define _EBPF_PROBE(name) __CONCAT(name, _probe_def)
 
@@ -153,8 +158,7 @@ extern struct ebpf_probe ebpf_syscall_probe[];
 #define EBPF_SYSCALL_FIRE(n, arg, len) \
 	( ((n) < SYS_MAXSYSCALL && ebpf_syscall_probe[n].active) ? \
 	    ebpf_syscall_probe_fire(&ebpf_syscall_probe[n], \
-	    (uintptr_t)(arg), sizeof(register_t) * (len), \
-		0, 0, 0, 0) \
+	    (uintptr_t)(arg), sizeof(register_t) * (len)) \
 	  : EBPF_ACTION_CONTINUE )
 
 #endif
