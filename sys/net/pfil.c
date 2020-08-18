@@ -77,6 +77,11 @@ struct ebpf_hook_state {
 	void *module_state;
 };
 
+struct xdp_buff {
+	void *data;
+	void *data_end;
+};
+
 pfil_return_t
 xdp_rx(pfil_packet_t, struct ifnet *, int, void *, struct inpcb *);
 
@@ -745,20 +750,19 @@ xdp_rx(pfil_packet_t pkt, struct ifnet *ifp, int flags, void *ruleset, struct in
 {
 	struct mbuf *mb;
 
-	struct xdp_buff buff;
-	struct xdp_buff *xdp;
+	struct xdp_buff buff, *buf;
 
 	struct ebpf_hook_state *hook_state;
 	hook_state = ruleset;
 
 	mb = *pkt.m;
-	xdp = &buff;
+	buf = &buff;
 
-	xdp->data = mb->m_data;
-	xdp->data_end = mb->m_len + mb->m_data;
+	buf->data = mb->m_data;
+	buf->data_end = mb->m_len + mb->m_data;
 
 	int act;
-	act = ebpf_probe_fire(hook_state->probe, hook_state->module_state, xdp);
+	act = ebpf_probe_fire(hook_state->probe, hook_state->module_state, (uintptr_t) &buf, 0, 0, 0, 0, 0);
 	switch (act) {
 		case XDP_PASS:
 			return PFIL_PASS;
