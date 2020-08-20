@@ -37,9 +37,10 @@ enum xdp_action {
 	XDP_REDIRECT,
 };
 
-/*struct xdp_buff {
+struct xdp_buff {
 	void *data;
 	void *data_end;
 };
-*/
+
+
 #endif

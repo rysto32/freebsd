@@ -49,9 +49,11 @@ static int parse_ipv4(void *data, uint64_t nh_off, void *data_end)
 	return iph->ip_p;
 }
 
-int icmp_filter(void *data, uint64_t len)
+int icmp_filter(struct xdp_buff *buf)
 {
-	void *data_end = data + len;
+
+	void *data_end = buf->data_end;
+	void *data = buf->data;
 	struct ether_header *eth = data;
 	uint64_t nh_off;
 	uint32_t ip = 0;
