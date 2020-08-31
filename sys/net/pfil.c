@@ -53,6 +53,9 @@
 #include <net/if_var.h>
 #include <net/pfil.h>
 
+#include <sys/ebpf_probe.h>
+#include <sys/xdp.h>
+
 static MALLOC_DEFINE(M_PFIL, "pfil", "pfil(9) packet filter hooks");
 
 static int pfil_ioctl(struct cdev *, u_long, caddr_t, int, struct thread *);
@@ -68,6 +71,13 @@ MTX_SYSINIT(pfil_mtxinit, &pfil_lock, "pfil(9) lock", MTX_DEF);
 #define	PFIL_LOCK()	mtx_lock(&pfil_lock)
 #define	PFIL_UNLOCK()	mtx_unlock(&pfil_lock)
 #define	PFIL_LOCK_ASSERT()	mtx_assert(&pfil_lock, MA_OWNED)
+
+struct ebpf_hook_state {
+	struct ebpf_probe *probe;
+	void *module_state;
+};
+
+pfil_return_t xdp_rx(pfil_packet_t, struct ifnet *, int, void *, struct inpcb *);
 
 struct pfil_hook {
 	pfil_func_t	 hook_func;
@@ -99,6 +109,8 @@ struct pfil_head {
 	enum pfil_types	 head_type;
 	LIST_ENTRY(pfil_head) head_list;
 	const char	*head_name;
+	struct ebpf_probe pfil_probe;
+	struct vnet *vnet;
 };
 
 LIST_HEAD(pfilheadhead, pfil_head);
@@ -113,6 +125,8 @@ VNET_DEFINE_STATIC(struct pfilhookhead, pfil_hook_list) =
 
 static struct pfil_link *pfil_link_remove(pfil_chain_t *, pfil_hook_t );
 static void pfil_link_free(epoch_context_t);
+
+static void xdp_activate(struct ebpf_probe *probe, void *state);
 
 int
 pfil_realloc(pfil_packet_t *p, int flags, struct ifnet *ifp)
@@ -215,6 +229,7 @@ pfil_head_register(struct pfil_head_args *pa)
 	head->head_flags = pa->pa_flags;
 	head->head_type = pa->pa_type;
 	head->head_name = pa->pa_headname;
+	head->vnet = curvnet;
 	CK_STAILQ_INIT(&head->head_in);
 	CK_STAILQ_INIT(&head->head_out);
 
@@ -226,6 +241,16 @@ pfil_head_register(struct pfil_head_args *pa)
 		}
 	LIST_INSERT_HEAD(&V_pfil_head_list, head, head_list);
 	PFIL_UNLOCK();
+
+	memset(&head->pfil_probe.name, 0, sizeof(head->pfil_probe.name));
+	strlcpy(head->pfil_probe.name.tracer,"ebpf",sizeof(head->pfil_probe.name.tracer));
+	strlcpy(head->pfil_probe.name.provider,"xdp",sizeof(head->pfil_probe.name.provider));
+	strlcpy(head->pfil_probe.name.function,pa->pa_headname,sizeof(head->pfil_probe.name.function));
+	strlcpy(head->pfil_probe.name.name,"rx",sizeof(head->pfil_probe.name.name));
+	strlcpy(head->pfil_probe.name.module,"",sizeof(head->pfil_probe.name.module));
+
+	head->pfil_probe.activate = xdp_activate;
+	ebpf_probe_register(&head->pfil_probe);
 
 	return (head);
 }
@@ -672,4 +697,65 @@ pfilioc_link(struct pfilioc_link *req)
 	args.pa_rulname = req->pio_ruleset;
 
 	return (pfil_link(&args));
+}
+
+static void
+xdp_activate(struct ebpf_probe *probe, void *state)
+{
+	struct ebpf_hook_state *hook_state;
+	hook_state = malloc(sizeof(*hook_state), M_PFIL, M_WAITOK | M_ZERO);
+
+
+	struct pfil_hook_args hook_args;
+	struct pfil_link_args link_args;
+	struct pfil_head *pf_head;
+
+	pf_head = __containerof(probe, struct pfil_head, pfil_probe);
+
+	hook_state->probe = probe;
+	hook_state->module_state = state;
+
+	hook_args.pa_version = PFIL_VERSION;
+	hook_args.pa_flags = PFIL_IN;
+	hook_args.pa_type = PFIL_TYPE_ETHERNET;
+	hook_args.pa_ruleset = hook_state;
+	hook_args.pa_rulname = "rx";
+	hook_args.pa_modname = "xdp";
+	hook_args.pa_func = xdp_rx;
+
+	link_args.pa_version = PFIL_VERSION;
+	link_args.pa_flags = PFIL_IN | PFIL_HEADPTR | PFIL_HOOKPTR;
+
+	CURVNET_SET(pf_head->vnet);
+	link_args.pa_hook = pfil_add_hook(&hook_args);
+	link_args.pa_head = pf_head;
+
+	pfil_link(&link_args);
+	CURVNET_RESTORE();
+}
+
+pfil_return_t
+xdp_rx(pfil_packet_t pkt, struct ifnet *ifp, int flags, void *ruleset, struct inpcb *inp)
+{
+	struct mbuf *mb;
+
+	struct xdp_buf buff, *buf;
+	struct ebpf_hook_state *hook_state;
+	hook_state = ruleset;
+
+	mb = *pkt.m;
+	buf = &buff;
+
+	buf->data = mb->m_data;
+	buf->data_end = mb->m_len + mb->m_data;
+
+	int act;
+	act = ebpf_probe_fire(hook_state->probe, hook_state->module_state, (uintptr_t) buf, 0, 0, 0, 0, 0);
+	switch (act) {
+		case XDP_PASS:
+			return PFIL_PASS;
+		case XDP_DROP:
+			return PFIL_DROPPED;
+	}
+	return 0;
 }

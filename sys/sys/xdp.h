@@ -1,8 +1,7 @@
-
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2020 Ryan Stone
+ * Copyright (c) 2020 Ankur Kothiwal
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,47 +26,20 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _SYS_EBPF_PARAM_H
-#define _SYS_EBPF_PARAM_H
+#ifndef _SYS_XDP_H_
+#define _SYS_XDP_H_
 
-enum ebpf_fbsd_prog_types {
-	EBPF_PROG_TYPE_VFS,
-	EBPF_PROG_TYPE_XDP,
-	EBPF_PROG_TYPE_MAX
+enum xdp_action {
+	XDP_ABORTED = 0,
+	XDP_DROP,
+	XDP_PASS,
+	XDP_TX,
+	XDP_REDIRECT,
 };
 
-enum ebpf_basic_map_types {
-	EBPF_MAP_TYPE_BAD = 0,
-	EBPF_MAP_TYPE_ARRAY,
-	EBPF_MAP_TYPE_PERCPU_ARRAY,
-	EBPF_MAP_TYPE_HASHTABLE,
-	EBPF_MAP_TYPE_PERCPU_HASHTABLE,
-	EBPF_MAP_TYPE_PROGARRAY,
-	EBPF_MAP_TYPE_ARRAYQUEUE,
-	EBPF_MAP_TYPE_MAX
-};
-
-struct ebpf_symlink_res_bufs
-{
-	char *pathBuf;
-	char *scratch1;
-	char *scratch2;
-};
-
-struct ebpf_defer_kevent_args
-{
-	struct wait4_args *wait4_args;
-	int error;
-	struct kevent ev;
-};
-
-struct ebpf_defer_wait4_args
-{
-	struct wait4_args *wait4_args;
-	int error;
-	int status;
-	struct rusage ru;
-	int fd;
+struct xdp_buf {
+	void *data;
+	void *data_end;
 };
 
 #endif
