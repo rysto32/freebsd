@@ -44,12 +44,11 @@
 
 #include <sys/refcount.h>
 
-struct ebpf_probe_state
+struct ebpf_activation
 {
 	struct ebpf_probe *probe;
 	struct ebpf_prog *prog;
 	int jit;
-	uint32_t refcount;
 };
 
 static const struct ebpf_probe_ops *probe_ops[] = {
@@ -61,13 +60,12 @@ int
 ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit)
 {
 	struct ebpf_probe *probe;
-	struct ebpf_probe_state *state;
+	struct ebpf_activation *state;
 
 	state = ebpf_calloc(sizeof(*state), 1);
 	if (state == NULL)
 		return (ENOMEM);
 
-	ebpf_refcount_init(&state->refcount, 1);
 	state->jit = jit;
 	state->prog = prog;
 
@@ -86,25 +84,28 @@ ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit)
 static void *
 ebpf_probe_clone(struct ebpf_probe *probe, void *a)
 {
-	struct ebpf_probe_state *state;
+	struct ebpf_activation *state, *clone;
 
 	state = a;
-	ebpf_refcount_acquire(&state->refcount);
+	clone = ebpf_calloc(sizeof(*clone), 1);
 
-	return (state);
+	clone->probe = state->probe;
+	clone->prog = state->prog;
+	clone->jit = state->jit;
+	ebpf_obj_acquire(&clone->prog->eo);
+
+	return (clone);
 }
 
 static void
 ebpf_probe_release(struct ebpf_probe *probe, void *a)
 {
-	struct ebpf_probe_state *state;
+	struct ebpf_activation *state;
 
 	state = a;
 
-	if (refcount_release(&state->refcount)) {
-		ebpf_obj_release(&state->prog->eo);
-		ebpf_free(state);
-	}
+	ebpf_obj_release(&state->prog->eo);
+	ebpf_free(state);
 }
 
 static int
@@ -142,7 +143,7 @@ ebpf_fire(struct ebpf_probe *probe, void *a, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4, uintptr_t arg5)
 {
 	struct thread *td;
-	struct ebpf_probe_state *state;
+	struct ebpf_activation *state;
 	struct ebpf_prog *prog;
 	ebpf_file *prog_fp;
 	struct ebpf_vm_state vm_state;
