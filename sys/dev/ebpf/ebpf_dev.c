@@ -266,6 +266,7 @@ ebpf_ioc_load_prog(struct ebpf_env *ee, union ebpf_req *req, ebpf_thread *td)
 	if (req == NULL || req->prog_fdp == NULL ||
 			req->prog_type >= EBPF_PROG_TYPE_MAX ||
 	    req->prog == NULL || req->prog_len == 0 ||
+	    req->prog_len > EBPF_PROG_MAX_LEN ||
 	    td == NULL)
 		return EINVAL;
 

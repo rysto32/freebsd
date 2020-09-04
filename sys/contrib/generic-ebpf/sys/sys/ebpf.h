@@ -22,6 +22,8 @@
 #define EBPF_TYPE_MAX 64
 #define EBPF_PROG_MAX_ATTACHED_MAPS 64
 
+#define EBPF_PROG_MAX_LEN (sizeof(struct ebpf_inst) * 1024)
+
 #define EBPF_PSEUDO_MAP_DESC 1
 
 #define EBPF_STACK_SIZE 512
