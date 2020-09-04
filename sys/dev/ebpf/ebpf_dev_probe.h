@@ -35,8 +35,7 @@ struct ebpf_vm_state;
 void ebpf_probe_init(void);
 void ebpf_probe_fini(void);
 
-int ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, ebpf_file *fp,
-    int jit);
+int ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit);
 
 struct ebpf_probe_ops
 {

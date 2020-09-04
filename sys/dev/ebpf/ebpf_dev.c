@@ -621,14 +621,8 @@ ebpf_attach(union ebpf_req *req, ebpf_thread *td)
 		return (EINVAL);
 	}
 
-	error = ebpf_probe_attach(attach->probe_id, prog, f, attach->jit);
-	if (error != 0) {
-		goto err0;
-	}
+	error = ebpf_probe_attach(attach->probe_id, prog, attach->jit);
 
-	return (0);
-
-err0:
 	ebpf_fdrop(f, td);
 	return (error);
 }

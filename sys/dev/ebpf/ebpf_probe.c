@@ -48,7 +48,6 @@ struct ebpf_probe_state
 {
 	struct ebpf_probe *probe;
 	struct ebpf_prog *prog;
-	ebpf_file *fp;
 	int jit;
 	uint32_t refcount;
 };
@@ -59,8 +58,7 @@ static const struct ebpf_probe_ops *probe_ops[] = {
 };
 
 int
-ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, ebpf_file *fp,
-    int jit)
+ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit)
 {
 	struct ebpf_probe *probe;
 	struct ebpf_probe_state *state;
@@ -72,7 +70,6 @@ ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, ebpf_file *fp,
 	ebpf_refcount_init(&state->refcount, 1);
 	state->jit = jit;
 	state->prog = prog;
-	state->fp = fp;
 
 	probe = ebpf_activate_probe(id, state);
 	if (probe == NULL) {
@@ -80,6 +77,7 @@ ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, ebpf_file *fp,
 		return (ENOENT);
 	}
 
+	ebpf_obj_acquire(&prog->eo);
 	state->probe = probe;
 
 	return (0);
@@ -104,7 +102,7 @@ ebpf_probe_release(struct ebpf_probe *probe, void *a)
 	state = a;
 
 	if (refcount_release(&state->refcount)) {
-		ebpf_fdrop(state->fp, curthread);
+		ebpf_obj_release(&state->prog->eo);
 		ebpf_free(state);
 	}
 }
