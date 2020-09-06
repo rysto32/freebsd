@@ -72,13 +72,6 @@ MTX_SYSINIT(pfil_mtxinit, &pfil_lock, "pfil(9) lock", MTX_DEF);
 #define	PFIL_UNLOCK()	mtx_unlock(&pfil_lock)
 #define	PFIL_LOCK_ASSERT()	mtx_assert(&pfil_lock, MA_OWNED)
 
-struct ebpf_hook_state {
-	struct ebpf_probe *probe;
-	void *module_state;
-};
-
-pfil_return_t xdp_rx(pfil_packet_t, struct ifnet *, int, void *, struct inpcb *);
-
 struct pfil_hook {
 	pfil_func_t	 hook_func;
 	void		*hook_ruleset;
@@ -113,6 +106,12 @@ struct pfil_head {
 	struct vnet *vnet;
 };
 
+struct ebpf_hook_state {
+	struct ebpf_probe *probe;
+	void *module_state;
+	struct pfil_hook *hook;
+};
+
 LIST_HEAD(pfilheadhead, pfil_head);
 VNET_DEFINE_STATIC(struct pfilheadhead, pfil_head_list) =
     LIST_HEAD_INITIALIZER(pfil_head_list);
@@ -126,7 +125,10 @@ VNET_DEFINE_STATIC(struct pfilhookhead, pfil_hook_list) =
 static struct pfil_link *pfil_link_remove(pfil_chain_t *, pfil_hook_t );
 static void pfil_link_free(epoch_context_t);
 
-static void xdp_activate(struct ebpf_probe *probe, void *state);
+static void xdp_activate(struct ebpf_probe *probe, ebpf_activate_probe_cb_t *cb,
+    void *state);
+static void xdp_deactivate(struct ebpf_probe *, void *);
+pfil_return_t xdp_rx(pfil_packet_t, struct ifnet *, int, void *, struct inpcb *);
 
 int
 pfil_realloc(pfil_packet_t *p, int flags, struct ifnet *ifp)
@@ -700,7 +702,8 @@ pfilioc_link(struct pfilioc_link *req)
 }
 
 static void
-xdp_activate(struct ebpf_probe *probe, void *state)
+xdp_activate(struct ebpf_probe *probe, ebpf_activate_probe_cb_t *cb,
+    void *state)
 {
 	struct ebpf_hook_state *hook_state;
 	hook_state = malloc(sizeof(*hook_state), M_PFIL, M_WAITOK | M_ZERO);
@@ -727,10 +730,29 @@ xdp_activate(struct ebpf_probe *probe, void *state)
 	link_args.pa_flags = PFIL_IN | PFIL_HEADPTR | PFIL_HOOKPTR;
 
 	CURVNET_SET(pf_head->vnet);
-	link_args.pa_hook = pfil_add_hook(&hook_args);
+	hook_state->hook = pfil_add_hook(&hook_args);
+
+	link_args.pa_hook = hook_state->hook;
 	link_args.pa_head = pf_head;
 
 	pfil_link(&link_args);
+	CURVNET_RESTORE();
+
+	cb(probe, state, xdp_deactivate, hook_state);
+}
+
+static void
+xdp_deactivate(struct ebpf_probe *probe, void *arg)
+{
+	struct ebpf_hook_state *hook_state;
+	struct pfil_head *pf_head;
+
+	pf_head = __containerof(probe, struct pfil_head, pfil_probe);
+	hook_state = arg;
+
+	CURVNET_SET(pf_head->vnet);
+	pfil_remove_hook(hook_state->hook);
+	free(hook_state, M_PFIL);
 	CURVNET_RESTORE();
 }
 

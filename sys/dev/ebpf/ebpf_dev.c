@@ -261,6 +261,7 @@ ebpf_ioc_load_prog(struct ebpf_env *ee, union ebpf_req *req, ebpf_thread *td)
 	int error, fd;
 	ebpf_file *f;
 	struct ebpf_prog *ep;
+	struct ebpf_dev_prog *prog;
 	struct ebpf_inst *insts;
 
 	if (req == NULL || req->prog_fdp == NULL ||
@@ -281,12 +282,16 @@ ebpf_ioc_load_prog(struct ebpf_env *ee, union ebpf_req *req, ebpf_thread *td)
 	struct ebpf_prog_attr attr = {
 		.type = req->prog_type,
 		.prog = insts,
-		.prog_len = req->prog_len
+		.prog_len = req->prog_len,
+		.obj_len = sizeof(struct ebpf_dev_prog)
 	};
 
 	error = ebpf_prog_create(ee, &ep, &attr);
 	if (error != 0)
 		goto err0;
+
+	prog = (struct ebpf_dev_prog*)ep;
+	TAILQ_INIT(&prog->activations);
 
 	ebpf_free(insts);
 
@@ -611,7 +616,7 @@ ebpf_attach(union ebpf_req *req, ebpf_thread *td)
 {
 	struct ebpf_req_attach *attach;
 	ebpf_file *f;
-	struct ebpf_prog *prog;
+	struct ebpf_dev_prog *prog;
 	int error;
 
 	attach = &req->attach;

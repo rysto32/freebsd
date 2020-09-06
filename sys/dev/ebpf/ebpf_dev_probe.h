@@ -29,13 +29,14 @@
 #ifndef _EBPF_DEV_PROBE_H
 #define _EBPF_DEV_PROBE_H
 
-struct ebpf_prog;
+#include <dev/ebpf/ebpf_prog.h>
+#include <sys/queue.h>
+
+struct ebpf_activation;
 struct ebpf_vm_state;
 
 void ebpf_probe_init(void);
 void ebpf_probe_fini(void);
-
-int ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit);
 
 struct ebpf_probe_ops
 {
@@ -44,6 +45,14 @@ struct ebpf_probe_ops
 	int (*reserve_cpu)(struct ebpf_vm_state *);
 	void (*release_cpu)(struct ebpf_vm_state *);
 };
+
+struct ebpf_dev_prog
+{
+	struct ebpf_prog prog;
+	TAILQ_HEAD(, ebpf_activation) activations;
+};
+
+int ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int jit);
 
 extern const struct ebpf_probe_ops vfs_probe_ops;
 extern const struct ebpf_probe_ops xdp_probe_ops;

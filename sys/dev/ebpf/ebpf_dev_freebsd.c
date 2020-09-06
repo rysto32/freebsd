@@ -85,7 +85,8 @@ ebpf_fopen(ebpf_thread *td, ebpf_file **fp, int *fd, struct ebpf_obj *data)
 }
 
 int
-ebpf_fd_to_program(ebpf_thread *td, int fd, ebpf_file **fp_out, struct ebpf_prog **prog_out)
+ebpf_fd_to_program(ebpf_thread *td, int fd, ebpf_file **fp_out,
+    struct ebpf_dev_prog **prog_out)
 {
 	int error;
 	ebpf_file *fp;
@@ -111,7 +112,7 @@ ebpf_fd_to_program(ebpf_thread *td, int fd, ebpf_file **fp_out, struct ebpf_prog
 
 	*fp_out = fp;
 	if (prog_out) {
-		*prog_out = prog;
+		*prog_out = (struct ebpf_dev_prog *)prog;
 	}
 
 	return (0);

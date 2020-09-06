@@ -29,9 +29,11 @@
 #ifndef _EBPF_INTERNAL_H
 #define _EBPF_INTERNAL_H
 
+struct ebpf_dev_prog;
+
 struct ebpf_vm_state
 {
-	struct ebpf_prog *next_prog;
+	struct ebpf_dev_prog *next_prog;
 	ebpf_file *prog_fp;
 	void *next_prog_arg;
 	void (*deferred_func)(struct ebpf_vm_state *);

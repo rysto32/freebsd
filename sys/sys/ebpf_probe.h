@@ -52,22 +52,29 @@ struct ebpf_probe_name
 
 struct proc;
 
+struct ebpf_probe;
+
+typedef void ebpf_deactivate_probe_t(struct ebpf_probe *, void *);
+typedef void ebpf_activate_probe_cb_t(struct ebpf_probe *, void *,
+    ebpf_deactivate_probe_t *, void *);
+
 struct ebpf_probe
 {
 	ebpf_probe_id_t id;
 	int active;
-	void (*activate)(struct ebpf_probe *, void *);
+	void (*activate)(struct ebpf_probe *, ebpf_activate_probe_cb_t*, void *);
 	struct ebpf_probe_name name;
 	size_t arglen;
 	CK_SLIST_ENTRY(ebpf_probe) hash_link;
 	LIST_ENTRY(ebpf_probe) id_link;
 	TAILQ_ENTRY(ebpf_probe) list_link;
-};
+};;
 
 typedef int ebpf_fire_t(struct ebpf_probe *, void *, uintptr_t , uintptr_t,
     uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
-typedef void *ebpf_probe_clone_t(struct ebpf_probe *, void *);
+typedef void *ebpf_probe_clone_t(struct ebpf_probe *, void *,
+    ebpf_deactivate_probe_t *, void *);
 typedef void ebpf_probe_release_t(struct ebpf_probe *, void *);
 
 typedef int (*ebpf_probe_cb)(struct ebpf_probe *, void *);
@@ -86,7 +93,7 @@ struct ebpf_module
 void ebpf_probe_register(void *);
 void ebpf_probe_deregister(void *);
 
-struct ebpf_probe * ebpf_activate_probe(ebpf_probe_id_t, void *);
+struct ebpf_probe * ebpf_activate_probe(ebpf_probe_id_t, ebpf_activate_probe_cb_t*, void *);
 
 void ebpf_module_register(const struct ebpf_module *);
 void ebpf_module_deregister(void);

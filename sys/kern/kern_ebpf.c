@@ -43,10 +43,17 @@
 struct ebpf_proc_probe
 {
 	int probe_id;
+	int flags;
+	struct proc *proc;
 	struct ebpf_probe *probe;
 	void *module_state;
-	RB_ENTRY(ebpf_proc_probe) link;
+	union {
+		RB_ENTRY(ebpf_proc_probe) link;
+		TAILQ_ENTRY(ebpf_proc_probe) list;
+	};
 };
+
+#define	EBPF_PROC_DEACTIVATED 0x0001
 
 static int ebpf_proc_probe_cmp(struct ebpf_proc_probe *, struct ebpf_proc_probe *);
 
@@ -74,7 +81,10 @@ SX_SYSINIT_FLAGS(ebpf_sx, &ebpf_sx, "ebpx_sx", SX_DUPOK);
 struct ebpf_probe syscall_probes[SYS_MAXSYSCALL];
 static void ebpf_register_syscall_probes(void);
 
-static void ebpf_activate_syscall_probe(struct ebpf_probe *probe, void *state);
+static void ebpf_activate_syscall_probe(struct ebpf_probe *probe,
+    ebpf_activate_probe_cb_t *, void *state);
+static void ebpf_force_deactivate_syscall(struct ebpf_probe *probe, void *);
+static void ebpf_deactivate_proc_probe(struct proc *, struct ebpf_proc_probe *);
 
 static int next_id = EBPF_PROBE_FIRST + 1;
 
@@ -233,7 +243,7 @@ ebpf_probe_deregister(void *arg)
 }
 
 struct ebpf_probe *
-ebpf_activate_probe(ebpf_probe_id_t id, void *state)
+ebpf_activate_probe(ebpf_probe_id_t id, ebpf_activate_probe_cb_t *cb, void *state)
 {
 	struct ebpf_probe *probe;
 	uint32_t hash; 
@@ -243,7 +253,7 @@ ebpf_activate_probe(ebpf_probe_id_t id, void *state)
 	sx_slock(&ebpf_sx);
 	LIST_FOREACH(probe, &probe_id_hashtable[hash], id_link) {
 		if (id == probe->id) {
-			probe->activate(probe, state);
+			probe->activate(probe, cb, state);
 			atomic_add_int(&probe->active, 1);
 			break;
 		}
@@ -254,21 +264,52 @@ ebpf_activate_probe(ebpf_probe_id_t id, void *state)
 }
 
 static void
-ebpf_activate_syscall_probe(struct ebpf_probe *probe, void *state)
+ebpf_activate_syscall_probe(struct ebpf_probe *probe,
+    ebpf_activate_probe_cb_t *cb, void *state)
 {
 	struct ebpf_proc_probe *pp;
 	struct proc *proc;
+
+	proc = curthread->td_proc;
 
 	pp = malloc(sizeof(*pp), M_EBPF_HOOKS, M_WAITOK);
 	pp->probe_id = probe->id;
 	pp->probe = probe;
 	pp->module_state = state;
-
-	proc = curthread->td_proc;
+	pp->proc = proc;
 
 	sx_xlock(&proc->p_ebpf_lock);
 	RB_INSERT(ebpf_proc_probe_tree, &proc->p_ebpf_probes, pp);
 	sx_xunlock(&proc->p_ebpf_lock);
+
+	cb(probe, state, ebpf_force_deactivate_syscall, pp);
+}
+
+static void
+ebpf_force_deactivate_syscall(struct ebpf_probe *probe, void *arg)
+{
+	struct ebpf_proc_probe *pp;
+	struct proc *proc;
+
+	pp = arg;
+
+	sx_xlock(&ebpf_sx);
+	if (pp->flags & EBPF_PROC_DEACTIVATED) {
+		/* Another thread is in the process of freeing this; nothing
+		 * for us to do.
+		 */
+		sx_xunlock(&ebpf_sx);
+		return;
+	}
+
+	proc = pp->proc;
+
+	sx_xlock(&proc->p_ebpf_lock);
+	ebpf_deactivate_proc_probe(proc, pp);
+	free(pp, M_EBPF_HOOKS);
+	sx_xunlock(&proc->p_ebpf_lock);
+
+	sx_xunlock(&ebpf_sx);
 }
 
 int
@@ -388,7 +429,9 @@ ebpf_clone_proc_probes(struct proc *parent, struct proc *newproc)
 		new_pp->probe_id = pp->probe_id;
 		new_pp->probe = pp->probe;
 		new_pp->module_state =
-		    ebpf_module_callbacks->clone_probe(pp->probe, pp->module_state);
+		    ebpf_module_callbacks->clone_probe(pp->probe, pp->module_state,
+		        ebpf_force_deactivate_syscall, new_pp);
+		new_pp->proc = newproc;
 
 		RB_INSERT(ebpf_proc_probe_tree, &newproc->p_ebpf_probes, new_pp);
 	}
@@ -396,21 +439,35 @@ ebpf_clone_proc_probes(struct proc *parent, struct proc *newproc)
 	sx_sunlock(&ebpf_sx);
 }
 
+static void
+ebpf_deactivate_proc_probe(struct proc *proc, struct ebpf_proc_probe *pp)
+{
+
+	atomic_add_int(&pp->probe->active, -1);
+
+	pp->flags |= EBPF_PROC_DEACTIVATED;
+	RB_REMOVE(ebpf_proc_probe_tree, &proc->p_ebpf_probes, pp);
+}
+
 void
 ebpf_free_proc_probes(struct proc *proc)
 {
 	struct ebpf_proc_probe *pp, *next;
+	TAILQ_HEAD(, ebpf_proc_probe) probe_list;
 
+	TAILQ_INIT(&probe_list);
 	sx_xlock(&ebpf_sx);
 	sx_xlock(&proc->p_ebpf_lock);
 	RB_FOREACH_SAFE(pp, ebpf_proc_probe_tree, &proc->p_ebpf_probes, next) {
-		atomic_add_int(&pp->probe->active, -1);
-		ebpf_module_callbacks->release_probe(pp->probe, pp->module_state);
-
-		RB_REMOVE(ebpf_proc_probe_tree, &proc->p_ebpf_probes, pp);
-		free(pp, M_EBPF_HOOKS);
+		ebpf_deactivate_proc_probe(proc, pp);
+		TAILQ_INSERT_TAIL(&probe_list, pp, list);
 	}
 	sx_xunlock(&proc->p_ebpf_lock);
 	sx_xunlock(&ebpf_sx);
 
+	while ((pp = TAILQ_FIRST(&probe_list))) {
+		TAILQ_REMOVE(&probe_list, pp, list);
+		ebpf_module_callbacks->release_probe(pp->probe, pp->module_state);
+		free(pp, M_EBPF_HOOKS);
+	}
 }

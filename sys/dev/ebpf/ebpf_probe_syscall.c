@@ -259,7 +259,7 @@ int
 ebpf_probe_pdwait4_defer(int fd, int options, void *arg,
     void *next)
 {
-	struct ebpf_prog *prog;
+	struct ebpf_dev_prog *prog;
 	int *prog_fd;
 	int error;
 	struct ebpf_vm_state *s;
@@ -711,7 +711,7 @@ int
 ebpf_probe_kevent_block(int kq,
     const struct timespec *ts, void *next)
 {
-	struct ebpf_prog *prog;
+	struct ebpf_dev_prog *prog;
 	struct ebpf_vm_state *s;
 	int *prog_fd;
 	int error;

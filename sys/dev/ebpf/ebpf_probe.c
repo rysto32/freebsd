@@ -47,8 +47,11 @@
 struct ebpf_activation
 {
 	struct ebpf_probe *probe;
-	struct ebpf_prog *prog;
+	struct ebpf_dev_prog *prog;
 	int jit;
+	ebpf_deactivate_probe_t *deactivate;
+	void *deact_arg;
+	TAILQ_ENTRY(ebpf_activation) next;
 };
 
 static const struct ebpf_probe_ops *probe_ops[] = {
@@ -56,8 +59,20 @@ static const struct ebpf_probe_ops *probe_ops[] = {
 	[EBPF_PROG_TYPE_XDP] = &xdp_probe_ops,
 };
 
+static void
+ebpf_activate_probe_cb(struct ebpf_probe *probe, void *arg,
+    ebpf_deactivate_probe_t *deact, void *deact_arg)
+{
+	struct ebpf_activation *act;
+
+	act = arg;
+
+	act->deactivate = deact;
+	act->deact_arg = deact_arg;
+}
+
 int
-ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit)
+ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int jit)
 {
 	struct ebpf_probe *probe;
 	struct ebpf_activation *state;
@@ -69,20 +84,22 @@ ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_prog *prog, int jit)
 	state->jit = jit;
 	state->prog = prog;
 
-	probe = ebpf_activate_probe(id, state);
+	probe = ebpf_activate_probe(id, ebpf_activate_probe_cb, state);
 	if (probe == NULL) {
 		ebpf_free(state);
 		return (ENOENT);
 	}
 
-	ebpf_obj_acquire(&prog->eo);
+	ebpf_obj_acquire(&prog->prog.eo);
 	state->probe = probe;
+	TAILQ_INSERT_TAIL(&prog->activations, state, next);
 
 	return (0);
 }
 
 static void *
-ebpf_probe_clone(struct ebpf_probe *probe, void *a)
+ebpf_probe_clone(struct ebpf_probe *probe, void *a,
+    ebpf_deactivate_probe_t *deact, void *deact_arg)
 {
 	struct ebpf_activation *state, *clone;
 
@@ -92,7 +109,11 @@ ebpf_probe_clone(struct ebpf_probe *probe, void *a)
 	clone->probe = state->probe;
 	clone->prog = state->prog;
 	clone->jit = state->jit;
-	ebpf_obj_acquire(&clone->prog->eo);
+	TAILQ_INSERT_TAIL(&clone->prog->activations, clone, next);
+	ebpf_obj_acquire(&clone->prog->prog.eo);
+
+	clone->deactivate = deact;
+	clone->deact_arg = deact_arg;
 
 	return (clone);
 }
@@ -104,28 +125,29 @@ ebpf_probe_release(struct ebpf_probe *probe, void *a)
 
 	state = a;
 
-	ebpf_obj_release(&state->prog->eo);
+	TAILQ_REMOVE(&state->prog->activations, state, next);
+	ebpf_obj_release(&state->prog->prog.eo);
 	ebpf_free(state);
 }
 
 static int
-ebpf_probe_reserve_cpu(struct ebpf_prog *prog, struct ebpf_vm_state *vm_state)
+ebpf_probe_reserve_cpu(struct ebpf_dev_prog *prog, struct ebpf_vm_state *vm_state)
 {
 
-	KASSERT(prog->type < nitems(probe_ops),
-	    ("ebpf program type %d out of bounds", prog->type));
+	KASSERT(prog->prog.type < nitems(probe_ops),
+	    ("ebpf program type %d out of bounds", prog->prog.type));
 
-	return (probe_ops[prog->type]->reserve_cpu(vm_state));
+	return (probe_ops[prog->prog.type]->reserve_cpu(vm_state));
 }
 
 static void
-ebpf_probe_release_cpu(struct ebpf_prog *prog, struct ebpf_vm_state *vm_state)
+ebpf_probe_release_cpu(struct ebpf_dev_prog *prog, struct ebpf_vm_state *vm_state)
 {
 
-	KASSERT(prog->type < nitems(probe_ops),
-	    ("ebpf program type %d out of bounds", prog->type));
+	KASSERT(prog->prog.type < nitems(probe_ops),
+	    ("ebpf program type %d out of bounds", prog->prog.type));
 
-	probe_ops[prog->type]->release_cpu(vm_state);
+	probe_ops[prog->prog.type]->release_cpu(vm_state);
 }
 
 static void
@@ -144,7 +166,7 @@ ebpf_fire(struct ebpf_probe *probe, void *a, uintptr_t arg0, uintptr_t arg1,
 {
 	struct thread *td;
 	struct ebpf_activation *state;
-	struct ebpf_prog *prog;
+	struct ebpf_dev_prog *prog;
 	ebpf_file *prog_fp;
 	struct ebpf_vm_state vm_state;
 	int error, ret;
@@ -174,7 +196,7 @@ ebpf_fire(struct ebpf_probe *probe, void *a, uintptr_t arg0, uintptr_t arg1,
 			return (EBPF_ACTION_RETURN);
 		}
 
-		ret = ebpf_prog_run(vm_state.next_prog_arg, prog);
+		ret = ebpf_prog_run(vm_state.next_prog_arg, &prog->prog);
 
 		ebpf_probe_release_cpu(prog, &vm_state);
 
