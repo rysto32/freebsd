@@ -46,7 +46,7 @@ ebpf_prog_create(struct ebpf_env *ee, struct ebpf_prog **epp,
 	if (ept == NULL)
 		return EINVAL;
 
-	ep = ebpf_malloc(sizeof(*ep));
+	ep = ebpf_malloc(max(sizeof(*ep), attr->obj_len));
 	if (ep == NULL)
 		return ENOMEM;
 

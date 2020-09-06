@@ -45,6 +45,7 @@ struct ebpf_prog_attr {
 	uint32_t type;
 	struct ebpf_inst *prog;
 	uint32_t prog_len;
+	uint32_t obj_len;
 	void *data; /* private data */
 };
 
