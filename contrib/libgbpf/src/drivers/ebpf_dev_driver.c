@@ -175,7 +175,7 @@ ebpf_dev_get_prog_type_by_name(GBPFDriver *self, const char *name)
 static int
 ebpf_dev_attach_probe(GBPFDriver *self, int prog_desc, const char *tracer,
     const char *provider, const char *module, const char *function,
-    const char *name, int jit)
+    const char *name, int flags)
 {
 	union ebpf_req req;
 	EBPFDevDriver *driver = (EBPFDevDriver *)self;
@@ -198,7 +198,7 @@ ebpf_dev_attach_probe(GBPFDriver *self, int prog_desc, const char *tracer,
 
 	req.attach.prog_fd = prog_desc;
 	req.attach.probe_id = id;
-	req.attach.jit = jit;
+	req.attach.flags = flags;
 
 	return ioctl(driver->ebpf_fd, EBPFIOC_ATTACH_PROBE, &req);
 }

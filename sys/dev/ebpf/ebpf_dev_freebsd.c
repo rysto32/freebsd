@@ -22,6 +22,7 @@
 #include <sys/ebpf_param.h>
 #include <dev/ebpf/ebpf_prog.h>
 #include <dev/ebpf/ebpf_internal.h>
+#include <dev/ebpf/ebpf_dev_probe.h>
 
 /*
  * Global reference count
@@ -40,9 +41,14 @@ static int
 ebpf_objfile_close(struct file *fp, struct thread *td)
 {
 	struct ebpf_obj *eo = fp->f_data;
+	struct ebpf_dev_prog *prog;
 
 	if (fp->f_count == 0) {
 		ebpf_obj_release(eo);
+		if (eo->eo_type == EBPF_OBJ_TYPE_PROG) {
+			prog = (struct ebpf_dev_prog*)eo;
+			ebpf_deactivate_unpersistent(prog);
+		}
 		ebpf_refcount_release(&ebpf_dev_global_refcount);
 	}
 

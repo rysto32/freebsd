@@ -85,7 +85,7 @@ union ebpf_req {
 	struct ebpf_req_attach {
 		int prog_fd;
 		ebpf_probe_id_t probe_id;
-		int jit;
+		int flags;
 	} attach;
 
 	struct {
@@ -99,6 +99,10 @@ union ebpf_req {
 	} probe_iter;
 };
 
+#define EBPF_ATTACH_JIT 0x0001
+#define EBPF_ATTACH_PERSISTENT 0x0002
+
+#define EBPF_ATTACH_ALL_FLAGS (EBPF_ATTACH_JIT | EBPF_ATTACH_PERSISTENT)
 
 #define EBPFIOC_LOAD_PROG _IOWR('i', 151, union ebpf_req)
 #define EBPFIOC_MAP_CREATE _IOWR('i', 152, union ebpf_req)

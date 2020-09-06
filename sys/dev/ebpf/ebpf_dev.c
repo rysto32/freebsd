@@ -621,12 +621,16 @@ ebpf_attach(union ebpf_req *req, ebpf_thread *td)
 
 	attach = &req->attach;
 
+	if (attach->flags & ~(EBPF_ATTACH_ALL_FLAGS)) {
+		return (EINVAL);
+	}
+
 	error = ebpf_fd_to_program(td, attach->prog_fd, &f, &prog);
 	if (error != 0) {
 		return (EINVAL);
 	}
 
-	error = ebpf_probe_attach(attach->probe_id, prog, attach->jit);
+	error = ebpf_probe_attach(attach->probe_id, prog, attach->flags);
 
 	ebpf_fdrop(f, td);
 	return (error);

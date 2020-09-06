@@ -30,6 +30,7 @@
 #define _EBPF_DEV_PROBE_H
 
 #include <dev/ebpf/ebpf_prog.h>
+#include <sys/ebpf_probe.h>
 #include <sys/queue.h>
 
 struct ebpf_activation;
@@ -52,7 +53,8 @@ struct ebpf_dev_prog
 	TAILQ_HEAD(, ebpf_activation) activations;
 };
 
-int ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int jit);
+int ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int flags);
+void ebpf_deactivate_unpersistent(struct ebpf_dev_prog *prog);
 
 extern const struct ebpf_probe_ops vfs_probe_ops;
 extern const struct ebpf_probe_ops xdp_probe_ops;

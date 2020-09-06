@@ -34,6 +34,7 @@
 #include <sys/ebpf.h>
 #include <sys/ebpf_param.h>
 #include <sys/ebpf_probe.h>
+#include <sys/ebpf_dev.h>
 #include <dev/ebpf/ebpf_platform.h>
 #include <dev/ebpf/ebpf_dev_platform.h>
 #include <dev/ebpf/ebpf_dev_freebsd.h>
@@ -43,16 +44,19 @@
 #include <dev/ebpf/ebpf_probe_syscall.h>
 
 #include <sys/refcount.h>
+#include <sys/ktr.h>
 
 struct ebpf_activation
 {
 	struct ebpf_probe *probe;
 	struct ebpf_dev_prog *prog;
-	int jit;
+	int flags;
 	ebpf_deactivate_probe_t *deactivate;
 	void *deact_arg;
 	TAILQ_ENTRY(ebpf_activation) next;
 };
+
+#define EBPF_ACTIVATION_PERSISTENT 0x0001
 
 static const struct ebpf_probe_ops *probe_ops[] = {
 	[EBPF_PROG_TYPE_VFS] = &vfs_probe_ops,
@@ -72,7 +76,7 @@ ebpf_activate_probe_cb(struct ebpf_probe *probe, void *arg,
 }
 
 int
-ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int jit)
+ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int flags)
 {
 	struct ebpf_probe *probe;
 	struct ebpf_activation *state;
@@ -81,7 +85,11 @@ ebpf_probe_attach(ebpf_probe_id_t id, struct ebpf_dev_prog *prog, int jit)
 	if (state == NULL)
 		return (ENOMEM);
 
-	state->jit = jit;
+	state->flags = 0;
+	if (flags & EBPF_ATTACH_PERSISTENT) {
+		state->flags |= EBPF_ACTIVATION_PERSISTENT;
+	}
+
 	state->prog = prog;
 
 	probe = ebpf_activate_probe(id, ebpf_activate_probe_cb, state);
@@ -108,7 +116,7 @@ ebpf_probe_clone(struct ebpf_probe *probe, void *a,
 
 	clone->probe = state->probe;
 	clone->prog = state->prog;
-	clone->jit = state->jit;
+	clone->flags = state->flags;
 	TAILQ_INSERT_TAIL(&clone->prog->activations, clone, next);
 	ebpf_obj_acquire(&clone->prog->prog.eo);
 
@@ -128,6 +136,20 @@ ebpf_probe_release(struct ebpf_probe *probe, void *a)
 	TAILQ_REMOVE(&state->prog->activations, state, next);
 	ebpf_obj_release(&state->prog->prog.eo);
 	ebpf_free(state);
+}
+
+void
+ebpf_deactivate_unpersistent(struct ebpf_dev_prog *prog)
+{
+	struct ebpf_activation *act, *next;
+
+	TAILQ_FOREACH_SAFE(act, &prog->activations, next, next) {
+		if (!(act->flags & EBPF_ACTIVATION_PERSISTENT)) {
+			act->deactivate(act->probe, act->deact_arg);
+
+			ebpf_probe_release(act->probe, act);
+		}
+	}
 }
 
 static int
