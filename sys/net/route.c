@@ -537,13 +537,14 @@ rt_getifa_fib(struct rt_addrinfo *info, u_int fibnum)
 	ifaaddr = info->rti_info[RTAX_IFA];
 	flags = info->rti_flags;
 
+	NET_EPOCH_ASSERT();
+
 	/*
 	 * ifp may be specified by sockaddr_dl
 	 * when protocol address is ambiguous.
 	 */
 	error = 0;
 	needref = (info->rti_ifa == NULL);
-	NET_EPOCH_ENTER(et);
 
 	/* If we have interface specified by the ifindex in the address, use it */
 	if (info->rti_ifp == NULL && ifpaddr != NULL &&
@@ -601,10 +602,9 @@ rt_getifa_fib(struct rt_addrinfo *info, u_int fibnum)
 	if (needref && info->rti_ifa != NULL) {
 		if (info->rti_ifp == NULL)
 			info->rti_ifp = info->rti_ifa->ifa_ifp;
-		ifa_ref(info->rti_ifa);
 	} else
 		error = ENETUNREACH;
-	NET_EPOCH_EXIT(et);
+
 	return (error);
 }
 
